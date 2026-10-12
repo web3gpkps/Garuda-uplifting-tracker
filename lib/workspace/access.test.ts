@@ -26,8 +26,10 @@ describe('workspace access', () => {
       'Log Performa',
       'Cek BMI',
       'Tindak Lanjut',
+      'Remedial',
       'Penggantian SDM',
       'Laporan Mingguan',
+      'Acuan PDF',
     ]);
   });
 
@@ -37,7 +39,7 @@ describe('workspace access', () => {
     expect(links.to('performa', { minggu: 3, stasiun: null, tab: undefined, lp: false, cek: '' })).toBe(
       '/admin/performa?minggu=3',
     );
-    expect(links.to('tindakLanjut', undefined, 'tl-SUB-TL01')).toBe('/admin/tindak-lanjut#tl-SUB-TL01');
+    expect(links.to('tindakLanjut', undefined, 'tl-GA-TL01')).toBe('/admin/tindak-lanjut#tl-GA-TL01');
     expect(links.to('dashboard')).toBe('/admin');
     expect(toQuery({ a: 'x y' })).toBe('?a=x+y');
   });

@@ -9,18 +9,16 @@ const ws = {
   linkId: 'own',
   linkLabels: { other: 'PIC SUB' },
   stations: [
-    { code: 'DPS', reportGroup: 'DPS', sort: 2 },
-    { code: 'SUB', reportGroup: 'SUB', sort: 1 },
+    { code: 'DPS', sort: 2 },
+    { code: 'SUB', sort: 1 },
   ],
 } as unknown as Workspace;
 
 describe('workspace view', () => {
   test('ruleSettings keeps database values and falls back to the workbook defaults', () => {
-    const s = ruleSettings({ weeks: 8, passAvgMin: 4.5, minHeightFemale: 155 } as Workspace['settings']);
+    const s = ruleSettings({ weeks: 8, passGrade: 80 } as Workspace['settings']);
     expect(s.weeks).toBe(8);
-    expect(s.passAvgMin).toBe(4.5);
-    expect(s.minHeightFemale).toBe(155);
-    expect(s.minHeightMale).toBeNull();
+    expect(s.passGrade).toBe(80);
     expect(s.week1Start).toBe(DEFAULT_SETTINGS.week1Start);
     expect(settingsComplete({ weeks: 8 } as Workspace['settings'])).toBe(false);
   });

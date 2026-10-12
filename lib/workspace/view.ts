@@ -6,19 +6,27 @@
  */
 import type { TrackerData } from "@/lib/aggregate";
 import { formatJam, formatTanggalPendek, toIsoDate } from "@/lib/dates";
-import { DEFAULT_SETTINGS, reportGroupOf, type DueRule, type Settings } from "@/lib/rules";
+import { DEFAULT_SETTINGS, type Settings } from "@/lib/rules";
 import type { Workspace, WorkspaceStaff } from "./index";
 
 const NUMERIC_KEYS = [
   "weeks",
   "bmiIntervalDays",
+  "bmiIntervalMonths",
   "bmiPeriods",
   "bmiUnderweightBelow",
   "bmiNormalMax",
   "bmiOverweightMax",
-  "passAvgMin",
-  "improveAvgMin",
-  "posttestMin",
+  "passGrade",
+  "weightRolePlay",
+  "weightPostTest",
+  "targetOverweightMax",
+  "targetOverweightMonths",
+  "targetKnowledge",
+  "targetInteractive",
+  "targetCoverage",
+  "coverageDone",
+  "targetPassRate",
 ] as const satisfies ReadonlyArray<keyof Settings>;
 
 const DATE_KEYS = ["week1Start", "bmiFirstCheck", "replacementDeadline"] as const satisfies ReadonlyArray<
@@ -27,8 +35,7 @@ const DATE_KEYS = ["week1Start", "bmiFirstCheck", "replacementDeadline"] as cons
 
 /**
  * lib/rules Settings from share_open's settings row (sheet Parameter). A value the
- * payload did not carry falls back to the workbook default; the minimum heights stay
- * null when blank, as the workbook leaves them.
+ * payload did not carry falls back to the workbook default.
  */
 export function ruleSettings(raw: Workspace["settings"]): Settings {
   const source = raw as Record<string, unknown>;
@@ -40,10 +47,6 @@ export function ruleSettings(raw: Workspace["settings"]): Settings {
   for (const key of DATE_KEYS) {
     const value = source[key];
     if (typeof value === "string" && value !== "") out[key] = value;
-  }
-  for (const key of ["minHeightFemale", "minHeightMale"] as const) {
-    const value = source[key];
-    out[key] = value === null || value === undefined ? null : Number(value);
   }
   return out;
 }
@@ -89,23 +92,20 @@ export function sortedStaff(ws: Workspace): WorkspaceStaff[] {
 /**
  * lib/aggregate input for the whole workspace, or for one station of a KPS workspace.
  * A station view keeps exactly what that station's own link would receive: its staff
- * with their scores and checks, its report group's action items, its replacements.
+ * with their scores, checks and remedials, the (national) action items, its replacements.
  */
 export function trackerData(ws: Workspace, station: string | null = null): TrackerData {
   const stations = station ? ws.stations.filter((s) => s.code === station) : ws.stations;
   const staff = station ? ws.staff.filter((s) => s.station === station) : ws.staff;
   const codes = new Set(staff.map((s) => s.code));
-  const group = station ? reportGroupOf(station) : null;
   return {
     settings: ruleSettings(ws.settings),
     stations,
     staff,
     weeklyScores: station ? ws.weeklyScores.filter((r) => codes.has(r.staffCode)) : ws.weeklyScores,
     bmiChecks: station ? ws.bmiChecks.filter((r) => codes.has(r.staffCode)) : ws.bmiChecks,
-    actionItems: (group ? ws.actionItems.filter((a) => a.reportGroup === group) : ws.actionItems).map((a) => ({
-      ...a,
-      dueRule: a.dueRule as DueRule | null,
-    })),
+    actionItems: ws.actionItems,
+    remedials: station ? ws.remedials.filter((r) => codes.has(r.staffCode)) : ws.remedials,
     replacements: station ? ws.replacements.filter((r) => r.station === station) : ws.replacements,
   };
 }

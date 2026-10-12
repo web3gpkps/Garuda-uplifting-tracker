@@ -1,32 +1,32 @@
 /**
- * Dashboard (sections 1–4) and Laporan Mingguan (sections A–D), ported from the workbook.
+ * Dashboard (sections 1–6) and Laporan Mingguan (sections A–D) of the Garuda workbook.
  *
- * Input: plain arrays of DB rows with **camelCase** keys, typed in `./rules`
- * (`StaffRow`, `WeeklyScoreRow`, `BmiCheckRow`, `ActionItemRow`, `ReplacementRow`, `StationRow`).
+ * Input: plain arrays of DB rows with **camelCase** keys, typed in `./rules`.
  * Map supabase-js results with `camelize()` from `./rules`. "Today" is always an argument.
  *
  * Output conventions:
- * - A section is an array of rows: one per station (performance, BMI) or per report group
- *   (action items, replacements), in station `sort` order, then a `TOTAL` row
- *   (section D ends with `SEMUA`, as in the workbook).
+ * - A section is an array of rows (per program, action group, aspect or station) followed by a
+ *   `TOTAL` row (trend: `SEMUA`).
  * - Excel `""` (nothing to show) is `null`.
- * - Ratios (`pctDone`, `pctSesuai`, `pctNormal`, `pctCurrentSesuai`) are fractions 0..1, like the
- *   workbook's `0%` cells. `avgProgress` is in DB units 0..100 (same unit as `action_items.progress`).
- * - Averages are not rounded; format at display (scores 2 dp, kg 1 dp).
- * - TOTAL rows follow the workbook: counts and averages are over ALL rows (no group filter),
- *   except "Jumlah SDM" (`staffCount`), which is the sum of the station rows.
+ * - Ratios (`pct*`, KPI values) are fractions 0..1. `avgProgress` is 0..100 (DB units).
+ * - Averages are not rounded; format at display.
  */
 
 import {
-  REPORT_GROUPS,
-  STATIONS,
+  ACTION_GROUPS,
+  ASPECTS,
+  COACHING_ASPECTS,
+  PROGRAMS,
   actionFlag,
   average,
   bmiCheckDate,
   bmiPeriodForWeek,
   bmiSummary,
   cleanFloat,
-  practiceAvg,
+  coachingAvg,
+  coachingStatus,
+  isOverweight,
+  remedialResult,
   replacementPass,
   replacementTimeliness,
   sameText,
@@ -35,12 +35,14 @@ import {
   startsWithText,
   weekEnd,
   weekStart,
-  weeklyStatus,
   type ActionItemRow,
   type BmiCheckRow,
   type BmiSummary,
+  type CoachingAspectKey,
   type DateInput,
   type IsoDate,
+  type RemedialRow,
+  type RemedialStatus,
   type ReplacementRow,
   type Settings,
   type StaffBaseline,
@@ -50,6 +52,7 @@ import {
   type WeeklyScoreRow,
 } from './rules';
 import { toIsoDate } from './dates';
+import { COACHING_SUMMARY, PROGRAM_RESULTS, SERVICE_GAPS } from './reference';
 
 export const TOTAL = 'TOTAL';
 export const SEMUA = 'SEMUA';
@@ -60,8 +63,9 @@ export interface TrackerData {
   weeklyScores: readonly WeeklyScoreRow[];
   bmiChecks: readonly BmiCheckRow[];
   actionItems: readonly ActionItemRow[];
+  remedials: readonly RemedialRow[];
   replacements: readonly ReplacementRow[];
-  /** Defaults to SUB, DPS, CGK, HLP, KNO with CGK/HLP → "CGK & HLP". */
+  /** Station order; defaults to the stations that appear in `staff`, alphabetically. */
   stations?: readonly StationRow[];
 }
 
@@ -69,7 +73,22 @@ export interface TrackerData {
 // Output rows
 // ---------------------------------------------------------------------------
 
-/** Dashboard 1 / Laporan B (per report group). */
+export type KpiStatus = 'Tercapai' | 'Belum tercapai' | 'Di atas baseline' | 'Di bawah baseline' | 'Belum ada data';
+
+/** Dashboard 1: one KPI (PDF slide 15). Values are fractions 0..1. */
+export interface KpiRow {
+  key: 'coverage' | 'overweight' | 'knowledge' | 'interactive' | 'passRate' | 'iuls' | 'rust';
+  label: string;
+  baseline: number | null;
+  target: number | null;
+  /** `>=`, `>`, `<` against target; `baseline` = compare with the baseline (no explicit target). */
+  direction: '>=' | '>' | '<' | 'baseline';
+  actual: number | null;
+  status: KpiStatus;
+  basis: string;
+}
+
+/** Dashboard 2–3 / Laporan B (per action group or aspect). */
 export interface ActionProgressRow {
   key: string;
   total: number;
@@ -86,58 +105,53 @@ export interface ActionProgressRow {
   avgProgress: number | null;
 }
 
-/** Dashboard 2 (per station). */
-export interface PerformanceRow {
+/** Dashboard 4 (per program). */
+export interface ProgramResultRow {
   key: string;
-  staffCount: number;
-  /** Report conclusion "Sesuai*" (includes "Sesuai dengan Catatan"). */
-  reportSesuai: number;
-  reportPerlu: number;
-  reportTidak: number;
-  /** Criteria 6.2 status = Sesuai. */
-  criteriaSesuai: number;
-  /** Consistency "Beda – verifikasi". */
+  participants: number;
+  passed: number;
+  failed: number;
+  /** Failure cause "Kendala operasional & kehadiran". */
+  absentRolePlay: number;
+  remedialRecorded: number;
+  remedialPassed: number;
+  /** Passed + remedial passed. */
+  finalPassed: number;
+  pctFinalPassed: number | null;
+  /** Gapura pass rate from the PDF (slide 18 / 20). */
+  pdfBaseline: number | null;
+  /** Remark in the report differs from the criteria. */
   beda: number;
-  baselineAvg: number | null;
-  /** Mean of the latest weekly score, over staff who have one. */
-  currentAvg: number | null;
-  gain: number | null;
-  /** Trend ▲. */
-  improved: number;
-  /** Current status = Sesuai. */
-  currentSesuai: number;
-  /** currentSesuai / staffCount, 0..1. */
-  pctCurrentSesuai: number | null;
 }
 
-/** Dashboard 3 (per station, latest check of each staff member). */
-export interface BmiOverviewRow {
+/** Dashboard 5 (per station). */
+export interface UnitRow {
   key: string;
   staffCount: number;
-  everChecked: number;
-  normal: number;
-  kurus: number;
+  passed: number;
+  failed: number;
+  avgFinal: number | null;
+  avgCurrent: number | null;
+  gain: number | null;
+  improved: number;
+  currentLulus: number;
+  bmiChecked: number;
   overweight: number;
-  obesitas: number;
-  heightNotMet: number;
   avgWeightDelta: number | null;
+  remedialPassed: number;
+  replacements: number;
 }
 
-/** Dashboard 4 (per report group). */
-export interface ReplacementOverviewRow {
-  key: string;
-  /** "SDM Akan Diganti": rows with a replaced name. */
+/** Dashboard 6. */
+export interface ReplacementOverview {
   toReplace: number;
-  /** "Pengganti Sudah Ditempatkan": rows with a replacement name. */
   placed: number;
   passed: number;
-  /** OVERDUE or "Lewat …". */
   lateOrOverdue: number;
-  /** Reported = Ya. */
   reported: number;
 }
 
-/** Laporan A (per station, selected week). */
+/** Laporan A (per program, selected week). */
 export interface WeeklyPerformanceRow {
   key: string;
   staffCount: number;
@@ -147,15 +161,21 @@ export interface WeeklyPerformanceRow {
   changeVsLastWeek: number | null;
   baselineAvg: number | null;
   gainVsBaseline: number | null;
-  sesuai: number;
-  perlu: number;
-  tidak: number;
-  /** sesuai / assessed, 0..1. */
-  pctSesuai: number | null;
+  lulus: number;
+  belumLulus: number;
+  pctLulus: number | null;
 }
 
-/** Laporan C (per station, BMI period of the selected week). */
-export interface BmiPeriodRow {
+/** Laporan A2 (per program, selected week): mean per coaching aspect. */
+export interface AspectAverageRow {
+  key: string;
+  averages: Record<CoachingAspectKey, number | null>;
+  knowledgeMet: boolean | null;
+  communicationMet: boolean | null;
+}
+
+/** Laporan C (per program, BMI slot of the selected week). */
+export interface BmiSlotRow {
   key: string;
   staffCount: number;
   checked: number;
@@ -164,13 +184,13 @@ export interface BmiPeriodRow {
   kurus: number;
   overweight: number;
   obesitas: number;
-  /** normal / checked, 0..1. */
-  pctNormal: number | null;
-  /** From each staff member's latest check, not the selected period (as in the workbook). */
-  heightNotMet: number;
+  /** (overweight + obesitas) / checked, 0..1. */
+  pctOverweight: number | null;
+  /** From each staff member's schedule, not the selected slot. */
+  lateChecks: number;
 }
 
-/** Laporan D (per station + SEMUA). `weeks[0]` is week 1. */
+/** Laporan D. `weeks[0]` is week 1. */
 export interface TrendRow {
   key: string;
   weeks: Array<number | null>;
@@ -178,10 +198,12 @@ export interface TrendRow {
 
 export interface Dashboard {
   asOf: IsoDate;
-  actionProgress: ActionProgressRow[];
-  performance: PerformanceRow[];
-  bmi: BmiOverviewRow[];
-  replacements: ReplacementOverviewRow[];
+  kpis: KpiRow[];
+  actionByGroup: ActionProgressRow[];
+  actionByAspect: ActionProgressRow[];
+  programs: ProgramResultRow[];
+  units: UnitRow[];
+  replacements: ReplacementOverview;
 }
 
 export interface WeeklyReport {
@@ -192,8 +214,9 @@ export interface WeeklyReport {
   bmiPlannedDate: IsoDate;
   asOf: IsoDate;
   performance: WeeklyPerformanceRow[];
+  aspects: AspectAverageRow[];
   actionProgress: ActionProgressRow[];
-  bmi: BmiPeriodRow[];
+  bmi: BmiSlotRow[];
   trend: TrendRow[];
 }
 
@@ -202,6 +225,7 @@ export interface StaffDerived {
   baseline: StaffBaseline;
   rekap: StaffRekap | null;
   bmi: BmiSummary;
+  remedial: { row: RemedialRow; finalResult: number | null; status: RemedialStatus } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -226,24 +250,6 @@ function diff(a: number | null, b: number | null): number | null {
   return a === null || b === null ? null : cleanFloat(a - b);
 }
 
-export function stationCodes(stations?: readonly StationRow[]): string[] {
-  if (!stations || stations.length === 0) return [...STATIONS];
-  return [...stations]
-    .map((s, i) => ({ s, i }))
-    .sort((a, b) => (a.s.sort ?? a.i) - (b.s.sort ?? b.i) || a.i - b.i)
-    .map(({ s }) => s.code);
-}
-
-export function reportGroups(stations?: readonly StationRow[]): string[] {
-  if (!stations || stations.length === 0) return [...REPORT_GROUPS];
-  const out: string[] = [];
-  for (const code of stationCodes(stations)) {
-    const g = stations.find((s) => s.code === code)!.reportGroup;
-    if (!out.includes(g)) out.push(g);
-  }
-  return out;
-}
-
 function groupBy<T>(rows: readonly T[], key: (r: T) => string): Map<string, T[]> {
   const m = new Map<string, T[]>();
   for (const r of rows) {
@@ -255,161 +261,252 @@ function groupBy<T>(rows: readonly T[], key: (r: T) => string): Map<string, T[]>
   return m;
 }
 
-/** Per-staff derived values (Master SDM P–S, Rekap Performa, Cek BMI), in input order. */
-export function staffDerived(data: TrackerData): StaffDerived[] {
+export function stationCodes(stations: readonly StationRow[] | undefined, staff: readonly StaffRow[] = []): string[] {
+  if (stations && stations.length > 0) {
+    return [...stations]
+      .map((s, i) => ({ s, i }))
+      .sort((a, b) => (a.s.sort ?? a.i) - (b.s.sort ?? b.i) || a.i - b.i)
+      .map(({ s }) => s.code);
+  }
+  return [...new Set(staff.map((s) => s.station).filter((s): s is string => hasText(s)))].sort();
+}
+
+function inProgram(program: string | null | undefined, key: string): boolean {
+  return key === TOTAL || key === SEMUA || sameText(program, key);
+}
+
+/** Per-staff derived values (Master SDM, Rekap Performa, Cek BMI, Remedial), in input order. */
+export function staffDerived(data: TrackerData, today: DateInput): StaffDerived[] {
   const s = data.settings;
   const scoresByStaff = groupBy(data.weeklyScores, (r) => r.staffCode);
   const checksByStaff = groupBy(data.bmiChecks, (r) => r.staffCode);
-  return data.staff.map((st) => ({
-    staff: st,
-    baseline: staffBaseline(st, s),
-    // Rekap F–O are blank when the name is blank.
-    rekap: hasText(st.name) ? staffRekap(st, scoresByStaff.get(st.code) ?? [], s) : null,
-    bmi: bmiSummary(checksByStaff.get(st.code) ?? [], st.gender, s),
-  }));
-}
-
-/** Laporan C10…C14 / Dashboard C15…: staff with a name per station, TOTAL = sum. */
-function staffCounts(staff: readonly StaffRow[], stations: string[]): Map<string, number> {
-  const m = new Map<string, number>();
-  let total = 0;
-  for (const code of stations) {
-    const n = count(staff, (r) => sameText(r.station, code) && hasText(r.name));
-    m.set(code, n);
-    total += n;
-  }
-  m.set(TOTAL, total);
-  return m;
-}
-
-function inKey(station: string | null | undefined, key: string): boolean {
-  return key === TOTAL || key === SEMUA || sameText(station, key);
+  const remedialByStaff = new Map(data.remedials.map((r) => [r.staffCode, r] as const));
+  return data.staff.map((st) => {
+    const rem = remedialByStaff.get(st.code) ?? null;
+    return {
+      staff: st,
+      baseline: staffBaseline(st, s),
+      rekap: hasText(st.name) ? staffRekap(st, scoresByStaff.get(st.code) ?? [], s) : null,
+      bmi: bmiSummary(checksByStaff.get(st.code) ?? [], st.bmiHasNote, s, today),
+      remedial: rem ? { row: rem, ...remedialResult(rem, s) } : null,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard 1 / Laporan B: action items per report group
+// Action items (Dashboard 2–3, Laporan B)
 // ---------------------------------------------------------------------------
 
 export function actionProgress(
   items: readonly ActionItemRow[],
-  s: Settings,
   today: DateInput,
-  groups: readonly string[] = REPORT_GROUPS,
+  keys: readonly string[],
+  keyOf: (item: ActionItemRow) => string | null | undefined,
 ): ActionProgressRow[] {
-  const flagged = items.map((it) => ({ it, flag: actionFlag(it, s, today) }));
+  const flagged = items.filter((it) => hasText(it.code)).map((it) => ({ it, flag: actionFlag(it, today) }));
   const row = (key: string): ActionProgressRow => {
-    const rows = key === TOTAL ? flagged : flagged.filter(({ it }) => sameText(it.reportGroup, key));
-    // TOTAL "Total Butir" is COUNTA of the ID column.
-    const total = key === TOTAL ? count(rows, ({ it }) => hasText(it.code)) : rows.length;
+    const rows = key === TOTAL ? flagged : flagged.filter(({ it }) => sameText(keyOf(it), key));
     const selesai = count(rows, ({ it }) => sameText(it.status, 'Selesai'));
     return {
       key,
-      total,
+      total: rows.length,
       selesai,
       onProgress: count(rows, ({ it }) => sameText(it.status, 'On Progress')),
       belumMulai: count(rows, ({ it }) => sameText(it.status, 'Belum Mulai')),
       tertunda: count(rows, ({ it }) => sameText(it.status, 'Tertunda')),
       overdue: count(rows, ({ flag }) => flag === 'OVERDUE'),
       dueSoon: count(rows, ({ flag }) => startsWithText(flag, 'Jatuh tempo')),
-      pctDone: ratio(selesai, total),
+      pctDone: ratio(selesai, rows.length),
       avgProgress: average(rows.map(({ it }) => it.progress)),
     };
   };
-  return [...groups.map(row), row(TOTAL)];
+  return [...keys.map(row), row(TOTAL)];
+}
+
+export function actionByGroup(items: readonly ActionItemRow[], today: DateInput): ActionProgressRow[] {
+  return actionProgress(items, today, ACTION_GROUPS, (it) => it.groupName);
+}
+
+export function actionByAspect(items: readonly ActionItemRow[], today: DateInput): ActionProgressRow[] {
+  return actionProgress(items, today, ASPECTS, (it) => it.aspect);
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard 2: performance per station
+// Dashboard 4: results per program
 // ---------------------------------------------------------------------------
 
-export function performanceByStation(data: TrackerData, derived = staffDerived(data)): PerformanceRow[] {
-  const stations = stationCodes(data.stations);
-  const counts = staffCounts(data.staff, stations);
-  const row = (key: string): PerformanceRow => {
-    const rows = derived.filter((d) => inKey(d.staff.station, key));
-    const staffCount = counts.get(key) ?? 0;
-    const baselineAvg = average(rows.map((d) => d.baseline.practiceAvg));
-    const currentAvg = average(rows.map((d) => d.rekap?.latest ?? null));
-    const currentSesuai = count(rows, (d) => d.rekap?.currentStatus === 'Sesuai');
+function pdfGapuraPassRate(key: string): number {
+  if (key === 'IULS' || key === 'RUST') {
+    const p = PROGRAM_RESULTS[key];
+    return p.gapuraPassed / p.gapuraParticipants;
+  }
+  const i = PROGRAM_RESULTS.IULS;
+  const r = PROGRAM_RESULTS.RUST;
+  return (i.gapuraPassed + r.gapuraPassed) / (i.gapuraParticipants + r.gapuraParticipants);
+}
+
+export function programResults(derived: readonly StaffDerived[]): ProgramResultRow[] {
+  const row = (key: string): ProgramResultRow => {
+    const rows = derived.filter((d) => hasText(d.staff.name) && inProgram(d.staff.program, key));
+    const passed = count(rows, (d) => d.baseline.status === 'Passed');
+    const failed = count(rows, (d) => d.baseline.status === 'Failed');
+    const participants = passed + failed;
+    const remedialPassed = count(rows, (d) => d.remedial?.status === 'Lulus');
+    const finalPassed = passed + remedialPassed;
     return {
       key,
-      staffCount,
-      reportSesuai: count(rows, (d) => startsWithText(d.staff.reportConclusion, 'Sesuai')),
-      reportPerlu: count(rows, (d) => startsWithText(d.staff.reportConclusion, 'Perlu')),
-      reportTidak: count(rows, (d) => startsWithText(d.staff.reportConclusion, 'Tidak')),
-      criteriaSesuai: count(rows, (d) => d.baseline.criteriaStatus === 'Sesuai'),
+      participants,
+      passed,
+      failed,
+      absentRolePlay: count(rows, (d) => startsWithText(d.baseline.failureCause, 'Kendala')),
+      remedialRecorded: count(rows, (d) => hasText(d.remedial?.row.action)),
+      remedialPassed,
+      finalPassed,
+      pctFinalPassed: ratio(finalPassed, participants),
+      pdfBaseline: pdfGapuraPassRate(key),
       beda: count(rows, (d) => startsWithText(d.baseline.consistency, 'Beda')),
-      baselineAvg,
-      currentAvg,
-      gain: diff(currentAvg, baselineAvg),
-      improved: count(rows, (d) => startsWithText(d.rekap?.trend, '▲')),
-      currentSesuai,
-      pctCurrentSesuai: ratio(currentSesuai, staffCount),
     };
   };
-  return [...stations.map(row), row(TOTAL)];
+  return [...PROGRAMS.map(row), row(TOTAL)];
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard 3: BMI per station (latest check)
+// Dashboard 5: per station
 // ---------------------------------------------------------------------------
 
-export function bmiByStation(data: TrackerData, derived = staffDerived(data)): BmiOverviewRow[] {
-  const stations = stationCodes(data.stations);
-  const counts = staffCounts(data.staff, stations);
-  const row = (key: string): BmiOverviewRow => {
-    const rows = derived.filter((d) => inKey(d.staff.station, key));
+export function unitOverview(data: TrackerData, derived: readonly StaffDerived[]): UnitRow[] {
+  const row = (key: string): UnitRow => {
+    const rows = derived.filter((d) => hasText(d.staff.name) && (key === TOTAL || sameText(d.staff.station, key)));
+    const avgFinal = average(rows.map((d) => d.baseline.finalResult));
+    const avgCurrent = average(rows.map((d) => d.rekap?.latest ?? null));
     return {
       key,
-      staffCount: counts.get(key) ?? 0,
-      everChecked: count(rows, (d) => (d.bmi.latestBmi ?? 0) > 0),
-      normal: count(rows, (d) => d.bmi.latestCategory === 'Normal'),
-      kurus: count(rows, (d) => d.bmi.latestCategory === 'Kurus'),
-      overweight: count(rows, (d) => d.bmi.latestCategory === 'Overweight'),
-      obesitas: count(rows, (d) => d.bmi.latestCategory === 'Obesitas'),
-      heightNotMet: count(rows, (d) => d.bmi.heightRequirement === 'Tidak Memenuhi'),
+      staffCount: rows.length,
+      passed: count(rows, (d) => d.baseline.status === 'Passed'),
+      failed: count(rows, (d) => d.baseline.status === 'Failed'),
+      avgFinal,
+      avgCurrent,
+      gain: diff(avgCurrent, avgFinal),
+      improved: count(rows, (d) => startsWithText(d.rekap?.trend, '▲')),
+      currentLulus: count(rows, (d) => d.rekap?.currentStatus === 'Lulus'),
+      bmiChecked: count(rows, (d) => d.bmi.checks > 0),
+      overweight: count(rows, (d) => isOverweight(d.bmi.latestCategory)),
       avgWeightDelta: average(rows.map((d) => d.bmi.weightDelta)),
+      remedialPassed: count(rows, (d) => d.remedial?.status === 'Lulus'),
+      replacements: count(
+        data.replacements,
+        (r) => hasText(r.replacedName) && (key === TOTAL || sameText(r.station, key)),
+      ),
     };
   };
-  return [...stations.map(row), row(TOTAL)];
+  return [...stationCodes(data.stations, data.staff).map(row), row(TOTAL)];
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard 4: replacements per report group
+// Dashboard 6: replacements
 // ---------------------------------------------------------------------------
 
-export function replacementsByGroup(
+export function replacementOverview(
   replacements: readonly ReplacementRow[],
   s: Settings,
   today: DateInput,
-  groups: readonly string[] = REPORT_GROUPS,
-): ReplacementOverviewRow[] {
-  const row = (key: string): ReplacementOverviewRow => {
-    const rows = key === TOTAL ? replacements : replacements.filter((r) => sameText(r.reportGroup, key));
-    return {
-      key,
-      toReplace: count(rows, (r) => hasText(r.replacedName)),
-      placed: count(rows, (r) => hasText(r.replacementName)),
-      passed: count(rows, (r) => startsWithText(replacementPass(r, s), 'Lulus')),
-      lateOrOverdue: count(rows, (r) => {
-        const t = replacementTimeliness(r, s, today);
-        return t === 'OVERDUE' || startsWithText(t, 'Lewat');
-      }),
-      reported: count(rows, (r) => sameText(r.reported, 'Ya')),
-    };
+): ReplacementOverview {
+  return {
+    toReplace: count(replacements, (r) => hasText(r.replacedName)),
+    placed: count(replacements, (r) => hasText(r.replacementName)),
+    passed: count(replacements, (r) => replacementPass(r, s) === 'Lulus'),
+    lateOrOverdue: count(replacements, (r) => {
+      const t = replacementTimeliness(r, s, today);
+      return t === 'OVERDUE' || startsWithText(t, 'Lewat');
+    }),
+    reported: count(replacements, (r) => sameText(r.reported, 'Ya')),
   };
-  return [...groups.map(row), row(TOTAL)];
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard 1: KPI
+// ---------------------------------------------------------------------------
+
+function kpiStatus(
+  actual: number | null,
+  target: number | null,
+  baseline: number | null,
+  direction: KpiRow['direction'],
+): KpiStatus {
+  if (actual === null) return 'Belum ada data';
+  if (direction === 'baseline') {
+    if (baseline === null) return 'Belum ada data';
+    return actual >= baseline ? 'Di atas baseline' : 'Di bawah baseline';
+  }
+  if (target === null) return 'Belum ada data';
+  const ok = direction === '>=' ? actual >= target : direction === '>' ? actual > target : actual < target;
+  return ok ? 'Tercapai' : 'Belum tercapai';
+}
+
+function aspectAverage(scores: readonly WeeklyScoreRow[], key: CoachingAspectKey): number | null {
+  return average(scores.map((r) => r[key]));
+}
+
+export function kpis(data: TrackerData, derived: readonly StaffDerived[]): KpiRow[] {
+  const s = data.settings;
+  const checked = derived.filter((d) => hasText(d.staff.name) && d.bmi.checks > 0);
+  const overweight = ratio(count(checked, (d) => isOverweight(d.bmi.latestCategory)), checked.length);
+  const knowledge = aspectAverage(data.weeklyScores, 'scoreKnowledge');
+  const communication = aspectAverage(data.weeklyScores, 'scoreCommunication');
+  const logAverages = data.weeklyScores.map((r) => coachingAvg(r)).filter((v): v is number => v !== null);
+  const passRate = ratio(count(logAverages, (v) => coachingStatus(v, s) === 'Lulus'), logAverages.length);
+  const programs = programResults(derived);
+  const prog = (k: 'IULS' | 'RUST') => programs.find((p) => p.key === k)!;
+  const gapBmi = SERVICE_GAPS.find((g) => g.item === 'BMI')?.pct ?? null;
+
+  const make = (
+    key: KpiRow['key'],
+    label: string,
+    baseline: number | null,
+    target: number | null,
+    direction: KpiRow['direction'],
+    actual: number | null,
+    basis: string,
+  ): KpiRow => ({
+    key,
+    label,
+    baseline,
+    target,
+    direction,
+    actual,
+    status: kpiStatus(actual, target, baseline, direction),
+    basis,
+  });
+
+  return [
+    make('coverage', 'Cakupan coaching frontliner', COACHING_SUMMARY.coverage, 1, '>=',
+      ratio(s.coverageDone, s.targetCoverage),
+      `Frontliner sudah coaching (Parameter) ÷ ${s.targetCoverage}`),
+    make('overweight', 'Proporsi BMI overweight + obesitas', gapBmi, s.targetOverweightMax, '<', overweight,
+      'Kategori cek terakhir tiap SDM yang sudah dicek; baseline = gap BMI PDF'),
+    make('knowledge', 'Ketepatan jawaban Product Knowledge', null, s.targetKnowledge, '>',
+      knowledge === null ? null : knowledge / 100, 'Rata-rata skor aspek B ÷ 100'),
+    make('interactive', 'Skor Interactive Communicating', null, s.targetInteractive, '>',
+      communication === null ? null : communication / 100, 'Rata-rata skor aspek D ÷ 100'),
+    make('passRate', 'Pass rate coaching (skor ≥ passing grade)', COACHING_SUMMARY.passRate, null, 'baseline', passRate,
+      'Penilaian Lulus ÷ seluruh penilaian mingguan, dibanding baseline nasional'),
+    make('iuls', 'Kelulusan IULS peserta Gapura (termasuk remedial)', pdfGapuraPassRate('IULS'), s.targetPassRate, '>=',
+      prog('IULS').pctFinalPassed, 'Passed + lulus remedial ÷ peserta IULS'),
+    make('rust', 'Kelulusan RUST peserta Gapura (termasuk remedial)', pdfGapuraPassRate('RUST'), s.targetPassRate, '>=',
+      prog('RUST').pctFinalPassed, 'Passed + lulus remedial ÷ peserta RUST'),
+  ];
 }
 
 export function dashboard(data: TrackerData, today: DateInput): Dashboard {
-  const derived = staffDerived(data);
-  const groups = reportGroups(data.stations);
+  const derived = staffDerived(data, today);
   return {
     asOf: toIsoDate(today),
-    actionProgress: actionProgress(data.actionItems, data.settings, today, groups),
-    performance: performanceByStation(data, derived),
-    bmi: bmiByStation(data, derived),
-    replacements: replacementsByGroup(data.replacements, data.settings, today, groups),
+    kpis: kpis(data, derived),
+    actionByGroup: actionByGroup(data.actionItems, today),
+    actionByAspect: actionByAspect(data.actionItems, today),
+    programs: programResults(derived),
+    units: unitOverview(data, derived),
+    replacements: replacementOverview(data.replacements, data.settings, today),
   };
 }
 
@@ -418,101 +515,112 @@ export function dashboard(data: TrackerData, today: DateInput): Dashboard {
 // ---------------------------------------------------------------------------
 
 interface LogRow {
+  row: WeeklyScoreRow;
   week: number;
-  station: string | null;
+  program: string | null;
   avg: number | null;
 }
 
-/** Log Performa rows with their computed average (L) and station looked up from the staff (E). */
+/** Log Performa rows with their average (L) and the staff member's program (F). */
 function logRows(data: TrackerData): LogRow[] {
-  const stationOf = new Map(data.staff.map((st) => [st.code, st.station] as const));
+  const programOf = new Map(data.staff.map((st) => [st.code, st.program] as const));
   return data.weeklyScores.map((r) => ({
+    row: r,
     week: r.week,
-    station: stationOf.get(r.staffCode) ?? null,
-    avg: practiceAvg(r),
+    program: programOf.get(r.staffCode) ?? null,
+    avg: coachingAvg(r),
   }));
 }
+
+const PROGRAM_KEYS: readonly string[] = [...PROGRAMS, TOTAL];
 
 /** Laporan A for `week`. */
 export function weeklyPerformance(
   data: TrackerData,
   week: number,
-  derived = staffDerived(data),
+  derived: readonly StaffDerived[],
   logs = logRows(data),
 ): WeeklyPerformanceRow[] {
   const s = data.settings;
-  const stations = stationCodes(data.stations);
-  const counts = staffCounts(data.staff, stations);
-  const row = (key: string): WeeklyPerformanceRow => {
-    const forKey = logs.filter((l) => inKey(l.station, key));
-    const thisWeek = forKey.filter((l) => l.week === week);
+  return PROGRAM_KEYS.map((key) => {
+    const forKey = logs.filter((l) => inProgram(l.program, key));
+    const thisWeek = forKey.filter((l) => l.week === week && l.avg !== null);
     const avgThisWeek = average(thisWeek.map((l) => l.avg));
     const avgLastWeek = week === 1 ? null : average(forKey.filter((l) => l.week === week - 1).map((l) => l.avg));
-    const baselineAvg = average(derived.filter((d) => inKey(d.staff.station, key)).map((d) => d.baseline.practiceAvg));
-    const assessed = count(thisWeek, (l) => (l.avg ?? 0) > 0);
-    const sesuai = count(thisWeek, (l) => weeklyStatus(l.avg, s) === 'Sesuai');
+    const staffRows = derived.filter((d) => hasText(d.staff.name) && inProgram(d.staff.program, key));
+    const baselineAvg = average(staffRows.map((d) => d.baseline.finalResult));
+    const lulus = count(thisWeek, (l) => coachingStatus(l.avg, s) === 'Lulus');
     return {
       key,
-      staffCount: counts.get(key) ?? 0,
-      assessed,
+      staffCount: staffRows.length,
+      assessed: thisWeek.length,
       avgThisWeek,
       avgLastWeek,
       changeVsLastWeek: diff(avgThisWeek, avgLastWeek),
       baselineAvg,
       gainVsBaseline: diff(avgThisWeek, baselineAvg),
-      sesuai,
-      perlu: count(thisWeek, (l) => weeklyStatus(l.avg, s) === 'Perlu Perbaikan'),
-      tidak: count(thisWeek, (l) => weeklyStatus(l.avg, s) === 'Tidak Sesuai'),
-      pctSesuai: ratio(sesuai, assessed),
+      lulus,
+      belumLulus: count(thisWeek, (l) => coachingStatus(l.avg, s) === 'Belum Lulus'),
+      pctLulus: ratio(lulus, thisWeek.length),
     };
-  };
-  return [...stations.map(row), row(TOTAL)];
+  });
 }
 
-/** Laporan C for BMI `period`. */
-export function bmiPeriodByStation(
-  data: TrackerData,
-  period: number,
-  derived = staffDerived(data),
-): BmiPeriodRow[] {
-  const stations = stationCodes(data.stations);
-  const counts = staffCounts(data.staff, stations);
-  const row = (key: string): BmiPeriodRow => {
-    const rows = derived.filter((d) => inKey(d.staff.station, key));
-    const inPeriod = rows.map((d) => d.bmi.periods[period - 1] ?? null);
-    const staffCount = counts.get(key) ?? 0;
-    const checked = count(inPeriod, (p) => (p?.bmi ?? 0) > 0);
-    const normal = count(inPeriod, (p) => p?.category === 'Normal');
+/** Laporan A2 for `week`. */
+export function aspectAverages(data: TrackerData, week: number, logs = logRows(data)): AspectAverageRow[] {
+  const s = data.settings;
+  return PROGRAM_KEYS.map((key) => {
+    const rows = logs.filter((l) => l.week === week && inProgram(l.program, key)).map((l) => l.row);
+    const averages = Object.fromEntries(COACHING_ASPECTS.map((a) => [a.key, aspectAverage(rows, a.key)])) as Record<
+      CoachingAspectKey,
+      number | null
+    >;
     return {
       key,
-      staffCount,
-      checked,
-      notChecked: staffCount - checked,
-      normal,
-      kurus: count(inPeriod, (p) => p?.category === 'Kurus'),
-      overweight: count(inPeriod, (p) => p?.category === 'Overweight'),
-      obesitas: count(inPeriod, (p) => p?.category === 'Obesitas'),
-      pctNormal: ratio(normal, checked),
-      heightNotMet: count(rows, (d) => d.bmi.heightRequirement === 'Tidak Memenuhi'),
+      averages,
+      knowledgeMet: averages.scoreKnowledge === null ? null : averages.scoreKnowledge > s.targetKnowledge * 100,
+      communicationMet:
+        averages.scoreCommunication === null ? null : averages.scoreCommunication > s.targetInteractive * 100,
     };
-  };
-  return [...stations.map(row), row(TOTAL)];
+  });
 }
 
-/** Laporan D: mean weekly score per station and for everyone, weeks 1 … settings.weeks. */
+/** Laporan C for BMI slot `period`. */
+export function bmiSlotByProgram(derived: readonly StaffDerived[], period: number): BmiSlotRow[] {
+  return PROGRAM_KEYS.map((key) => {
+    const rows = derived.filter((d) => hasText(d.staff.name) && inProgram(d.staff.program, key));
+    const inSlot = rows.map((d) => d.bmi.periods[period - 1] ?? null);
+    const checked = count(inSlot, (p) => (p?.bmi ?? 0) > 0);
+    const overweight = count(inSlot, (p) => p?.category === 'Overweight');
+    const obesitas = count(inSlot, (p) => p?.category === 'Obesitas');
+    return {
+      key,
+      staffCount: rows.length,
+      checked,
+      notChecked: rows.length - checked,
+      normal: count(inSlot, (p) => p?.category === 'Normal'),
+      kurus: count(inSlot, (p) => p?.category === 'Kurus'),
+      overweight,
+      obesitas,
+      pctOverweight: ratio(overweight + obesitas, checked),
+      lateChecks: count(rows, (d) => d.bmi.scheduleStatus === 'Terlambat cek'),
+    };
+  });
+}
+
+/** Laporan D: mean weekly score per program and for everyone, weeks 1 … settings.weeks. */
 export function weeklyTrend(data: TrackerData, logs = logRows(data)): TrendRow[] {
   const weeks = Array.from({ length: data.settings.weeks }, (_, i) => i + 1);
-  const row = (key: string): TrendRow => {
-    const forKey = logs.filter((l) => inKey(l.station, key));
+  return [...PROGRAMS, SEMUA].map((key) => {
+    const forKey = logs.filter((l) => inProgram(l.program, key));
     return { key, weeks: weeks.map((w) => average(forKey.filter((l) => l.week === w).map((l) => l.avg))) };
-  };
-  return [...stationCodes(data.stations).map(row), row(SEMUA)];
+  });
 }
 
 export function weeklyReport(data: TrackerData, week: number, today: DateInput): WeeklyReport {
   const s = data.settings;
   if (!Number.isInteger(week) || week < 1) throw new Error(`Invalid week: ${week}`);
-  const derived = staffDerived(data);
+  const derived = staffDerived(data, today);
   const logs = logRows(data);
   const bmiPeriod = bmiPeriodForWeek(week, s);
   return {
@@ -523,8 +631,9 @@ export function weeklyReport(data: TrackerData, week: number, today: DateInput):
     bmiPlannedDate: bmiCheckDate(bmiPeriod, s),
     asOf: toIsoDate(today),
     performance: weeklyPerformance(data, week, derived, logs),
-    actionProgress: actionProgress(data.actionItems, s, today, reportGroups(data.stations)),
-    bmi: bmiPeriodByStation(data, bmiPeriod, derived),
+    aspects: aspectAverages(data, week, logs),
+    actionProgress: actionByGroup(data.actionItems, today),
+    bmi: bmiSlotByProgram(derived, bmiPeriod),
     trend: weeklyTrend(data, logs),
   };
 }

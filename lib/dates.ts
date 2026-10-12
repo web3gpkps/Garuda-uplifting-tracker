@@ -91,6 +91,13 @@ export function makeDate(year: number, month: number, day: number): IsoDate {
   return fromUtcMs(Date.UTC(year, month - 1, day));
 }
 
+/** Excel `EDATE(d, n)`: same day n months later, clamped to the last day of that month. */
+export function addMonths(date: IsoDate, months: number): IsoDate {
+  const { year, month, day } = dateParts(date);
+  const lastDay = new Date(Date.UTC(year, month - 1 + months + 1, 0)).getUTCDate();
+  return makeDate(year, month + months, Math.min(day, lastDay));
+}
+
 export function dateParts(date: IsoDate): { year: number; month: number; day: number } {
   const d = new Date(utcMs(date));
   return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };

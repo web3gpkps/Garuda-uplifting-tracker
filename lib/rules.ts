@@ -1,8 +1,8 @@
 /**
- * Business rules ported from "Tracker Tindak Lanjut Uplifting JOUMPA.xlsx".
+ * Business rules ported from "Tracker Tindak Lanjut People Development Garuda.xlsx".
  *
  * Pure and framework-free. Conventions:
- * - Rows are DB rows with camelCase keys (`score_a` → `scoreA`); use `camelize()` on what
+ * - Rows are DB rows with camelCase keys (`role_play` → `rolePlay`); use `camelize()` on what
  *   supabase-js returns. Text columns are plain strings; values outside the expected
  *   vocabulary simply never match (as in the workbook).
  * - Dates are ISO `YYYY-MM-DD` strings. "Today" is always passed in (`IsoDate` or `Date`,
@@ -12,60 +12,105 @@
  *
  * Excel semantics kept on purpose:
  * - ROUND is half away from zero on the 15-significant-digit value (`excelRound`).
- * - AVERAGE ignores blanks; statuses compare the *rounded* average.
+ * - AVERAGE ignores blanks; statuses compare the *rounded* value.
  * - `=` and COUNTIF criteria on text are case-insensitive.
  */
 
-import {
-  addDays,
-  dateParts,
-  dayOfWeek,
-  diffDays,
-  formatTanggalPendek,
-  makeDate,
-  maxDate,
-  minDate,
-  toIsoDate,
-  type IsoDate,
-} from './dates';
+import { addDays, addMonths, diffDays, formatTanggalPendek, toIsoDate, type IsoDate } from './dates';
 
 export type { IsoDate } from './dates';
 export type DateInput = IsoDate | Date;
 
 // ---------------------------------------------------------------------------
-// Vocabulary
+// Vocabulary (sheet Parameter lists)
 // ---------------------------------------------------------------------------
 
-export const STATIONS = ['SUB', 'DPS', 'CGK', 'HLP', 'KNO'] as const;
-export type StationCode = (typeof STATIONS)[number];
+export const PROGRAMS = ['IULS', 'RUST'] as const;
+export type Program = (typeof PROGRAMS)[number];
 
-export const REPORT_GROUPS = ['SUB', 'DPS', 'CGK & HLP', 'KNO'] as const;
-export type ReportGroup = (typeof REPORT_GROUPS)[number];
+export const TOUCH_POINTS = [
+  'Check-in Counter',
+  'Customer Service',
+  'Boarding Gate',
+  'Transfer Desk',
+  'Baggage Service',
+] as const;
+export type TouchPoint = (typeof TOUCH_POINTS)[number];
+
+export const ASSIGNMENT_STATUSES = ['Aktif', 'Remedial', 'Individual Coaching', 'Ditarik dari layanan'] as const;
+export type AssignmentStatus = (typeof ASSIGNMENT_STATUSES)[number];
+
+export const ACTION_GROUPS = ['Coaching Frontliner', 'Timeline Training', 'Evaluasi IULS & RUST'] as const;
+export type ActionGroup = (typeof ACTION_GROUPS)[number];
+
+export const ASPECTS = [
+  'Fit & Grooming (BMI)',
+  'Product Knowledge',
+  'Komunikasi & Interactive Skill',
+  'Grooming & Aksesori',
+  'Coaching Coverage',
+  'Remedial',
+] as const;
+export type Aspect = (typeof ASPECTS)[number];
+
+export const REMEDIAL_ACTIONS = [
+  'Refresher & Remedial Assessment',
+  'Individual Coaching',
+  'Refresher + Individual Coaching',
+] as const;
+export type RemedialAction = (typeof REMEDIAL_ACTIONS)[number];
+
+/** Service-gap topics (PDF slide 12) plus the two the workbook adds. */
+export const GAP_TOPICS = [
+  'BMI',
+  'GA Miles',
+  'Refund/Rebook',
+  'Piece Concept',
+  'Penanganan Irregularity',
+  'Aksesoris',
+  'Kuku',
+  'Seragam',
+  'Senyum',
+  'Salam',
+  'Bahasa',
+  'Kelas & Lounge',
+  'Lainnya',
+] as const;
+
+/** The four coaching assessment aspects (PDF slide 2), in Log Performa column order H–K. */
+export const COACHING_ASPECTS = [
+  { key: 'scoreGrooming', letter: 'A', label: 'Grooming & Appearance' },
+  { key: 'scoreKnowledge', letter: 'B', label: 'Product Knowledge' },
+  { key: 'scoreAttitude', letter: 'C', label: 'Attitude & Behaviour' },
+  { key: 'scoreCommunication', letter: 'D', label: 'Communication Skill' },
+] as const;
+export type CoachingAspectKey = (typeof COACHING_ASPECTS)[number]['key'];
 
 export type Gender = 'L' | 'P';
-export type ReportConclusion = 'Sesuai' | 'Sesuai dengan Catatan' | 'Perlu Perbaikan' | 'Tidak Sesuai';
-export type AssignmentStatus = 'Aktif' | 'Coaching 30 Hari' | 'Diganti' | 'Ditarik';
-export type CriteriaStatus = 'Sesuai' | 'Perlu Perbaikan' | 'Tidak Sesuai';
-export type Consistency = 'OK' | 'Beda – verifikasi';
+export type Remark = 'Passed' | 'Failed';
+export type Consistency = 'Sama' | 'Beda – verifikasi';
+export type FailureCause =
+  | 'Kendala operasional & kehadiran (absen role play)'
+  | 'Role play & post-test belum optimal'
+  | 'Performa role play belum optimal';
+export type CoachingStatus = 'Lulus' | 'Belum Lulus';
 export type Trend = '▲ Naik' | '▼ Turun' | '= Tetap';
 export type BmiCategory = 'Kurus' | 'Normal' | 'Overweight' | 'Obesitas';
-export type HeightRequirement = 'Memenuhi' | 'Tidak Memenuhi' | 'Isi standar di Parameter';
+export type BmiScheduleStatus = 'Terlambat cek' | 'Cek ≤ 7 hari' | 'Terjadwal';
 export type ActionStatus = 'Belum Mulai' | 'On Progress' | 'Selesai' | 'Tertunda';
 export type ActionKind = 'Sekali' | 'Rutin';
-export type ActionFlag = 'Selesai' | 'OVERDUE' | 'Jatuh tempo ≤ 7 hari' | 'Rutin – pantau' | 'On Track';
-export type ReplacementPass = 'Lulus – boleh bertugas' | 'Belum lulus' | 'Belum training/dinilai';
-/** `Lewat …` carries the deadline, e.g. `Lewat 31 Okt` for the default 31 Oct 2026. */
+export type ActionFlag =
+  | 'Selesai'
+  | 'OVERDUE'
+  | 'Jatuh tempo ≤ 7 hari'
+  | 'Rutin – pantau'
+  | 'On Track'
+  | 'Batas waktu belum ditetapkan';
+export type RemedialStatus = 'Lulus' | 'Belum Lulus' | 'Menunggu hasil' | 'Belum dijadwalkan';
+export type ReplacementPass = 'Lulus' | 'Belum Lulus' | 'Belum training/dinilai';
+/** `Lewat …` carries the deadline, e.g. `Lewat 14 Des`. */
 export type ReplacementTimeliness = 'Tepat waktu' | 'Menunggu' | 'OVERDUE' | `Lewat ${string}`;
 export type Reported = 'Ya' | 'Belum';
-
-/**
- * Rolling due dates. In the workbook, items TL10/TL12/TL13 of every report have a
- * `Batas Waktu` formula driven by TODAY() instead of a fixed date.
- */
-export type DueRule =
-  | 'bulanan-tgl-5' //  TL10: next 5th of the month   (DATE(YEAR(t),MONTH(t)+(DAY(t)>5),5))
-  | 'cek-bmi-berikutnya' // TL12: next BMI check date, capped at the last period
-  | 'jumat-berikutnya'; //  TL13: next Friday, clamped to Friday of week 1 … Friday of the last week
 
 // ---------------------------------------------------------------------------
 // Settings (sheet Parameter)
@@ -75,68 +120,89 @@ export interface Settings {
   week1Start: IsoDate;
   weeks: number;
   bmiFirstCheck: IsoDate;
+  /** Staff with a BMI note: every n days. */
   bmiIntervalDays: number;
+  /** Staff without a BMI note: every n months. */
+  bmiIntervalMonths: number;
+  /** Number of BMI slots in the sheet. */
   bmiPeriods: number;
   bmiUnderweightBelow: number;
   bmiNormalMax: number;
   bmiOverweightMax: number;
-  minHeightFemale: number | null;
-  minHeightMale: number | null;
-  passAvgMin: number;
-  improveAvgMin: number;
-  posttestMin: number;
+  passGrade: number;
+  weightRolePlay: number;
+  weightPostTest: number;
+  /** KPI targets as fractions 0..1 (slide 15). */
+  targetOverweightMax: number;
+  targetOverweightMonths: number;
+  targetKnowledge: number;
+  targetInteractive: number;
+  targetCoverage: number;
+  coverageDone: number;
+  targetPassRate: number;
   replacementDeadline: IsoDate;
 }
 
-/** Values of sheet Parameter (C5–C21) and the hard-coded replacement deadline. */
+/** Values of sheet Parameter. */
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
-  week1Start: '2026-10-12',
+  week1Start: '2026-10-05',
   weeks: 10,
   bmiFirstCheck: '2026-10-12',
   bmiIntervalDays: 14,
-  bmiPeriods: 5,
+  bmiIntervalMonths: 1,
+  bmiPeriods: 6,
   bmiUnderweightBelow: 18.5,
   bmiNormalMax: 25,
   bmiOverweightMax: 27,
-  minHeightFemale: null,
-  minHeightMale: null,
-  passAvgMin: 4,
-  improveAvgMin: 3,
-  posttestMin: 80,
-  replacementDeadline: '2026-10-31',
+  passGrade: 85,
+  weightRolePlay: 0.4,
+  weightPostTest: 0.6,
+  targetOverweightMax: 0.2,
+  targetOverweightMonths: 6,
+  targetKnowledge: 0.9,
+  targetInteractive: 0.92,
+  targetCoverage: 812,
+  coverageDone: 795,
+  targetPassRate: 1,
+  replacementDeadline: '2026-12-14',
 });
 
 // ---------------------------------------------------------------------------
 // Row shapes (camelCase DB rows; only the fields the rules read are required)
 // ---------------------------------------------------------------------------
 
-export interface ScoreFields {
-  scoreA: number | null;
-  scoreB: number | null;
-  scoreC: number | null;
-  scoreD: number | null;
-  scoreE: number | null;
-  scoreF: number | null;
-}
-
-export interface StaffRow extends ScoreFields {
+export interface StaffRow {
   code: string;
+  program: string | null;
+  provider?: string | null;
   station: string | null;
   name: string | null;
-  nipp?: string | null;
+  employeeNo?: string | null;
   gender: string | null;
-  preTest?: number | null;
+  touchPoint?: string | null;
+  rolePlay: number | null;
   postTest: number | null;
-  reportConclusion: string | null;
+  reportRemark: string | null;
   assignmentStatus?: string | null;
+  feedback?: string | null;
   notes?: string | null;
+  bmiHasNote?: boolean | null;
   bmiNote?: string | null;
   sortOrder?: number | null;
 }
 
-export interface WeeklyScoreRow extends ScoreFields {
+export interface CoachingScores {
+  scoreGrooming: number | null;
+  scoreKnowledge: number | null;
+  scoreAttitude: number | null;
+  scoreCommunication: number | null;
+}
+
+export interface WeeklyScoreRow extends CoachingScores {
   staffCode: string;
   week: number;
+  touchPoint?: string | null;
+  gapTopic?: string | null;
   observer?: string | null;
   coachingNotes?: string | null;
 }
@@ -151,27 +217,39 @@ export interface BmiCheckRow {
 
 export interface ActionItemRow {
   code: string;
-  reportGroup: string | null;
+  groupName: string | null;
+  aspect?: string | null;
+  rootCause?: string | null;
+  action?: string | null;
+  target?: string | null;
   kind: string | null;
   schedule?: string | null;
   dueDate: IsoDate | null;
+  pic?: string | null;
   status: string | null;
   progress: number | null;
-  /** Column `due_rule`. `null` → fixed `dueDate`; `undefined` (column absent) → inferred from `schedule`. */
-  dueRule?: DueRule | null;
-  area?: string | null;
-  action?: string | null;
-  target?: string | null;
-  pic?: string | null;
   updatedOn?: IsoDate | null;
   evidence?: string | null;
   kpsNotes?: string | null;
+  source?: string | null;
+  sortOrder?: number | null;
+}
+
+export interface RemedialRow {
+  id?: number;
+  staffCode: string;
+  action: string | null;
+  remedialOn?: IsoDate | null;
+  rolePlay: number | null;
+  postTest: number | null;
+  reported?: string | null;
+  notes?: string | null;
   sortOrder?: number | null;
 }
 
 export interface ReplacementRow {
   id?: number;
-  reportGroup: string | null;
+  program?: string | null;
   station?: string | null;
   /** Link to the staff row when the replaced person is in the roster; `replacedName` keeps the sheet text. */
   staffCode?: string | null;
@@ -182,7 +260,7 @@ export interface ReplacementRow {
   effectiveOn: IsoDate | null;
   trainingOn?: IsoDate | null;
   postTest: number | null;
-  practiceAvg: number | null;
+  finalResult: number | null;
   reported: string | null;
   notes?: string | null;
   sortOrder?: number | null;
@@ -190,7 +268,6 @@ export interface ReplacementRow {
 
 export interface StationRow {
   code: string;
-  reportGroup: string;
   sort?: number | null;
 }
 
@@ -203,7 +280,7 @@ type SnakeToCamel<S extends string> = S extends `${infer H}_${infer T}`
   : S;
 export type Camelize<T> = { [K in keyof T as K extends string ? SnakeToCamel<K> : K]: T[K] };
 
-/** `{ score_a: 4, week1_start: '…' }` → `{ scoreA: 4, week1Start: '…' }` (shallow). */
+/** `{ role_play: 80, week1_start: '…' }` → `{ rolePlay: 80, week1Start: '…' }` (shallow). */
 export function camelize<T extends object>(row: T): Camelize<T> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(row)) {
@@ -231,12 +308,12 @@ export function excelRound(value: number, digits = 0): number {
   return result === 0 ? 0 : result;
 }
 
-/** Removes binary noise from a difference of decimal inputs (3.83 − 3.33 → 0.5, not 0.5000000000000004). */
+/** Removes binary noise from a difference of decimal inputs (89.5 − 55.2 → 34.3, not 34.300000000000004). */
 export function cleanFloat(value: number): number {
   return excelRound(value, 10);
 }
 
-function isNum(v: unknown): v is number {
+export function isNum(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
@@ -249,7 +326,7 @@ export function sameText(a: string | null | undefined, b: string): boolean {
   return a != null && a.trim().toUpperCase() === b.toUpperCase();
 }
 
-/** COUNTIF-style prefix criterion (`"Sesuai*"`), case-insensitive. */
+/** COUNTIF-style prefix criterion (`"Lulus*"`), case-insensitive. */
 export function startsWithText(a: string | null | undefined, prefix: string): boolean {
   return a != null && a.trim().toUpperCase().startsWith(prefix.toUpperCase());
 }
@@ -272,84 +349,90 @@ function asToday(today: DateInput): IsoDate {
 }
 
 // ---------------------------------------------------------------------------
-// Stations
+// Training baseline (Master SDM L–P)
 // ---------------------------------------------------------------------------
 
-/** Master SDM D: CGK and HLP share the report "CGK & HLP"; others are their own group. */
-export function reportGroupOf(station: string | null | undefined): string | null {
-  if (blank(station)) return null;
-  const s = station!.trim();
-  return sameText(s, 'CGK') || sameText(s, 'HLP') ? 'CGK & HLP' : s;
+/** Master SDM L: `IF(COUNT(J:K)<2,"",ROUND(J*w_rp + K*w_pt, 1))`. */
+export function finalResult(
+  rolePlay: number | null | undefined,
+  postTest: number | null | undefined,
+  s: Settings,
+): number | null {
+  if (!isNum(rolePlay) || !isNum(postTest)) return null;
+  return excelRound(rolePlay * s.weightRolePlay + postTest * s.weightPostTest, 1);
+}
+
+/** Master SDM N: final ≥ passing grade → Passed, else Failed. */
+export function passStatus(final: number | null, s: Settings): Remark | null {
+  if (final === null) return null;
+  return final >= s.passGrade ? 'Passed' : 'Failed';
+}
+
+/** Master SDM O: report remark vs status by the criteria. */
+export function consistency(remark: string | null | undefined, status: Remark | null): Consistency | null {
+  if (blank(remark) || status === null) return null;
+  return sameText(remark, status) ? 'Sama' : 'Beda – verifikasi';
+}
+
+/** Master SDM P (PDF slide 25: failure analysis). */
+export function failureCause(
+  rolePlay: number | null | undefined,
+  postTest: number | null | undefined,
+  status: Remark | null,
+  s: Settings,
+): FailureCause | null {
+  if (status !== 'Failed') return null;
+  if (rolePlay === 0) return 'Kendala operasional & kehadiran (absen role play)';
+  if (isNum(postTest) && postTest < s.passGrade) return 'Role play & post-test belum optimal';
+  return 'Performa role play belum optimal';
+}
+
+export interface StaffBaseline {
+  finalResult: number | null;
+  status: Remark | null;
+  consistency: Consistency | null;
+  failureCause: FailureCause | null;
+}
+
+/** Master SDM L, N, O, P for one staff row. */
+export function staffBaseline(
+  staff: Pick<StaffRow, 'rolePlay' | 'postTest' | 'reportRemark'>,
+  s: Settings,
+): StaffBaseline {
+  const final = finalResult(staff.rolePlay, staff.postTest, s);
+  const status = passStatus(final, s);
+  return {
+    finalResult: final,
+    status,
+    consistency: consistency(staff.reportRemark, status),
+    failureCause: failureCause(staff.rolePlay, staff.postTest, status, s),
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Practice scores and status (Master SDM P–S, Log L–N, Rekap F–T)
+// Weekly coaching (Log Performa L–N)
 // ---------------------------------------------------------------------------
 
-export function scoresOf(row: ScoreFields): Array<number | null> {
-  return [row.scoreA, row.scoreB, row.scoreC, row.scoreD, row.scoreE, row.scoreF];
+export function scoresOf(row: CoachingScores): Array<number | null> {
+  return [row.scoreGrooming, row.scoreKnowledge, row.scoreAttitude, row.scoreCommunication];
 }
 
-/** Master SDM P / Log L: `IF(COUNT(A:F)=0,"",ROUND(AVERAGE(A:F),2))`. */
-export function practiceAvg(scores: ReadonlyArray<number | null | undefined> | ScoreFields): number | null {
-  const list = Array.isArray(scores) ? scores : scoresOf(scores as ScoreFields);
+/** Log L: `IF(COUNT(H:K)=0,"",ROUND(AVERAGE(H:K),2))`. */
+export function coachingAvg(scores: ReadonlyArray<number | null | undefined> | CoachingScores): number | null {
+  const list = Array.isArray(scores) ? scores : scoresOf(scores as CoachingScores);
   const avg = average(list);
   return avg === null ? null : excelRound(avg, 2);
 }
 
-/**
- * Master SDM R / Rekap S (criteria 6.2):
- * avg < improveAvgMin → Tidak Sesuai; avg ≥ passAvgMin and (no post-test or post-test ≥ posttestMin)
- * → Sesuai; otherwise Perlu Perbaikan.
- */
-export function criteriaStatus(
-  avg: number | null,
-  postTest: number | null | undefined,
-  s: Settings,
-): CriteriaStatus | null {
+/** Log M: rata-rata ≥ passing grade → Lulus. */
+export function coachingStatus(avg: number | null, s: Settings): CoachingStatus | null {
   if (avg === null) return null;
-  if (avg < s.improveAvgMin) return 'Tidak Sesuai';
-  if (avg >= s.passAvgMin && (!isNum(postTest) || postTest >= s.posttestMin)) return 'Sesuai';
-  return 'Perlu Perbaikan';
+  return avg >= s.passGrade ? 'Lulus' : 'Belum Lulus';
 }
 
-/** Log M: criteria status without the post-test term. */
-export function weeklyStatus(avg: number | null, s: Settings): CriteriaStatus | null {
-  if (avg === null) return null;
-  if (avg < s.improveAvgMin) return 'Tidak Sesuai';
-  if (avg >= s.passAvgMin) return 'Sesuai';
-  return 'Perlu Perbaikan';
-}
-
-/** Master SDM S: `LEFT(conclusion,6)=LEFT(status,6)` (case-insensitive) → OK, else "Beda – verifikasi". */
-export function consistency(
-  reportConclusion: string | null | undefined,
-  status: CriteriaStatus | null,
-): Consistency | null {
-  if (blank(reportConclusion) || status === null) return null;
-  const left6 = (x: string) => x.slice(0, 6).toUpperCase();
-  return left6(reportConclusion!) === left6(status) ? 'OK' : 'Beda – verifikasi';
-}
-
-export interface StaffBaseline {
-  practiceAvg: number | null;
-  criteriaStatus: CriteriaStatus | null;
-  consistency: Consistency | null;
-}
-
-/** Master SDM P, R, S for one staff row. */
-export function staffBaseline(
-  staff: ScoreFields & Pick<StaffRow, 'postTest' | 'reportConclusion'>,
-  s: Settings,
-): StaffBaseline {
-  const avg = practiceAvg(staff);
-  const status = criteriaStatus(avg, staff.postTest, s);
-  return { practiceAvg: avg, criteriaStatus: status, consistency: consistency(staff.reportConclusion, status) };
-}
-
-/** Log N: weekly average − training baseline average. */
-export function deltaVsBaseline(weeklyAvg: number | null, baselineAvg: number | null): number | null {
-  return weeklyAvg === null || baselineAvg === null ? null : cleanFloat(weeklyAvg - baselineAvg);
+/** Log N: weekly average − Final Result. */
+export function deltaVsBaseline(weeklyAvg: number | null, baseline: number | null): number | null {
+  return weeklyAvg === null || baseline === null ? null : cleanFloat(weeklyAvg - baseline);
 }
 
 // ---------------------------------------------------------------------------
@@ -377,44 +460,40 @@ export function weekOfDate(date: DateInput, s: Settings): number | null {
 // ---------------------------------------------------------------------------
 
 export interface StaffRekap {
-  /** Rekap E. */
-  baselineAvg: number | null;
-  /** Rekap F…: index 0 = week 1 … weeks−1. */
+  /** Rekap F: Final Result. */
+  baseline: number | null;
+  /** Rekap G…: index 0 = week 1 … weeks−1. */
   weekly: Array<number | null>;
-  /** Rekap P: `LOOKUP(9.99E+307, F:O)` = last week that has a score. */
+  /** Rekap Q: `LOOKUP(9.99E+307, G:P)` = last week that has a score. */
   latest: number | null;
   latestWeek: number | null;
-  /** Rekap Q: latest − baseline. */
+  /** Rekap R: latest − baseline. */
   gain: number | null;
-  /** Rekap R. */
+  /** Rekap S. */
   weeksAssessed: number;
-  /** Rekap S: criteria status of the latest score with the training post-test. */
-  currentStatus: CriteriaStatus | null;
   /** Rekap T. */
+  currentStatus: CoachingStatus | null;
+  /** Rekap U. */
   trend: Trend | null;
 }
 
-/**
- * Weekly averages of one staff member (Rekap F–O): AVERAGEIFS of the Log row averages for
- * (staff, week), so duplicate rows for one week average (cannot happen with UNIQUE(staff, week)).
- * Weeks outside 1 … settings.weeks are ignored (the workbook only has those columns).
- */
+/** Weekly averages of one staff member; weeks outside 1 … settings.weeks are ignored. */
 export function weeklyAverages(rows: readonly WeeklyScoreRow[], s: Settings): Array<number | null> {
   const perWeek: Array<Array<number>> = Array.from({ length: s.weeks }, () => []);
   for (const r of rows) {
     if (!Number.isInteger(r.week) || r.week < 1 || r.week > s.weeks) continue;
-    const avg = practiceAvg(r);
+    const avg = coachingAvg(r);
     if (avg !== null) perWeek[r.week - 1].push(avg);
   }
   return perWeek.map((xs) => average(xs));
 }
 
 export function staffRekap(
-  staff: ScoreFields & Pick<StaffRow, 'code' | 'postTest'>,
+  staff: Pick<StaffRow, 'code' | 'rolePlay' | 'postTest'>,
   weeklyRows: readonly WeeklyScoreRow[],
   s: Settings,
 ): StaffRekap {
-  const baselineAvg = practiceAvg(staff);
+  const baseline = finalResult(staff.rolePlay, staff.postTest, s);
   const weekly = weeklyAverages(
     weeklyRows.filter((r) => r.staffCode === staff.code),
     s,
@@ -428,20 +507,20 @@ export function staffRekap(
       latestWeek = i + 1;
     }
   }
-  const gain = latest === null || baselineAvg === null ? null : cleanFloat(latest - baselineAvg);
+  const gain = latest === null || baseline === null ? null : cleanFloat(latest - baseline);
   return {
-    baselineAvg,
+    baseline,
     weekly,
     latest,
     latestWeek,
     gain,
     weeksAssessed: weekly.filter((v) => v !== null).length,
-    currentStatus: criteriaStatus(latest, staff.postTest, s),
+    currentStatus: coachingStatus(latest, s),
     trend: trendOf(gain),
   };
 }
 
-/** Rekap T: sign of the gain. */
+/** Rekap U: sign of the gain. */
 export function trendOf(gain: number | null): Trend | null {
   if (gain === null) return null;
   if (gain > 0) return '▲ Naik';
@@ -453,13 +532,13 @@ export function trendOf(gain: number | null): Trend | null {
 // BMI (Cek BMI 2 Mingguan)
 // ---------------------------------------------------------------------------
 
-/** BMI I: `ROUND(weight/(height/100)^2, 1)`; null when either is missing. */
+/** BMI: `ROUND(weight/(height/100)^2, 1)`; null when either is missing. */
 export function bmi(heightCm: number | null | undefined, weightKg: number | null | undefined): number | null {
   if (!isNum(heightCm) || !isNum(weightKg) || heightCm <= 0) return null;
   return excelRound(weightKg / (heightCm / 100) ** 2, 1);
 }
 
-/** BMI J: on the rounded BMI. < 18.5 Kurus; ≤ 25 Normal; ≤ 27 Overweight; else Obesitas. */
+/** Kategori: on the rounded BMI. < 18.5 Kurus; ≤ 25 Normal; ≤ 27 Overweight; else Obesitas. */
 export function bmiCategory(value: number | null, s: Settings): BmiCategory | null {
   if (value === null) return null;
   if (value < s.bmiUnderweightBelow) return 'Kurus';
@@ -468,26 +547,41 @@ export function bmiCategory(value: number | null, s: Settings): BmiCategory | nu
   return 'Obesitas';
 }
 
-/** BMI AJ. Gender "P" uses the female minimum; any other gender the male minimum. */
-export function heightRequirement(
-  latestHeight: number | null,
-  gender: string | null | undefined,
-  s: Settings,
-): HeightRequirement | null {
-  if (latestHeight === null || blank(gender)) return null;
-  const min = sameText(gender, 'P') ? s.minHeightFemale : s.minHeightMale;
-  if (!isNum(min)) return 'Isi standar di Parameter';
-  return latestHeight >= min ? 'Memenuhi' : 'Tidak Memenuhi';
+/** Overweight or Obesitas (KPI "BMI overweight"). */
+export function isOverweight(category: BmiCategory | null): boolean {
+  return category === 'Overweight' || category === 'Obesitas';
 }
 
-/** BMI header F4…: planned date of check period p. */
+/** BMI header: planned date of slot p (every bmiIntervalDays from the first check). */
 export function bmiCheckDate(period: number, s: Settings): IsoDate {
   return addDays(s.bmiFirstCheck, s.bmiIntervalDays * (period - 1));
 }
 
-/** Laporan C6: `MIN(periods, INT((week+1)/2))`. */
+/** Laporan C6: slot of the week, `MAX(1, MIN(slots, INT((weekStart − first)/14) + 1))`. */
 export function bmiPeriodForWeek(week: number, s: Settings): number {
-  return Math.min(s.bmiPeriods, Math.floor((week + 1) / 2));
+  const k = Math.floor(diffDays(weekStart(week, s), s.bmiFirstCheck) / s.bmiIntervalDays) + 1;
+  return Math.max(1, Math.min(s.bmiPeriods, k));
+}
+
+/**
+ * BMI "Cek Berikutnya": no check yet → first check date; no BMI note ("Tidak") → monthly
+ * (EDATE); otherwise (note "Ya" or not filled in) → every bmiIntervalDays.
+ */
+export function nextBmiCheck(
+  lastCheckDate: IsoDate | null,
+  hasNote: boolean | null | undefined,
+  s: Settings,
+): IsoDate {
+  if (lastCheckDate === null) return s.bmiFirstCheck;
+  return hasNote === false ? addMonths(lastCheckDate, s.bmiIntervalMonths) : addDays(lastCheckDate, s.bmiIntervalDays);
+}
+
+/** BMI "Status Jadwal". */
+export function bmiScheduleStatus(next: IsoDate, today: DateInput): BmiScheduleStatus {
+  const left = diffDays(next, asToday(today));
+  if (left < 0) return 'Terlambat cek';
+  if (left <= 7) return 'Cek ≤ 7 hari';
+  return 'Terjadwal';
 }
 
 export interface BmiPeriodValue {
@@ -500,24 +594,26 @@ export interface BmiPeriodValue {
 }
 
 export interface BmiSummary {
-  /** index 0 = period 1 … bmiPeriods−1; null when that period has no row. */
+  /** index 0 = slot 1 … bmiPeriods−1; null when that slot has no row. */
   periods: Array<BmiPeriodValue | null>;
-  /** AE/AF/AH/AI: value from the highest period that has one. */
+  checks: number;
+  lastCheckDate: IsoDate | null;
   latestHeight: number | null;
   latestWeight: number | null;
   latestBmi: number | null;
   latestCategory: BmiCategory | null;
-  /** AG: latest weight − first recorded weight. */
+  /** Latest weight − first recorded weight (needs ≥ 2 checks). */
   weightDelta: number | null;
-  /** AJ. */
-  heightRequirement: HeightRequirement | null;
+  nextCheck: IsoDate;
+  scheduleStatus: BmiScheduleStatus;
 }
 
-/** One staff member's BMI row. Periods outside 1 … bmiPeriods are ignored. */
+/** One staff member's BMI row. Slots outside 1 … bmiPeriods are ignored. */
 export function bmiSummary(
   checks: readonly BmiCheckRow[],
-  gender: string | null | undefined,
+  hasNote: boolean | null | undefined,
   s: Settings,
+  today: DateInput,
 ): BmiSummary {
   const periods: Array<BmiPeriodValue | null> = Array.from({ length: s.bmiPeriods }, () => null);
   for (const c of checks) {
@@ -532,25 +628,31 @@ export function bmiSummary(
       category: bmiCategory(b, s),
     };
   }
-  const lastOf = <K extends 'heightCm' | 'weightKg' | 'bmi'>(key: K): number | null => {
+  const lastOf = <K extends 'heightCm' | 'weightKg' | 'bmi' | 'checkDate'>(key: K) => {
     for (let i = periods.length - 1; i >= 0; i--) {
       const v = periods[i]?.[key];
-      if (isNum(v)) return v;
+      if (v != null) return v as NonNullable<BmiPeriodValue[K]>;
     }
     return null;
   };
+  const checksCount = periods.filter((p) => isNum(p?.bmi)).length;
   const firstWeight = periods.find((p) => isNum(p?.weightKg))?.weightKg ?? null;
-  const latestHeight = lastOf('heightCm');
   const latestWeight = lastOf('weightKg');
   const latestBmi = lastOf('bmi');
+  const lastCheckDate = lastOf('checkDate');
+  const nextCheck = nextBmiCheck(lastCheckDate, hasNote, s);
   return {
     periods,
-    latestHeight,
+    checks: checksCount,
+    lastCheckDate,
+    latestHeight: lastOf('heightCm'),
     latestWeight,
     latestBmi,
     latestCategory: bmiCategory(latestBmi, s),
-    weightDelta: latestWeight === null || firstWeight === null ? null : cleanFloat(latestWeight - firstWeight),
-    heightRequirement: heightRequirement(latestHeight, gender, s),
+    weightDelta:
+      checksCount < 2 || latestWeight === null || firstWeight === null ? null : cleanFloat(latestWeight - firstWeight),
+    nextCheck,
+    scheduleStatus: bmiScheduleStatus(nextCheck, today),
   };
 }
 
@@ -558,59 +660,7 @@ export function bmiSummary(
 // Tindak Lanjut
 // ---------------------------------------------------------------------------
 
-/**
- * Detects the workbook's rolling due dates from the `Jadwal` text, which states the rule:
- * "(batas = jatuh tempo berikutnya)", "(batas = cek berikutnya)", "(batas = Jumat berikutnya)".
- */
-export function inferDueRule(schedule: string | null | undefined): DueRule | null {
-  if (blank(schedule)) return null;
-  const t = schedule!.toLowerCase();
-  if (!/batas\s*=/.test(t)) return null;
-  if (/batas\s*=\s*jatuh tempo berikutnya/.test(t) && /tanggal\s+5\b/.test(t)) return 'bulanan-tgl-5';
-  if (/batas\s*=\s*cek berikutnya/.test(t)) return 'cek-bmi-berikutnya';
-  if (/batas\s*=\s*jumat berikutnya/.test(t)) return 'jumat-berikutnya';
-  return null;
-}
-
-export function actionDueRule(item: Pick<ActionItemRow, 'schedule' | 'dueRule'>): DueRule | null {
-  return item.dueRule !== undefined ? item.dueRule : inferDueRule(item.schedule);
-}
-
-/** Tindak Lanjut I14/I16/I17 (and the same rows of every report). */
-export function rollingDueDate(rule: DueRule, s: Settings, today: DateInput): IsoDate {
-  const t = asToday(today);
-  switch (rule) {
-    case 'bulanan-tgl-5': {
-      const { year, month, day } = dateParts(t);
-      return makeDate(year, month + (day > 5 ? 1 : 0), 5);
-    }
-    case 'cek-bmi-berikutnya': {
-      const last = addDays(s.bmiFirstCheck, s.bmiIntervalDays * (s.bmiPeriods - 1));
-      const elapsed = diffDays(t, s.bmiFirstCheck);
-      // MAX(0, ROUNDUP(elapsed/interval, 0)); ROUNDUP rounds away from zero, MAX clamps negatives.
-      const k = elapsed <= 0 ? 0 : Math.ceil(elapsed / s.bmiIntervalDays);
-      return minDate(last, addDays(s.bmiFirstCheck, s.bmiIntervalDays * k));
-    }
-    case 'jumat-berikutnya': {
-      const lastFriday = addDays(s.week1Start, (s.weeks - 1) * 7 + 4);
-      const firstFriday = addDays(s.week1Start, 4);
-      const untilFriday = (((5 - dayOfWeek(t)) % 7) + 7) % 7; // MOD(6-WEEKDAY(t),7)
-      return minDate(lastFriday, maxDate(firstFriday, addDays(t, untilFriday)));
-    }
-  }
-}
-
-/** Due date as the workbook shows it today: rolling rule if the item has one, else `dueDate`. */
-export function effectiveDueDate(
-  item: Pick<ActionItemRow, 'dueDate' | 'schedule' | 'dueRule'>,
-  s: Settings,
-  today: DateInput,
-): IsoDate | null {
-  const rule = actionDueRule(item);
-  return rule ? rollingDueDate(rule, s, today) : (item.dueDate ?? null);
-}
-
-/** Tindak Lanjut P: null if no due date or status Selesai; due − today. */
+/** Tindak Lanjut Q: null if no due date or status Selesai; due − today. */
 export function daysLeft(
   dueDate: IsoDate | null | undefined,
   status: string | null | undefined,
@@ -620,31 +670,35 @@ export function daysLeft(
   return diffDays(dueDate!, asToday(today));
 }
 
-export function actionDaysLeft(
-  item: Pick<ActionItemRow, 'dueDate' | 'schedule' | 'dueRule' | 'status'>,
-  s: Settings,
-  today: DateInput,
-): number | null {
-  return daysLeft(effectiveDueDate(item, s, today), item.status, today);
-}
-
 /**
- * Tindak Lanjut Q. Order matters: Selesai, no due date, overdue, due within 7 days
- * (also for Rutin items), Rutin, On Track.
+ * Tindak Lanjut R. Order: Selesai, no due date, overdue, due within 7 days (also Rutin items),
+ * Rutin, On Track.
  */
 export function actionFlag(
-  item: Pick<ActionItemRow, 'dueDate' | 'schedule' | 'dueRule' | 'status' | 'kind'>,
-  s: Settings,
+  item: Pick<ActionItemRow, 'dueDate' | 'status' | 'kind'>,
   today: DateInput,
-): ActionFlag | null {
+): ActionFlag {
   if (sameText(item.status, 'Selesai')) return 'Selesai';
-  const due = effectiveDueDate(item, s, today);
-  if (blank(due)) return null;
-  const left = diffDays(due!, asToday(today));
+  if (blank(item.dueDate)) return 'Batas waktu belum ditetapkan';
+  const left = diffDays(item.dueDate!, asToday(today));
   if (left < 0) return 'OVERDUE';
   if (left <= 7) return 'Jatuh tempo ≤ 7 hari';
   if (sameText(item.kind, 'Rutin')) return 'Rutin – pantau';
   return 'On Track';
+}
+
+// ---------------------------------------------------------------------------
+// Remedial
+// ---------------------------------------------------------------------------
+
+/** Remedial L/M. */
+export function remedialResult(
+  r: Pick<RemedialRow, 'action' | 'rolePlay' | 'postTest'>,
+  s: Settings,
+): { finalResult: number | null; status: RemedialStatus } {
+  const final = finalResult(r.rolePlay, r.postTest, s);
+  if (final === null) return { finalResult: null, status: blank(r.action) ? 'Belum dijadwalkan' : 'Menunggu hasil' };
+  return { finalResult: final, status: final >= s.passGrade ? 'Lulus' : 'Belum Lulus' };
 }
 
 // ---------------------------------------------------------------------------
@@ -653,12 +707,12 @@ export function actionFlag(
 
 /** Penggantian L. */
 export function replacementPass(
-  r: Pick<ReplacementRow, 'replacementName' | 'postTest' | 'practiceAvg'>,
+  r: Pick<ReplacementRow, 'replacementName' | 'postTest' | 'finalResult'>,
   s: Settings,
 ): ReplacementPass | null {
   if (blank(r.replacementName)) return null;
-  if (!isNum(r.postTest) || !isNum(r.practiceAvg)) return 'Belum training/dinilai';
-  return r.postTest >= s.posttestMin && r.practiceAvg >= s.passAvgMin ? 'Lulus – boleh bertugas' : 'Belum lulus';
+  if (!isNum(r.postTest) || !isNum(r.finalResult)) return 'Belum training/dinilai';
+  return r.postTest >= s.passGrade && r.finalResult >= s.passGrade ? 'Lulus' : 'Belum Lulus';
 }
 
 /** Penggantian M. On the deadline day itself a missing effective date is still "Menunggu". */
@@ -674,4 +728,13 @@ export function replacementTimeliness(
   return diffDays(r.effectiveOn!, s.replacementDeadline) <= 0
     ? 'Tepat waktu'
     : `Lewat ${formatTanggalPendek(s.replacementDeadline)}`;
+}
+
+// ---------------------------------------------------------------------------
+// KPI (Dashboard 1)
+// ---------------------------------------------------------------------------
+
+/** Planned end of the BMI KPI window: EDATE(week1Start, targetOverweightMonths). */
+export function overweightTargetDate(s: Settings): IsoDate {
+  return addMonths(s.week1Start, s.targetOverweightMonths);
 }

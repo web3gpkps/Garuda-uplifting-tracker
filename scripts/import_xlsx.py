@@ -1,597 +1,517 @@
 #!/usr/bin/env python3
-"""Generate supabase/seed.sql from "Tracker Tindak Lanjut Uplifting JOUMPA.xlsx".
+"""Generate supabase/seed.sql from the Garuda workbook.
 
     python3 -I scripts/import_xlsx.py [--xlsx PATH] [--seed PATH] [--rows PATH] [--check]
 
+Default workbook: "Tracker Tindak Lanjut People Development Garuda - DUMMY.xlsx" in the repo root.
+
 Writes
-  supabase/seed.sql      staff (+ bmi_note), action_items (+ due_rule), replacements
-                         (+ staff_code). Idempotent:
-                         staff/action_items upsert on their code; replacements MERGE on
-                         (report_group, replaced_name). One transaction. Does not touch
-                         stations/settings/sync_state (migration) or scores/BMI checks.
-  scripts/out/rows.json  the same rows in camelCase + settings + the workbook's cached
-                         per-row results, for the parity test (lib/workbook.test.ts).
-Both contain personal data and are gitignored (scripts/out/ carries its own .gitignore).
+  supabase/seed.sql      settings, stations (adds missing codes), staff, weekly_scores, bmi_checks,
+                         action_items, remedials, replacements. One transaction. Truncates the
+                         data tables first (a seed is the baseline, not a merge).
+  scripts/out/rows.json  the same rows in camelCase + settings + the workbook's cached Dashboard and
+                         Laporan Mingguan results, for the parity test (lib/workbook.test.ts).
+Both may contain personal data and are gitignored.
 
-Reads cached values (data_only=True) for inputs, so the few formula inputs (rolling due
-dates of TL10/TL12/TL13) are stored as the workbook last computed them. Output is
-deterministic: same workbook bytes -> same files.
+Reads cached values (data_only=True), so the workbook must have been saved by Excel, Google Sheets
+or LibreOffice (or baked), not straight from openpyxl.
 
---check only validates and prints the data report, writing nothing.
+--check only validates and prints a short report, writing nothing.
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
-import hashlib
 import json
-import re
-import unicodedata
 import sys
 import warnings
-from collections import Counter, defaultdict
-from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 import openpyxl  # noqa: E402
-from openpyxl.utils.datetime import from_excel  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_XLSX = ROOT / "Tracker Tindak Lanjut Uplifting JOUMPA.xlsx"
+DEFAULT_XLSX = ROOT / "Tracker Tindak Lanjut People Development Garuda - DUMMY.xlsx"
 DEFAULT_SEED = ROOT / "supabase" / "seed.sql"
 DEFAULT_ROWS = ROOT / "scripts" / "out" / "rows.json"
 
-STATIONS = ("SUB", "DPS", "CGK", "HLP", "KNO")
-REPORT_GROUPS = ("SUB", "DPS", "CGK & HLP", "KNO")
-CONCLUSIONS = ("Sesuai", "Sesuai dengan Catatan", "Perlu Perbaikan", "Tidak Sesuai")
-ASSIGNMENT = ("Aktif", "Coaching 30 Hari", "Diganti", "Ditarik")
-ACTION_STATUS = ("Belum Mulai", "On Progress", "Selesai", "Tertunda")
+PROGRAMS = ("IULS", "RUST")
+TOUCH = ("Check-in Counter", "Customer Service", "Boarding Gate", "Transfer Desk", "Baggage Service")
+ASSIGNMENT = ("Aktif", "Remedial", "Individual Coaching", "Ditarik dari layanan")
+GROUPS = ("Coaching Frontliner", "Timeline Training", "Evaluasi IULS & RUST")
+ASPECTS = ("Fit & Grooming (BMI)", "Product Knowledge", "Komunikasi & Interactive Skill",
+           "Grooming & Aksesori", "Coaching Coverage", "Remedial")
+STATUS = ("Belum Mulai", "On Progress", "Selesai", "Tertunda")
 KINDS = ("Sekali", "Rutin")
-GENDERS = ("L", "P")
-REPORTED = ("Ya", "Belum")
+REMEDIAL = ("Refresher & Remedial Assessment", "Individual Coaching", "Refresher + Individual Coaching")
+YA_BELUM = ("Ya", "Belum")
 
-SCORE_COLS = ("score_a", "score_b", "score_c", "score_d", "score_e", "score_f")
-BMI_PERIOD_FIRST_COL = 6  # F: Tgl Cek of period 1; 5 columns per period (date, height, weight, BMI, category)
+# Parameter label (column B) -> settings column. Row positions may move; labels are the key.
+PARAMETER_LABELS = {
+    "Tanggal mulai Minggu ke-1 (Senin)": ("week1_start", "date"),
+    "Jumlah minggu pemantauan": ("weeks", "int"),
+    "Tanggal cek BMI slot 1": ("bmi_first_check", "date"),
+    "Interval cek BMI – ada catatan (hari)": ("bmi_interval_days", "int"),
+    "Interval cek BMI – tanpa catatan (bulan)": ("bmi_interval_months", "int"),
+    "Jumlah slot cek di sheet BMI": ("bmi_periods", "int"),
+    "BMI kategori Kurus jika <": ("bmi_underweight_below", "num"),
+    "BMI Normal s.d.": ("bmi_normal_max", "num"),
+    "BMI Overweight s.d. (di atasnya Obesitas)": ("bmi_overweight_max", "num"),
+    "Passing grade (skor ≥)": ("pass_grade", "num"),
+    "Bobot Role Play di Final Result": ("weight_role_play", "num"),
+    "Bobot Post-Test di Final Result": ("weight_post_test", "num"),
+    "Target proporsi BMI overweight (maks.)": ("target_overweight_max", "num"),
+    "Jangka waktu target BMI (bulan)": ("target_overweight_months", "int"),
+    "Target ketepatan jawaban Product Knowledge": ("target_knowledge", "num"),
+    "Target skor Interactive Communicating": ("target_interactive", "num"),
+    "Target cakupan coaching (jumlah frontliner)": ("target_coverage", "int"),
+    "Frontliner sudah coaching (update manual)": ("coverage_done", "int"),
+    "Target kelulusan peserta IULS/RUST setelah remedial": ("target_pass_rate", "num"),
+    "Batas waktu penggantian SDM": ("replacement_deadline", "date"),
+}
+
+BMI_FIRST_COL = 8  # H: Tgl Cek of slot 1; 5 columns per slot (date, height, weight, BMI, category)
+BMI_NOTE_COL = 45  # AS: Catatan Program Kebugaran
 
 
-class ImportError_(Exception):
+class ImportFailure(Exception):
     pass
 
 
-# --------------------------------------------------------------------------- value cleaning
-
-
 def fail(where: str, msg: str) -> None:
-    raise ImportError_(f"{where}: {msg}")
+    raise ImportFailure(f"{where}: {msg}")
 
 
-def text(v, where: str) -> str | None:
-    """Empty or whitespace-only -> None; strings are trimmed; integral numbers -> '123'."""
+def text(v) -> str | None:
     if v is None:
         return None
-    if isinstance(v, bool):
-        fail(where, f"unexpected boolean {v!r}")
-    if isinstance(v, (int, float)):
-        if isinstance(v, float) and not v.is_integer():
-            return repr(v)
-        return str(int(v))
-    if isinstance(v, (dt.datetime, dt.date)):
-        fail(where, f"unexpected date {v!r} in a text column")
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
     s = str(v).strip()
     return s or None
 
 
 def choice(v, allowed: tuple[str, ...], where: str) -> str | None:
-    s = text(v, where)
+    s = text(v)
     if s is None:
         return None
     for a in allowed:
-        if s.upper() == a.upper():
+        if a.lower() == s.lower():
             return a
     fail(where, f"{s!r} is not one of {allowed}")
-
-
-def number(v, where: str):
-    if v is None or (isinstance(v, str) and not v.strip()):
-        return None
-    if isinstance(v, bool):
-        fail(where, f"unexpected boolean {v!r}")
-    if isinstance(v, str):
-        try:
-            v = float(v.strip().replace(",", "."))
-        except ValueError:
-            fail(where, f"not a number: {v!r}")
-    if isinstance(v, (int, float)):
-        if isinstance(v, float) and v.is_integer():
-            return int(v)
-        return v
-    fail(where, f"not a number: {v!r}")
-
-
-def score(v, where: str) -> int | None:
-    n = number(v, where)
-    if n is None:
-        return None
-    if n != int(n) or not 1 <= n <= 5:
-        fail(where, f"score must be a whole number 1-5, got {n!r}")
-    return int(n)
-
-
-def iso_date(v, where: str) -> str | None:
-    if v is None or (isinstance(v, str) and not v.strip()):
-        return None
-    if isinstance(v, dt.datetime):
-        if v.time() != dt.time(0, 0):
-            fail(where, f"date has a time part: {v!r}")
-        return v.date().isoformat()
-    if isinstance(v, dt.date):
-        return v.isoformat()
-    if isinstance(v, (int, float)) and not isinstance(v, bool):
-        return from_excel(v).date().isoformat()
-    if isinstance(v, str):
-        s = v.strip()
-        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
-            try:
-                return dt.datetime.strptime(s, fmt).date().isoformat()
-            except ValueError:
-                pass
-    fail(where, f"not a date: {v!r}")
-
-
-def progress_pct(v, where: str) -> int:
-    """Excel % Progres is a fraction 0..1; the DB stores an integer 0..100."""
-    n = number(v, where)
-    if n is None:
-        return 0
-    if not 0 <= n <= 1:
-        fail(where, f"progress must be a fraction 0..1 (Excel %), got {n!r}")
-    return int((Decimal(repr(n)) * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP))
-
-
-def camel(key: str) -> str:
-    return re.sub(r"_([a-z0-9])", lambda m: m.group(1).upper(), key)
-
-
-# --------------------------------------------------------------------------- SQL
-
-
-def sql_literal(v, pgtype: str | None = None) -> str:
-    cast = f"::{pgtype}" if pgtype else ""
-    if v is None:
-        return "null" + cast
-    if isinstance(v, bool):
-        return ("true" if v else "false") + cast
-    if isinstance(v, (int, float)):
-        return (str(v) if isinstance(v, int) else repr(v)) + cast
-    s = str(v)
-    if "\x00" in s:
-        raise ImportError_("NUL character in text value")
-    return "'" + s.replace("'", "''") + "'" + cast
-
-
-def upsert(table: str, key: str, cols: list[str], rows: list[dict]) -> str:
-    """INSERT ... VALUES coerces literals to the column types, so no casts are needed."""
-    lines = [f"insert into public.{table} ({', '.join(cols)}) values"]
-    body = []
-    for r in rows:
-        body.append("  (" + ", ".join(sql_literal(r[c]) for c in cols) + ")")
-    lines.append(",\n".join(body))
-    updates = ",\n  ".join(f"{c} = excluded.{c}" for c in cols if c != key)
-    lines.append(f"on conflict ({key}) do update set\n  {updates};")
-    return "\n".join(lines)
-
-
-def merge(table: str, match: list[str], cols: list[str], rows: list[dict], types: dict[str, str]) -> str:
-    """MERGE keeps identity ids stable on re-runs and needs no unique constraint (PG 15+)."""
-    values = ",\n    ".join(
-        "(" + ", ".join(sql_literal(r[c], types[c]) for c in cols) + ")" for r in rows
-    )
-    on = " and ".join(f"t.{c} is not distinct from s.{c}" for c in match)
-    sets = ",\n    ".join(f"{c} = s.{c}" for c in cols if c not in match)
-    return (
-        f"merge into public.{table} as t\n"
-        f"using (values\n    {values}\n) as s({', '.join(cols)})\n"
-        f"on {on}\n"
-        f"when matched then update set\n    {sets}\n"
-        f"when not matched then insert ({', '.join(cols)})\n"
-        f"  values ({', '.join('s.' + c for c in cols)});"
-    )
-
-
-# --------------------------------------------------------------------------- workbook
-
-
-def cell(ws, row: int, col: int):
-    return ws.cell(row=row, column=col).value
-
-
-def read_settings(wv, wf) -> dict:
-    p = wv["Parameter"]
-    where = "Parameter"
-    deadline_formula = str(wf["Penggantian SDM"]["M5"].value or "")
-    m = re.search(r"DATE\((\d{4}),(\d{1,2}),(\d{1,2})\)", deadline_formula)
-    if not m:
-        fail("Penggantian SDM!M5", "replacement deadline DATE(y,m,d) not found in formula")
-    deadline = dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
-    return {
-        "week1Start": iso_date(p["C5"].value, f"{where}!C5"),
-        "weeks": number(p["C6"].value, f"{where}!C6"),
-        "bmiFirstCheck": iso_date(p["C7"].value, f"{where}!C7"),
-        "bmiIntervalDays": number(p["C8"].value, f"{where}!C8"),
-        "bmiPeriods": number(p["C9"].value, f"{where}!C9"),
-        "bmiUnderweightBelow": number(p["C11"].value, f"{where}!C11"),
-        "bmiNormalMax": number(p["C12"].value, f"{where}!C12"),
-        "bmiOverweightMax": number(p["C13"].value, f"{where}!C13"),
-        "minHeightFemale": number(p["C16"].value, f"{where}!C16"),
-        "minHeightMale": number(p["C17"].value, f"{where}!C17"),
-        "passAvgMin": number(p["C19"].value, f"{where}!C19"),
-        "improveAvgMin": number(p["C20"].value, f"{where}!C20"),
-        "posttestMin": number(p["C21"].value, f"{where}!C21"),
-        "replacementDeadline": deadline,
-    }
-
-
-def read_staff(wv) -> tuple[list[dict], dict[str, dict], list[str]]:
-    ws = wv["Master SDM"]
-    bmi = wv["Cek BMI 2 Mingguan"]
-    rows, cached, notes = [], {}, []
-    for r in range(5, ws.max_row + 1):
-        w = f"Master SDM!{r}"
-        code = text(cell(ws, r, 2), f"{w} B")
-        name = text(cell(ws, r, 5), f"{w} E")
-        if code is None and name is None:
-            continue
-        if name is None:
-            # Empty TMB-xx placeholder rows. Anything else on such a row would be lost.
-            stray = [c for c in (3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 20, 21) if cell(ws, r, c) not in (None, "")]
-            stray = [c for c in stray if not (c == 20 and cell(ws, r, c) == "Aktif")]
-            if stray:
-                fail(w, f"row {code} has no name but has data in columns {stray}")
-            continue
-        if code is None:
-            fail(w, "row has a name but no ID SDM")
-        # Cek BMI rows mirror Master SDM rows one-to-one (BMI row = Master row + 1).
-        bmi_code = cell(bmi, r + 1, 2)
-        if bmi_code != code:
-            fail(f"Cek BMI 2 Mingguan!B{r + 1}", f"expected {code}, found {bmi_code!r}")
-        station = choice(cell(ws, r, 3), STATIONS, f"{w} C")
-        row = {
-            "code": code,
-            "station": station,
-            "name": name,
-            "nipp": text(cell(ws, r, 6), f"{w} F"),
-            "gender": choice(cell(ws, r, 7), GENDERS, f"{w} G"),
-            "pre_test": number(cell(ws, r, 8), f"{w} H"),
-            "post_test": number(cell(ws, r, 9), f"{w} I"),
-            **{c: score(cell(ws, r, 10 + i), f"{w} {'JKLMNO'[i]}") for i, c in enumerate(SCORE_COLS)},
-            "report_conclusion": choice(cell(ws, r, 17), CONCLUSIONS, f"{w} Q"),
-            "assignment_status": choice(cell(ws, r, 20), ASSIGNMENT, f"{w} T") or "Aktif",
-            "notes": text(cell(ws, r, 21), f"{w} U"),
-            "bmi_note": text(cell(bmi, r + 1, 37), f"Cek BMI 2 Mingguan!AK{r + 1}"),
-            "sort_order": len(rows) + 1,
-        }
-        rows.append(row)
-        cached[code] = {
-            "practiceAvg": cell(ws, r, 16) if cell(ws, r, 16) != "" else None,
-            "criteriaStatus": cell(ws, r, 18) or None,
-            "consistency": cell(ws, r, 19) or None,
-        }
-        # BMI inputs: 5 periods x (date, height, weight). The workbook has none yet.
-        for p in range(5):
-            c0 = BMI_PERIOD_FIRST_COL + 5 * p
-            if any(cell(bmi, r + 1, c0 + k) not in (None, "") for k in range(3)):
-                notes.append(f"BMI period {p + 1} has data for {code}")
-    return rows, cached, notes
-
-
-def read_weekly_scores(wv) -> list[str]:
-    ws = wv["Log Performa Mingguan"]
-    found = []
-    for r in range(5, ws.max_row + 1):
-        if any(cell(ws, r, c) not in (None, "") for c in list(range(6, 12)) + [15, 16]):
-            found.append(f"Log Performa Mingguan row {r} has scores/notes")
-    return found
-
-
-DUE_RULES = ("bulanan-tgl-5", "cek-bmi-berikutnya", "jumat-berikutnya")
-
-
-def infer_due_rule(schedule: str | None) -> str | None:
-    """Same logic as inferDueRule() in lib/rules.ts: the Jadwal text states the rolling rule."""
-    if not schedule:
-        return None
-    t = schedule.lower()
-    if not re.search(r"batas\s*=", t):
-        return None
-    if re.search(r"batas\s*=\s*jatuh tempo berikutnya", t) and re.search(r"tanggal\s+5\b", t):
-        return "bulanan-tgl-5"
-    if re.search(r"batas\s*=\s*cek berikutnya", t):
-        return "cek-bmi-berikutnya"
-    if re.search(r"batas\s*=\s*jumat berikutnya", t):
-        return "jumat-berikutnya"
     return None
 
 
-def formula_due_rule(formula) -> str | None:
-    """Which rolling rule a Batas Waktu formula implements (None for a typed date)."""
-    if not (isinstance(formula, str) and formula.startswith("=")):
+def number(v, where: str, lo: float | None = None, hi: float | None = None):
+    if v is None or (isinstance(v, str) and not v.strip()):
         return None
-    f = formula.upper().replace("$", "")
-    if "DAY(PARAMETER!C23)>5" in f:
-        return "bulanan-tgl-5"
-    if "ROUNDUP(" in f and "PARAMETER!C8" in f:
-        return "cek-bmi-berikutnya"
-    if "WEEKDAY(" in f:
-        return "jumat-berikutnya"
-    return "unknown formula"
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        fail(where, f"{v!r} is not a number")
+    if (lo is not None and n < lo) or (hi is not None and n > hi):
+        fail(where, f"{n} outside {lo}..{hi}")
+    return int(n) if n.is_integer() else n
 
 
-def read_action_items(wv, wf) -> tuple[list[dict], dict[str, dict]]:
-    ws, wsf = wv["Tindak Lanjut"], wf["Tindak Lanjut"]
-    rows, cached = [], {}
+def iso_date(v, where: str) -> str | None:
+    if v is None or v == "":
+        return None
+    if isinstance(v, dt.datetime):
+        return v.date().isoformat()
+    if isinstance(v, dt.date):
+        return v.isoformat()
+    if isinstance(v, (int, float)):
+        return (dt.date(1899, 12, 30) + dt.timedelta(days=int(v))).isoformat()
+    s = str(v).strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return dt.datetime.strptime(s, fmt).date().isoformat()
+        except ValueError:
+            pass
+    fail(where, f"{v!r} is not a date")
+    return None
+
+
+def camel(key: str) -> str:
+    head, *rest = key.split("_")
+    return head + "".join(p[:1].upper() + p[1:] for p in rest)
+
+
+def sql_literal(v) -> str:
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return repr(v)
+    return "'" + str(v).replace("'", "''") + "'"
+
+
+def insert(table: str, cols: list[str], rows: list[dict]) -> str:
+    if not rows:
+        return f"-- {table}: no rows\n"
+    values = ",\n".join("  (" + ", ".join(sql_literal(r[c]) for c in cols) + ")" for r in rows)
+    return f"insert into public.{table} ({', '.join(cols)}) values\n{values};\n"
+
+
+# ---------------------------------------------------------------- readers
+
+
+def read_settings(wb) -> dict:
+    ws = wb["Parameter"]
+    out: dict = {}
     for r in range(5, ws.max_row + 1):
-        w = f"Tindak Lanjut!{r}"
-        code = text(cell(ws, r, 2), f"{w} B")
-        if code is None:
-            if any(cell(ws, r, c) not in (None, "") for c in range(3, 16)):
-                fail(w, "row has data but no ID")
-            continue
-        due_formula = cell(wsf, r, 9)
-        row = {
-            "code": code,
-            "report_group": choice(cell(ws, r, 3), REPORT_GROUPS, f"{w} C"),
-            "area": text(cell(ws, r, 4), f"{w} D"),
-            "action": text(cell(ws, r, 5), f"{w} E"),
-            "target": text(cell(ws, r, 6), f"{w} F"),
-            "kind": choice(cell(ws, r, 7), KINDS, f"{w} G"),
-            "schedule": text(cell(ws, r, 8), f"{w} H"),
-            "due_date": iso_date(cell(ws, r, 9), f"{w} I"),
-            "pic": text(cell(ws, r, 10), f"{w} J"),
-            "status": choice(cell(ws, r, 11), ACTION_STATUS, f"{w} K") or "Belum Mulai",
-            "progress": progress_pct(cell(ws, r, 12), f"{w} L"),
-            "updated_on": iso_date(cell(ws, r, 13), f"{w} M"),
-            "evidence": text(cell(ws, r, 14), f"{w} N"),
-            "kps_notes": text(cell(ws, r, 15), f"{w} O"),
-            "due_rule": infer_due_rule(text(cell(ws, r, 8), f"{w} H")),
-            "sort_order": len(rows) + 1,
-        }
-        # The schedule text and the Batas Waktu formula must agree on the rolling rule.
-        from_formula = formula_due_rule(due_formula)
-        if from_formula != row["due_rule"]:
-            fail(f"{w} H/I", f"{code}: schedule says due_rule={row['due_rule']!r}, Batas Waktu formula says {from_formula!r}")
-        rows.append(row)
-        cached[code] = {
-            "dueDate": row["due_date"],
-            "dueIsFormula": isinstance(due_formula, str) and due_formula.startswith("="),
-            "daysLeft": cell(ws, r, 16) if cell(ws, r, 16) != "" else None,
-            "flag": cell(ws, r, 17) or None,
-        }
-    return rows, cached
-
-
-def norm_name(s: str) -> str:
-    s = unicodedata.normalize("NFKC", s).casefold()
-    s = re.sub(r"[.,'’`]", " ", s)
-    return " ".join(s.split())
-
-
-def match_staff(row: dict, staff: list[dict]) -> tuple[str | None, str]:
-    """staff_code for a replacement row: unique normalized-name match within its station
-    (or report group). Tries the full name, then the part before an annotation ('/' or '(').
-    Returns (code or None, how)."""
-    def group_of(station: str) -> str:
-        return "CGK & HLP" if station in ("CGK", "HLP") else station
-
-    if row["station"]:
-        pool = [s for s in staff if s["station"] == row["station"]]
-    else:
-        pool = [s for s in staff if group_of(s["station"]) == row["report_group"]]
-    attempts = [("exact", row["replaced_name"])]
-    head = re.split(r"[/(]", row["replaced_name"], maxsplit=1)[0]
-    if head != row["replaced_name"]:
-        attempts.append(("before '/' or '('", head))
-    for how, candidate in attempts:
-        key = norm_name(candidate)
-        if not key:
-            continue
-        hits = [s["code"] for s in pool if norm_name(s["name"]) == key]
-        if len(hits) == 1:
-            return hits[0], how
-        if len(hits) > 1:
-            return None, f"ambiguous ({how}): {hits}"
-    elsewhere = [s["code"] for s in staff if s not in pool and norm_name(s["name"]) in {norm_name(c) for _, c in attempts}]
-    return None, f"no match in {row['station'] or row['report_group']}" + (f" (same name elsewhere: {elsewhere})" if elsewhere else "")
-
-
-def read_replacements(wv) -> tuple[list[dict], list[dict]]:
-    ws = wv["Penggantian SDM"]
-    rows, cached = [], []
-    for r in range(5, ws.max_row + 1):
-        w = f"Penggantian SDM!{r}"
-        values = [cell(ws, r, c) for c in range(2, 15) if c not in (12, 13)]
-        if all(v in (None, "") for v in values):
-            continue
-        replaced = text(cell(ws, r, 4), f"{w} D")
-        if replaced is None:
-            fail(w, "row has data but no 'Nama SDM Diganti' (replaced_name is NOT NULL)")
-        row = {
-            "report_group": choice(cell(ws, r, 2), REPORT_GROUPS, f"{w} B"),
-            "station": choice(cell(ws, r, 3), STATIONS, f"{w} C"),
-            "replaced_name": replaced,
-            "reason": text(cell(ws, r, 5), f"{w} E"),
-            "withdrawn_on": iso_date(cell(ws, r, 6), f"{w} F"),
-            "replacement_name": text(cell(ws, r, 7), f"{w} G"),
-            "effective_on": iso_date(cell(ws, r, 8), f"{w} H"),
-            "training_on": iso_date(cell(ws, r, 9), f"{w} I"),
-            "post_test": number(cell(ws, r, 10), f"{w} J"),
-            "practice_avg": number(cell(ws, r, 11), f"{w} K"),
-            "reported": choice(cell(ws, r, 14), REPORTED, f"{w} N"),
-            "notes": text(cell(ws, r, 15), f"{w} O"),
-            "staff_code": None,  # set by link_replacements()
-            "sort_order": len(rows) + 1,
-        }
-        rows.append(row)
-        cached.append({"pass": cell(ws, r, 12) or None, "timeliness": cell(ws, r, 13) or None})
-    return rows, cached
-
-
-def link_replacements(repl: list[dict], staff: list[dict]) -> list[str]:
-    """Fills staff_code; replaced_name keeps the original text. Returns log lines (IDs only)."""
-    lines = []
-    for i, r in enumerate(repl, start=1):
-        code, how = match_staff(r, staff)
-        r["staff_code"] = code
-        lines.append(f"replacement #{i} -> {code} ({how})" if code else f"WARNING replacement #{i}: staff_code left NULL, {how}")
-    return lines
-
-
-# --------------------------------------------------------------------------- report
-
-
-def data_report(staff: list[dict], cached_staff: dict, items: list[dict], repl: list[dict]) -> list[str]:
-    """Things that look wrong in the data. IDs only, never names."""
-    out = []
-    by_station = Counter(s["station"] for s in staff)
-    out.append("staff per station: " + ", ".join(f"{k} {by_station.get(k, 0)}" for k in STATIONS))
-    nipp = defaultdict(list)
-    for s in staff:
-        if s["nipp"]:
-            nipp[s["nipp"]].append(s["code"])
-    dup = {k: v for k, v in nipp.items() if len(v) > 1}
-    out.append(f"duplicate NIPP: {dup or 'none'}")
-    out.append(f"NIPP missing: {sum(1 for s in staff if not s['nipp'])} of {len(staff)}")
-    out.append(f"gender (L/P) missing: {sum(1 for s in staff if not s['gender'])} of {len(staff)}")
-    no_post = [s["code"] for s in staff if s["post_test"] is None]
-    out.append(f"no post-test: {len(no_post)} {no_post}")
-    low_post = [s["code"] for s in staff if s["post_test"] is not None and s["post_test"] < 80]
-    out.append(f"post-test < 80: {low_post}")
-    drop = [s["code"] for s in staff if s["pre_test"] is not None and s["post_test"] is not None and s["post_test"] < s["pre_test"]]
-    out.append(f"post-test lower than pre-test: {drop}")
-    beda = [c for c, v in cached_staff.items() if str(v["consistency"] or "").startswith("Beda")]
-    out.append(f"report conclusion != criteria 6.2 ('Beda'): {len(beda)} {beda}")
-    names = {s["name"] for s in staff}
-    unmatched = [i + 1 for i, r in enumerate(repl) if r["replaced_name"] not in names]
-    out.append(f"replacements whose replaced_name is not a roster name verbatim (row #): {unmatched}")
-    out.append(f"action items with a rolling due_rule: {sum(1 for it in items if it['due_rule'])} "
-               + str(dict(Counter(it["due_rule"] for it in items if it["due_rule"]))))
-    out.append(f"replacements with reported empty (row #): {[i + 1 for i, r in enumerate(repl) if r['reported'] is None]}")
-    runs: list[list] = []
-    for s in staff:
-        if runs and runs[-1][0] == s["station"]:
-            runs[-1][1] += 1
-        else:
-            runs.append([s["station"], 1])
-    if len(runs) > len({r[0] for r in runs}):
-        out.append("station blocks in sheet order (interleaved): " + ", ".join(f"{k}x{n}" for k, n in runs))
+        label = text(ws.cell(r, 2).value)
+        if label in PARAMETER_LABELS:
+            col, kind = PARAMETER_LABELS[label]
+            v = ws.cell(r, 3).value
+            where = f"Parameter!C{r}"
+            out[col] = iso_date(v, where) if kind == "date" else number(v, where)
+            if kind == "int" and out[col] is not None:
+                out[col] = int(out[col])
+    missing = [c for c, _ in PARAMETER_LABELS.values() if out.get(c) is None]
+    if missing:
+        fail("Parameter", f"missing values for {missing}")
     return out
 
 
-# --------------------------------------------------------------------------- main
+def read_stations(wb) -> list[str]:
+    ws = wb["Parameter"]
+    head = next(c for c in range(1, ws.max_column + 1) if text(ws.cell(4, c).value) == "Unit / Station")
+    out = []
+    for r in range(5, ws.max_row + 1):
+        code = text(ws.cell(r, head).value)
+        if code:
+            out.append(code.upper())
+    return out
+
+
+def read_staff(wb) -> list[dict]:
+    ws = wb["Master SDM"]
+    bm = wb["Cek BMI 2 Mingguan"]
+    rows = []
+    seen = set()
+    for r in range(5, ws.max_row + 1):
+        code = text(ws.cell(r, 2).value)
+        name = text(ws.cell(r, 6).value)
+        if not code and not name:
+            continue
+        where = f"Master SDM!row {r}"
+        if not code or not name:
+            fail(where, "ID SDM and Nama must both be filled")
+        if code in seen:
+            fail(where, f"duplicate ID {code}")
+        seen.add(code)
+        has_note = text(bm.cell(r + 1, 7).value)
+        rows.append({
+            "code": code,
+            "program": choice(ws.cell(r, 3).value, PROGRAMS, where + " Program"),
+            "provider": text(ws.cell(r, 4).value),
+            "station": (text(ws.cell(r, 5).value) or fail(where, "Unit is empty") or "").upper(),
+            "name": name,
+            "employee_no": text(ws.cell(r, 7).value),
+            "gender": choice(ws.cell(r, 8).value, ("L", "P"), where + " L/P"),
+            "touch_point": choice(ws.cell(r, 9).value, TOUCH, where + " Touch Point"),
+            "role_play": number(ws.cell(r, 10).value, where + " Role Play", 0, 100),
+            "post_test": number(ws.cell(r, 11).value, where + " Post-Test", 0, 100),
+            "report_remark": choice(ws.cell(r, 13).value, ("Passed", "Failed"), where + " Remark"),
+            "assignment_status": choice(ws.cell(r, 17).value, ASSIGNMENT, where + " Status") or "Aktif",
+            "feedback": text(ws.cell(r, 18).value),
+            "notes": text(ws.cell(r, 19).value),
+            "bmi_has_note": None if has_note is None else has_note.lower() == "ya",
+            "bmi_note": text(bm.cell(r + 1, BMI_NOTE_COL).value),
+            "sort_order": len(rows) + 1,
+        })
+    return rows
+
+
+def read_weekly_scores(wb, codes: set[str]) -> list[dict]:
+    ws = wb["Log Performa Mingguan"]
+    rows = {}
+    for r in range(5, ws.max_row + 1):
+        week, code = ws.cell(r, 1).value, text(ws.cell(r, 3).value)
+        vals = [ws.cell(r, c).value for c in (7, 8, 9, 10, 11, 15, 16, 17)]
+        if all(v is None or text(v) is None for v in vals):
+            continue
+        where = f"Log Performa Mingguan!row {r}"
+        if week is None or code is None:
+            fail(where, "Minggu Ke and ID SDM are required")
+        if code not in codes:
+            fail(where, f"unknown ID {code}")
+        key = (code, int(week))
+        if key in rows:
+            fail(where, f"duplicate week {week} for {code}")
+        rows[key] = {
+            "staff_code": code,
+            "week": int(week),
+            "touch_point": choice(vals[0], TOUCH, where + " Touch Point"),
+            "score_grooming": number(vals[1], where + " H", 0, 100),
+            "score_knowledge": number(vals[2], where + " I", 0, 100),
+            "score_attitude": number(vals[3], where + " J", 0, 100),
+            "score_communication": number(vals[4], where + " K", 0, 100),
+            "gap_topic": text(vals[5]),
+            "observer": text(vals[6]),
+            "coaching_notes": text(vals[7]),
+        }
+    return list(rows.values())
+
+
+def read_bmi(wb, codes: set[str], slots: int) -> list[dict]:
+    ws = wb["Cek BMI 2 Mingguan"]
+    out = []
+    for r in range(6, ws.max_row + 1):
+        code = text(ws.cell(r, 2).value)
+        if not code:
+            continue
+        for k in range(slots):
+            c0 = BMI_FIRST_COL + 5 * k
+            date, h, w = (ws.cell(r, c0 + i).value for i in range(3))
+            if h is None and w is None:
+                continue
+            where = f"Cek BMI 2 Mingguan!row {r} slot {k + 1}"
+            if code not in codes:
+                fail(where, f"unknown ID {code}")
+            if h is None or w is None:
+                fail(where, "Tinggi and Berat must both be filled")
+            out.append({
+                "staff_code": code,
+                "period": k + 1,
+                "check_date": iso_date(date, where),
+                "height_cm": number(h, where + " tinggi", 120, 210),
+                "weight_kg": number(w, where + " berat", 30, 200),
+            })
+    return out
+
+
+def read_action_items(wb) -> list[dict]:
+    ws = wb["Tindak Lanjut"]
+    out = []
+    for r in range(5, ws.max_row + 1):
+        code = text(ws.cell(r, 2).value)
+        if not code:
+            continue
+        where = f"Tindak Lanjut!row {r}"
+        progress = number(ws.cell(r, 13).value, where + " % Progres", 0, 1) or 0
+        out.append({
+            "code": code,
+            "group_name": choice(ws.cell(r, 3).value, GROUPS, where + " Kelompok") or fail(where, "Kelompok empty"),
+            "aspect": choice(ws.cell(r, 4).value, ASPECTS, where + " Aspek"),
+            "root_cause": text(ws.cell(r, 5).value),
+            "action": text(ws.cell(r, 6).value),
+            "target": text(ws.cell(r, 7).value),
+            "kind": choice(ws.cell(r, 8).value, KINDS, where + " Jenis"),
+            "schedule": text(ws.cell(r, 9).value),
+            "due_date": iso_date(ws.cell(r, 10).value, where + " Batas Waktu"),
+            "pic": text(ws.cell(r, 11).value),
+            "status": choice(ws.cell(r, 12).value, STATUS, where + " Status") or "Belum Mulai",
+            "progress": int(round(progress * 100)),
+            "updated_on": iso_date(ws.cell(r, 14).value, where + " Tgl Update"),
+            "evidence": text(ws.cell(r, 15).value),
+            "kps_notes": text(ws.cell(r, 16).value),
+            "source": text(ws.cell(r, 19).value),
+            "sort_order": len(out) + 1,
+        })
+    return out
+
+
+def read_remedials(wb, codes: set[str]) -> list[dict]:
+    ws = wb["Remedial"]
+    out, seen = [], set()
+    for r in range(5, ws.max_row + 1):
+        code = text(ws.cell(r, 2).value)
+        vals = [ws.cell(r, c).value for c in (8, 9, 10, 11, 15, 16)]
+        if not code:
+            continue
+        where = f"Remedial!row {r}"
+        if code not in codes:
+            fail(where, f"unknown ID {code}")
+        if code in seen:
+            fail(where, f"duplicate ID {code}")
+        seen.add(code)
+        out.append({
+            "staff_code": code,
+            "action": choice(vals[0], REMEDIAL, where + " Tindakan"),
+            "remedial_on": iso_date(vals[1], where + " Tgl"),
+            "role_play": number(vals[2], where + " Role Play", 0, 100),
+            "post_test": number(vals[3], where + " Post-Test", 0, 100),
+            "reported": choice(vals[4], YA_BELUM, where + " Dilaporkan"),
+            "notes": text(vals[5]),
+            "sort_order": len(out) + 1,
+        })
+    return out
+
+
+def read_replacements(wb, staff: list[dict]) -> list[dict]:
+    ws = wb["Penggantian SDM"]
+    by_name = {}
+    for s in staff:
+        by_name.setdefault((s["station"], s["name"].lower()), s["code"])
+    out = []
+    for r in range(5, ws.max_row + 1):
+        name = text(ws.cell(r, 4).value)
+        if not name:
+            continue
+        where = f"Penggantian SDM!row {r}"
+        station = (text(ws.cell(r, 3).value) or "").upper() or None
+        out.append({
+            "program": choice(ws.cell(r, 2).value, PROGRAMS, where + " Program"),
+            "station": station,
+            "staff_code": by_name.get((station, name.lower())),
+            "replaced_name": name,
+            "reason": text(ws.cell(r, 5).value),
+            "withdrawn_on": iso_date(ws.cell(r, 6).value, where + " Tgl Ditarik"),
+            "replacement_name": text(ws.cell(r, 7).value),
+            "effective_on": iso_date(ws.cell(r, 8).value, where + " Tgl Efektif"),
+            "training_on": iso_date(ws.cell(r, 9).value, where + " Tgl Training"),
+            "post_test": number(ws.cell(r, 10).value, where + " Post-Test", 0, 100),
+            "final_result": number(ws.cell(r, 11).value, where + " Final", 0, 100),
+            "reported": choice(ws.cell(r, 14).value, YA_BELUM, where + " Dilaporkan"),
+            "notes": text(ws.cell(r, 15).value),
+            "sort_order": len(out) + 1,
+        })
+    return out
+
+
+# ---------------------------------------------------------------- cached results (parity test)
+
+
+def find_row(ws, col: int, label: str, start: int = 1) -> int:
+    for r in range(start, ws.max_row + 1):
+        if text(ws.cell(r, col).value) == label:
+            return r
+    fail(ws.title, f"label {label!r} not found in column {col}")
+    return 0
+
+
+def section_rows(ws, title_prefix: str, keys: list[str]) -> dict[str, list]:
+    """Rows under the section whose title in column B starts with title_prefix, keyed by column B."""
+    top = next(r for r in range(1, ws.max_row + 1) if (text(ws.cell(r, 2).value) or "").startswith(title_prefix))
+    out = {}
+    for key in keys:
+        r = find_row(ws, 2, key, top + 2)
+        out[key] = [ws.cell(r, c).value for c in range(3, 16)]
+    return out
+
+
+def expected(wb, stations: list[str]) -> dict:
+    d, lm = wb["Dashboard"], wb["Laporan Mingguan"]
+    kpi = {}
+    for r in range(7, 14):
+        kpi[text(d.cell(r, 2).value)] = [d.cell(r, c).value for c in (3, 4, 5)]
+    units = [text(d.cell(r, 2).value) for r in range(1, d.max_row + 1)]
+    unit_keys = [u for u in stations if u in units] + ["TOTAL"]
+    return {
+        "today": iso_date(d["C3"].value, "Dashboard!C3"),
+        "week": int(lm["C4"].value),
+        "dashboard": {
+            "kpis": kpi,
+            "byGroup": section_rows(d, "2. PROGRES", list(GROUPS) + ["TOTAL"]),
+            "byAspect": section_rows(d, "3. PROGRES", list(ASPECTS) + ["TOTAL"]),
+            "programs": section_rows(d, "4. KELULUSAN", ["IULS", "RUST", "TOTAL"]),
+            "units": section_rows(d, "5. PERFORMA", unit_keys),
+        },
+        "laporan": {
+            "performance": section_rows(lm, "A. PERFORMA", ["IULS", "RUST", "TOTAL"]),
+            "aspects": section_rows(lm, "A2.", ["IULS", "RUST", "TOTAL"]),
+            "actions": section_rows(lm, "B. PROGRES", list(GROUPS) + ["TOTAL"]),
+            "bmi": section_rows(lm, "C. CEK BMI", ["IULS", "RUST", "TOTAL"]),
+            "trend": section_rows(lm, "D. TREN", ["IULS", "RUST", "SEMUA"]),
+        },
+    }
+
+
+# ---------------------------------------------------------------- main
+
+COLS = {
+    "staff": ["code", "program", "provider", "station", "name", "employee_no", "gender", "touch_point",
+              "role_play", "post_test", "report_remark", "assignment_status", "feedback", "notes",
+              "bmi_has_note", "bmi_note", "sort_order"],
+    "weekly_scores": ["staff_code", "week", "touch_point", "score_grooming", "score_knowledge", "score_attitude",
+                      "score_communication", "gap_topic", "observer", "coaching_notes"],
+    "bmi_checks": ["staff_code", "period", "check_date", "height_cm", "weight_kg"],
+    "action_items": ["code", "group_name", "aspect", "root_cause", "action", "target", "kind", "schedule",
+                     "due_date", "pic", "status", "progress", "updated_on", "evidence", "kps_notes", "source",
+                     "sort_order"],
+    "remedials": ["staff_code", "action", "remedial_on", "role_play", "post_test", "reported", "notes", "sort_order"],
+    "replacements": ["program", "station", "staff_code", "replaced_name", "reason", "withdrawn_on",
+                     "replacement_name", "effective_on", "training_on", "post_test", "final_result", "reported",
+                     "notes", "sort_order"],
+}
 
 
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser()
     ap.add_argument("--xlsx", type=Path, default=DEFAULT_XLSX)
     ap.add_argument("--seed", type=Path, default=DEFAULT_SEED)
     ap.add_argument("--rows", type=Path, default=DEFAULT_ROWS)
-    ap.add_argument("--check", action="store_true", help="validate and report only")
-    args = ap.parse_args(argv)
+    ap.add_argument("--check", action="store_true")
+    a = ap.parse_args(argv)
 
-    raw = args.xlsx.read_bytes()
-    sha = hashlib.sha256(raw).hexdigest()
-    wv = openpyxl.load_workbook(args.xlsx, data_only=True)
-    wf = openpyxl.load_workbook(args.xlsx, data_only=False)
+    wb = openpyxl.load_workbook(a.xlsx, data_only=True)
+    if wb["Master SDM"]["L5"].value is None and wb["Master SDM"]["B5"].value is not None:
+        raise ImportFailure("the workbook has no cached formula values; open and save it in Excel/Sheets first")
 
-    settings = read_settings(wv, wf)
-    staff, cached_staff, bmi_data = read_staff(wv)
-    score_data = read_weekly_scores(wv)
-    if bmi_data or score_data:
-        fail("workbook", "weekly scores / BMI checks now contain data; extend the generator to import them: "
-             + "; ".join((bmi_data + score_data)[:5]))
-    items, cached_items = read_action_items(wv, wf)
-    repl, cached_repl = read_replacements(wv)
-    links = link_replacements(repl, staff)
-    today = iso_date(wv["Parameter"]["C23"].value, "Parameter!C23")
+    settings = read_settings(wb)
+    stations = read_stations(wb)
+    staff = read_staff(wb)
+    codes = {s["code"] for s in staff}
+    for s in staff:
+        if s["station"] not in stations:
+            stations.append(s["station"])
+    data = {
+        "staff": staff,
+        "weekly_scores": read_weekly_scores(wb, codes),
+        "bmi_checks": read_bmi(wb, codes, settings["bmi_periods"]),
+        "action_items": read_action_items(wb),
+        "remedials": read_remedials(wb, codes),
+        "replacements": read_replacements(wb, staff),
+    }
 
-    report = data_report(staff, cached_staff, items, repl) + links
-    print(f"workbook sha256 {sha[:16]}…  cached TODAY() = {today}", file=sys.stderr)
-    print(f"staff {len(staff)}, action_items {len(items)}, replacements {len(repl)}, "
-          f"bmi_note {sum(1 for s in staff if s['bmi_note'])}", file=sys.stderr)
-    for line in report:
-        print("  - " + line, file=sys.stderr)
-    if args.check:
+    print(f"workbook: {a.xlsx.name}")
+    for k, v in data.items():
+        print(f"  {k:<15} {len(v)}")
+    dummy = sum(1 for s in staff if "DUMMY" in (s["notes"] or "").upper())
+    if dummy:
+        print(f"  note: {dummy} staff rows are marked DUMMY")
+    if a.check:
         return 0
 
-    staff_cols = ["code", "station", "name", "nipp", "gender", "pre_test", "post_test", *SCORE_COLS,
-                  "report_conclusion", "assignment_status", "notes", "bmi_note", "sort_order"]
-    item_cols = ["code", "report_group", "area", "action", "target", "kind", "schedule", "due_date", "pic",
-                 "status", "progress", "updated_on", "evidence", "kps_notes", "due_rule", "sort_order"]
-    repl_cols = ["report_group", "station", "replaced_name", "reason", "withdrawn_on", "replacement_name",
-                 "effective_on", "training_on", "post_test", "practice_avg", "reported", "notes", "staff_code",
-                 "sort_order"]
-    types = {
-        **{c: "text" for c in staff_cols + item_cols + repl_cols},
-        **{c: "numeric" for c in ("pre_test", "post_test", "practice_avg")},
-        **{c: "smallint" for c in SCORE_COLS + ("progress",)},
-        **{c: "date" for c in ("due_date", "updated_on", "withdrawn_on", "effective_on", "training_on")},
-        "sort_order": "integer",
-    }
-    sql = "\n".join([
-        "-- Generated by scripts/import_xlsx.py from \"Tracker Tindak Lanjut Uplifting JOUMPA.xlsx\"",
-        f"-- workbook sha256 {sha}",
-        "-- Contains personal data (names, NIPP). Gitignored; do not commit. Do not edit by hand.",
-        "-- Idempotent: re-running resets these rows to the workbook values; other rows are untouched.",
-        "",
-        "set client_encoding = 'UTF8';",
+    seed = [
+        f"-- Generated by scripts/import_xlsx.py from {a.xlsx.name}. Do not edit; do not commit.",
         "begin;",
-        "",
-        f"-- staff: {len(staff)} rows (Master SDM; bmi_note from Cek BMI 2 Mingguan AK)",
-        upsert("staff", "code", staff_cols, staff),
-        "",
-        f"-- action_items: {len(items)} rows (Tindak Lanjut; progress = Excel fraction x 100;"
-        f" due_rule on {sum(1 for it in items if it['due_rule'])} rolling items)",
-        upsert("action_items", "code", item_cols, items),
-        "",
-        f"-- replacements: {len(repl)} rows (Penggantian SDM; staff_code linked by normalized name)",
-        merge("replacements", ["report_group", "replaced_name"], repl_cols, repl, types),
-        "",
-        "commit;",
-        "",
-    ])
-    args.seed.parent.mkdir(parents=True, exist_ok=True)
-    args.seed.write_text(sql, encoding="utf-8")
+        "truncate public.weekly_scores, public.bmi_checks, public.remedials, public.replacements,"
+        " public.weekly_reports, public.action_items, public.staff restart identity cascade;",
+        "insert into public.stations (code, sort) values\n"
+        + ",\n".join(f"  ({sql_literal(c)}, {i + 1})" for i, c in enumerate(stations))
+        + "\non conflict (code) do update set sort = excluded.sort;",
+        "update public.settings set "
+        + ", ".join(f"{k} = {sql_literal(v)}" for k, v in settings.items())
+        + " where id = 1;",
+    ]
+    for table in COLS:
+        seed.append(insert(table, COLS[table], data[table]))
+    seed.append("commit;")
+    a.seed.parent.mkdir(parents=True, exist_ok=True)
+    a.seed.write_text("\n".join(seed) + "\n", encoding="utf-8")
 
-    def camel_rows(rows):
-        return [{camel(k): v for k, v in r.items()} for r in rows]
-
-    out_dir = args.rows.parent
-    out_dir.mkdir(parents=True, exist_ok=True)
-    gi = out_dir / ".gitignore"
-    if out_dir.resolve() == DEFAULT_ROWS.parent.resolve() and not gi.exists():
-        gi.write_text("# generated from the workbook: personal data, never commit\n*\n", encoding="utf-8")
-    payload = {
-        "source": args.xlsx.name,
-        "sha256": sha,
-        "today": today,
-        "settings": settings,
-        "staff": camel_rows(staff),
-        "weeklyScores": [],
-        "bmiChecks": [],
-        "actionItems": camel_rows(items),
-        "replacements": camel_rows(repl),
-        "cached": {"staff": cached_staff, "actionItems": cached_items, "replacements": cached_repl},
+    rows = {
+        "settings": {camel(k): v for k, v in settings.items()},
+        "stations": [{"code": c, "sort": i + 1} for i, c in enumerate(stations)],
+        **{camel(t): [{camel(k): v for k, v in r.items()} for r in rs] for t, rs in data.items()},
+        "expected": expected(wb, stations),
     }
-    args.rows.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {args.seed.relative_to(ROOT) if args.seed.is_relative_to(ROOT) else args.seed} "
-          f"and {args.rows.relative_to(ROOT) if args.rows.is_relative_to(ROOT) else args.rows}", file=sys.stderr)
+    a.rows.parent.mkdir(parents=True, exist_ok=True)
+    (a.rows.parent / ".gitignore").write_text("*\n", encoding="utf-8")
+    a.rows.write_text(json.dumps(rows, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    print(f"wrote {a.seed.relative_to(ROOT)} and {a.rows.relative_to(ROOT)}")
     return 0
 
 
 if __name__ == "__main__":
     try:
         sys.exit(main(sys.argv[1:]))
-    except ImportError_ as e:
-        print(f"import_xlsx: {e}", file=sys.stderr)
+    except ImportFailure as e:
+        print(f"error: {e}", file=sys.stderr)
         sys.exit(1)

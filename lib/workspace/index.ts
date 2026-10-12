@@ -46,7 +46,8 @@ export {
   trackerData,
 } from "./view";
 
-export type WorkspaceScope = "SUB" | "DPS" | "CGK" | "HLP" | "KNO" | "KPS";
+/** A station code from public.stations (e.g. "CGK"), or "KPS" for head office (all stations). */
+export type WorkspaceScope = string;
 
 /**
  * share_open(token) payload (docs/SPEC.md "Link RPC surface"): full table rows, already
@@ -64,12 +65,13 @@ type ShareOpenPayload = {
   weekly_scores?: Omit<Tables<"weekly_scores">, "updated_by">[];
   bmi_checks?: Omit<Tables<"bmi_checks">, "updated_by_user">[];
   action_items?: Tables<"action_items">[];
+  remedials?: Tables<"remedials">[];
   replacements?: Tables<"replacements">[];
   weekly_reports?: Tables<"weekly_reports">[];
   link_labels?: Record<string, string>;
 };
 
-/** The five settings columns the 10-week rail needs (WeekRail accepts this shape as-is). */
+/** The settings columns the week rail needs (WeekRail accepts this shape as-is). */
 export type WorkspaceSchedule = Pick<
   Tables<"settings">,
   "week1_start" | "weeks" | "bmi_first_check" | "bmi_interval_days" | "bmi_periods"
@@ -79,19 +81,20 @@ export type WorkspaceStaff = Camelize<Tables<"staff">>;
 export type WorkspaceWeeklyScore = Camelize<Omit<Tables<"weekly_scores">, "updated_by">>;
 export type WorkspaceBmiCheck = Camelize<Omit<Tables<"bmi_checks">, "updated_by_user">>;
 export type WorkspaceActionItem = Camelize<Tables<"action_items">>;
+export type WorkspaceRemedial = Camelize<Tables<"remedials">>;
 export type WorkspaceReplacement = Camelize<Tables<"replacements">>;
 export type WorkspaceWeeklyReport = Camelize<Tables<"weekly_reports">>;
 
 /** Everything one link may see, camelCased with lib/rules camelize (shallow). */
 export type Workspace = {
   scope: WorkspaceScope;
-  /** "Stasiun SUB", "KPS · semua stasiun" or "Pemilik · semua stasiun": show it wherever the scope matters. */
+  /** "Stasiun CGK", "KPS · semua stasiun" or "Pemilik · semua stasiun": show it wherever the scope matters. */
   scopeLabel: string;
   /** True for KPS links and for the owner (both see every station and the KPS-only fields). */
   isKps: boolean;
   /** The signed-in owner (/admin). Owner-only extras (staff delete, new action items) check this. */
   isOwner: boolean;
-  /** The link's own label (set by the owner), e.g. "PIC SUB"; "Pemilik" for the owner. */
+  /** The link's own label (set by the owner), e.g. "PIC CGK"; "Pemilik" for the owner. */
   label: string | null;
   /** This link's id (rows whose updatedByLink equals it were changed "lewat tautan ini"); null for the owner. */
   linkId: string | null;
@@ -103,6 +106,7 @@ export type Workspace = {
   weeklyScores: WorkspaceWeeklyScore[];
   bmiChecks: WorkspaceBmiCheck[];
   actionItems: WorkspaceActionItem[];
+  remedials: WorkspaceRemedial[];
   replacements: WorkspaceReplacement[];
   weeklyReports: WorkspaceWeeklyReport[];
   /** share_links.id → label, to show which link last changed a row (updated_by_link). */
@@ -156,6 +160,7 @@ function toWorkspace(raw: ShareOpenPayload, owner: boolean): Workspace {
     weeklyScores: (raw.weekly_scores ?? []).map(camelize),
     bmiChecks: (raw.bmi_checks ?? []).map(camelize),
     actionItems: (raw.action_items ?? []).map(camelize),
+    remedials: (raw.remedials ?? []).map(camelize),
     replacements: (raw.replacements ?? []).map(camelize),
     weeklyReports: (raw.weekly_reports ?? []).map(camelize),
     linkLabels: raw.link_labels ?? {},

@@ -46,18 +46,19 @@ export type Database = {
       action_items: {
         Row: {
           action: string | null
-          area: string | null
+          aspect: string | null
           code: string
           due_date: string | null
-          due_rule: string | null
           evidence: string | null
+          group_name: string
           kind: string | null
           kps_notes: string | null
           pic: string | null
           progress: number
-          report_group: string
+          root_cause: string | null
           schedule: string | null
           sort_order: number | null
+          source: string | null
           status: string
           target: string | null
           updated_at: string
@@ -66,18 +67,19 @@ export type Database = {
         }
         Insert: {
           action?: string | null
-          area?: string | null
+          aspect?: string | null
           code: string
           due_date?: string | null
-          due_rule?: string | null
           evidence?: string | null
+          group_name: string
           kind?: string | null
           kps_notes?: string | null
           pic?: string | null
           progress?: number
-          report_group: string
+          root_cause?: string | null
           schedule?: string | null
           sort_order?: number | null
+          source?: string | null
           status?: string
           target?: string | null
           updated_at?: string
@@ -86,18 +88,19 @@ export type Database = {
         }
         Update: {
           action?: string | null
-          area?: string | null
+          aspect?: string | null
           code?: string
           due_date?: string | null
-          due_rule?: string | null
           evidence?: string | null
+          group_name?: string
           kind?: string | null
           kps_notes?: string | null
           pic?: string | null
           progress?: number
-          report_group?: string
+          root_cause?: string | null
           schedule?: string | null
           sort_order?: number | null
+          source?: string | null
           status?: string
           target?: string | null
           updated_at?: string
@@ -198,17 +201,74 @@ export type Database = {
           },
         ]
       }
-      replacements: {
+      remedials: {
         Row: {
-          effective_on: string | null
+          action: string | null
           id: number
           notes: string | null
           post_test: number | null
-          practice_avg: number | null
+          remedial_on: string | null
+          reported: string | null
+          role_play: number | null
+          sort_order: number | null
+          staff_code: string
+          updated_at: string
+          updated_by_link: string | null
+        }
+        Insert: {
+          action?: string | null
+          id?: number
+          notes?: string | null
+          post_test?: number | null
+          remedial_on?: string | null
+          reported?: string | null
+          role_play?: number | null
+          sort_order?: number | null
+          staff_code: string
+          updated_at?: string
+          updated_by_link?: string | null
+        }
+        Update: {
+          action?: string | null
+          id?: number
+          notes?: string | null
+          post_test?: number | null
+          remedial_on?: string | null
+          reported?: string | null
+          role_play?: number | null
+          sort_order?: number | null
+          staff_code?: string
+          updated_at?: string
+          updated_by_link?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "remedials_staff_code_fkey"
+            columns: ["staff_code"]
+            isOneToOne: true
+            referencedRelation: "staff"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "remedials_updated_by_link_fkey"
+            columns: ["updated_by_link"]
+            isOneToOne: false
+            referencedRelation: "share_links"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      replacements: {
+        Row: {
+          effective_on: string | null
+          final_result: number | null
+          id: number
+          notes: string | null
+          post_test: number | null
+          program: string | null
           reason: string | null
           replaced_name: string
           replacement_name: string | null
-          report_group: string | null
           reported: string | null
           sort_order: number | null
           staff_code: string | null
@@ -220,14 +280,14 @@ export type Database = {
         }
         Insert: {
           effective_on?: string | null
+          final_result?: number | null
           id?: number
           notes?: string | null
           post_test?: number | null
-          practice_avg?: number | null
+          program?: string | null
           reason?: string | null
           replaced_name: string
           replacement_name?: string | null
-          report_group?: string | null
           reported?: string | null
           sort_order?: number | null
           staff_code?: string | null
@@ -239,14 +299,14 @@ export type Database = {
         }
         Update: {
           effective_on?: string | null
+          final_result?: number | null
           id?: number
           notes?: string | null
           post_test?: number | null
-          practice_avg?: number | null
+          program?: string | null
           reason?: string | null
           replaced_name?: string
           replacement_name?: string | null
-          report_group?: string | null
           reported?: string | null
           sort_order?: number | null
           staff_code?: string | null
@@ -284,56 +344,74 @@ export type Database = {
         Row: {
           bmi_first_check: string
           bmi_interval_days: number
+          bmi_interval_months: number
           bmi_normal_max: number
           bmi_overweight_max: number
           bmi_periods: number
           bmi_underweight_below: number
+          coverage_done: number
           id: number
-          improve_avg_min: number
-          min_height_female: number | null
-          min_height_male: number | null
-          pass_avg_min: number
-          posttest_min: number
+          pass_grade: number
           replacement_deadline: string
+          target_coverage: number
+          target_interactive: number
+          target_knowledge: number
+          target_overweight_max: number
+          target_overweight_months: number
+          target_pass_rate: number
           updated_at: string
           week1_start: string
           weeks: number
+          weight_post_test: number
+          weight_role_play: number
         }
         Insert: {
           bmi_first_check: string
           bmi_interval_days: number
+          bmi_interval_months: number
           bmi_normal_max: number
           bmi_overweight_max: number
           bmi_periods: number
           bmi_underweight_below: number
+          coverage_done: number
           id?: number
-          improve_avg_min: number
-          min_height_female?: number | null
-          min_height_male?: number | null
-          pass_avg_min: number
-          posttest_min: number
+          pass_grade: number
           replacement_deadline: string
+          target_coverage: number
+          target_interactive: number
+          target_knowledge: number
+          target_overweight_max: number
+          target_overweight_months: number
+          target_pass_rate: number
           updated_at?: string
           week1_start: string
           weeks: number
+          weight_post_test: number
+          weight_role_play: number
         }
         Update: {
           bmi_first_check?: string
           bmi_interval_days?: number
+          bmi_interval_months?: number
           bmi_normal_max?: number
           bmi_overweight_max?: number
           bmi_periods?: number
           bmi_underweight_below?: number
+          coverage_done?: number
           id?: number
-          improve_avg_min?: number
-          min_height_female?: number | null
-          min_height_male?: number | null
-          pass_avg_min?: number
-          posttest_min?: number
+          pass_grade?: number
           replacement_deadline?: string
+          target_coverage?: number
+          target_interactive?: number
+          target_knowledge?: number
+          target_overweight_max?: number
+          target_overweight_months?: number
+          target_pass_rate?: number
           updated_at?: string
           week1_start?: string
           weeks?: number
+          weight_post_test?: number
+          weight_role_play?: number
         }
         Relationships: []
       }
@@ -381,70 +459,67 @@ export type Database = {
       staff: {
         Row: {
           assignment_status: string
+          bmi_has_note: boolean | null
           bmi_note: string | null
           code: string
           created_at: string
+          employee_no: string | null
+          feedback: string | null
           gender: string | null
           name: string
-          nipp: string | null
           notes: string | null
           post_test: number | null
-          pre_test: number | null
-          report_conclusion: string | null
-          score_a: number | null
-          score_b: number | null
-          score_c: number | null
-          score_d: number | null
-          score_e: number | null
-          score_f: number | null
+          program: string | null
+          provider: string | null
+          report_remark: string | null
+          role_play: number | null
           sort_order: number | null
           station: string
+          touch_point: string | null
           updated_at: string
           updated_by_link: string | null
         }
         Insert: {
           assignment_status?: string
+          bmi_has_note?: boolean | null
           bmi_note?: string | null
           code: string
           created_at?: string
+          employee_no?: string | null
+          feedback?: string | null
           gender?: string | null
           name: string
-          nipp?: string | null
           notes?: string | null
           post_test?: number | null
-          pre_test?: number | null
-          report_conclusion?: string | null
-          score_a?: number | null
-          score_b?: number | null
-          score_c?: number | null
-          score_d?: number | null
-          score_e?: number | null
-          score_f?: number | null
+          program?: string | null
+          provider?: string | null
+          report_remark?: string | null
+          role_play?: number | null
           sort_order?: number | null
           station: string
+          touch_point?: string | null
           updated_at?: string
           updated_by_link?: string | null
         }
         Update: {
           assignment_status?: string
+          bmi_has_note?: boolean | null
           bmi_note?: string | null
           code?: string
           created_at?: string
+          employee_no?: string | null
+          feedback?: string | null
           gender?: string | null
           name?: string
-          nipp?: string | null
           notes?: string | null
           post_test?: number | null
-          pre_test?: number | null
-          report_conclusion?: string | null
-          score_a?: number | null
-          score_b?: number | null
-          score_c?: number | null
-          score_d?: number | null
-          score_e?: number | null
-          score_f?: number | null
+          program?: string | null
+          provider?: string | null
+          report_remark?: string | null
+          role_play?: number | null
           sort_order?: number | null
           station?: string
+          touch_point?: string | null
           updated_at?: string
           updated_by_link?: string | null
         }
@@ -468,17 +543,14 @@ export type Database = {
       stations: {
         Row: {
           code: string
-          report_group: string
           sort: number
         }
         Insert: {
           code: string
-          report_group: string
           sort: number
         }
         Update: {
           code?: string
-          report_group?: string
           sort?: number
         }
         Relationships: []
@@ -604,15 +676,15 @@ export type Database = {
       weekly_scores: {
         Row: {
           coaching_notes: string | null
+          gap_topic: string | null
           id: number
           observer: string | null
-          score_a: number | null
-          score_b: number | null
-          score_c: number | null
-          score_d: number | null
-          score_e: number | null
-          score_f: number | null
+          score_attitude: number | null
+          score_communication: number | null
+          score_grooming: number | null
+          score_knowledge: number | null
           staff_code: string
+          touch_point: string | null
           updated_at: string
           updated_by: string | null
           updated_by_link: string | null
@@ -620,15 +692,15 @@ export type Database = {
         }
         Insert: {
           coaching_notes?: string | null
+          gap_topic?: string | null
           id?: number
           observer?: string | null
-          score_a?: number | null
-          score_b?: number | null
-          score_c?: number | null
-          score_d?: number | null
-          score_e?: number | null
-          score_f?: number | null
+          score_attitude?: number | null
+          score_communication?: number | null
+          score_grooming?: number | null
+          score_knowledge?: number | null
           staff_code: string
+          touch_point?: string | null
           updated_at?: string
           updated_by?: string | null
           updated_by_link?: string | null
@@ -636,15 +708,15 @@ export type Database = {
         }
         Update: {
           coaching_notes?: string | null
+          gap_topic?: string | null
           id?: number
           observer?: string | null
-          score_a?: number | null
-          score_b?: number | null
-          score_c?: number | null
-          score_d?: number | null
-          score_e?: number | null
-          score_f?: number | null
+          score_attitude?: number | null
+          score_communication?: number | null
+          score_grooming?: number | null
+          score_knowledge?: number | null
           staff_code?: string
+          touch_point?: string | null
           updated_at?: string
           updated_by?: string | null
           updated_by_link?: string | null
@@ -680,6 +752,13 @@ export type Database = {
     }
     Functions: {
       is_admin: { Args: never; Returns: boolean }
+      share_delete_remedial: {
+        Args: {
+          p_staff_code: string
+          p_token: string
+        }
+        Returns: Json
+      }
       share_delete_replacement: {
         Args: {
           p_id: number
@@ -690,15 +769,10 @@ export type Database = {
       share_kps_save_staff_baseline: {
         Args: {
           p_code: string
+          p_feedback: string
           p_post_test: number
-          p_pre_test: number
-          p_report_conclusion: string
-          p_score_a: number
-          p_score_b: number
-          p_score_c: number
-          p_score_d: number
-          p_score_e: number
-          p_score_f: number
+          p_report_remark: string
+          p_role_play: number
           p_token: string
         }
         Returns: Json
@@ -706,14 +780,16 @@ export type Database = {
       share_kps_update_action_item: {
         Args: {
           p_action: string
-          p_area: string
+          p_aspect: string
           p_code: string
           p_due_date: string
-          p_due_rule: string
+          p_group_name: string
           p_kind: string
           p_kps_notes: string
           p_pic: string
+          p_root_cause: string
           p_schedule: string
+          p_source: string
           p_target: string
           p_token: string
         }
@@ -733,8 +809,22 @@ export type Database = {
       }
       share_save_profile: {
         Args: {
+          p_bmi_has_note: boolean
           p_bmi_note: string
           p_gender: string
+          p_staff_code: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      share_save_remedial: {
+        Args: {
+          p_action: string
+          p_notes: string
+          p_post_test: number
+          p_remedial_on: string
+          p_reported: string
+          p_role_play: number
           p_staff_code: string
           p_token: string
         }
@@ -743,14 +833,14 @@ export type Database = {
       share_save_replacement: {
         Args: {
           p_effective_on: string
+          p_final_result: number
           p_id: number
           p_notes: string
           p_post_test: number
-          p_practice_avg: number
+          p_program: string
           p_reason: string
           p_replaced_name: string
           p_replacement_name: string
-          p_report_group: string
           p_reported: string
           p_staff_code: string
           p_station: string
@@ -764,12 +854,15 @@ export type Database = {
         Args: {
           p_assignment_status: string
           p_code: string
+          p_employee_no: string
           p_gender: string
           p_name: string
-          p_nipp: string
           p_notes: string
+          p_program: string
+          p_provider: string
           p_station: string
           p_token: string
+          p_touch_point: string
         }
         Returns: Json
       }
@@ -784,15 +877,15 @@ export type Database = {
       share_save_weekly_score: {
         Args: {
           p_coaching_notes: string
+          p_gap_topic: string
           p_observer: string
-          p_score_a: number
-          p_score_b: number
-          p_score_c: number
-          p_score_d: number
-          p_score_e: number
-          p_score_f: number
+          p_score_attitude: number
+          p_score_communication: number
+          p_score_grooming: number
+          p_score_knowledge: number
           p_staff_code: string
           p_token: string
+          p_touch_point: string
           p_week: number
         }
         Returns: Json

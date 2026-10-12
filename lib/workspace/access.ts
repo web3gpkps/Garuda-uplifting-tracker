@@ -3,7 +3,7 @@
  * server-only import, so client components may build links with hrefs(access).
  *
  * Two kinds of access, one set of screens (docs/UX.md §1):
- *   link  : /s/<token>, no account; scope comes from the link (SUB … KNO, or KPS).
+ *   link  : /s/<token>, no account; scope comes from the link (a station code, or KPS).
  *   owner : /admin, the signed-in owner; scope "KPS" with label "Pemilik" in SQL.
  *
  * Server code turns an access into data with getWorkspaceFor(access) and, in Server
@@ -46,8 +46,10 @@ export const SHEETS = [
   { key: "performa", label: "Log Performa", path: "/performa" },
   { key: "bmi", label: "Cek BMI", path: "/bmi" },
   { key: "tindakLanjut", label: "Tindak Lanjut", path: "/tindak-lanjut" },
+  { key: "remedial", label: "Remedial", path: "/remedial" },
   { key: "penggantian", label: "Penggantian SDM", path: "/penggantian" },
   { key: "laporan", label: "Laporan Mingguan", path: "/laporan" },
+  { key: "acuan", label: "Acuan PDF", path: "/acuan" },
 ] as const;
 
 export type SheetKey = (typeof SHEETS)[number]["key"];
