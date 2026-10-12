@@ -1,6 +1,5 @@
 /**
- * Parameter (public.settings, id = 1): labels and help from the workbook's sheet
- * "Parameter" (columns B and D), and validation that mirrors the table's CHECK
+ * Parameter (public.settings, id = 1): labels, short help, and validation that mirrors the table's CHECK
  * constraints (supabase/migrations/*_stations_settings.sql), so the form says what the
  * database would refuse before it is sent. Pure: used by the form and the Server Action.
  *
@@ -37,168 +36,137 @@ export type SettingKind = "date" | "int" | "decimal" | "percent";
 export type SettingField = {
   key: SettingKey;
   kind: SettingKind;
-  /** Column B of sheet Parameter. */
+  /** Field label. */
   label: string;
-  /** Column D ("Keterangan / sumber"), plus the allowed range. */
+  /** One short help line: the allowed range or what the value is used for. */
   help: string;
   unit?: string;
 };
 
-export type SettingSection = { id: string; title: string; description?: string; fields: SettingField[] };
+export type SettingSection = { id: string; title: string; fields: SettingField[] };
 
 export const SETTING_SECTIONS: SettingSection[] = [
   {
     id: "jadwal",
     title: "Jadwal pemantauan",
     fields: [
-      {
-        key: "week1_start",
-        kind: "date",
-        label: "Tanggal mulai Minggu ke-1 (Senin)",
-        help: "Periode pelaksanaan training Oktober sampai Desember (slide 16).",
-      },
-      {
-        key: "weeks",
-        kind: "int",
-        label: "Jumlah minggu pemantauan",
-        help: "Mencakup role play W4 Nov sampai W2 Des. Rentang 1 sampai 20.",
-        unit: "minggu",
-      },
+      { key: "week1_start", kind: "date", label: "Tanggal mulai Minggu ke-1", help: "Hari Senin." },
+      { key: "weeks", kind: "int", label: "Jumlah minggu pemantauan", help: "1 sampai 20.", unit: "minggu" },
     ],
   },
   {
     id: "cek-bmi",
     title: "Cek BMI",
-    description:
-      "SDM dengan catatan BMI dicek tiap interval hari, SDM tanpa catatan cukup tiap interval bulan. Slot ke-n direncanakan pada tanggal slot 1 + interval hari × (n − 1).",
     fields: [
-      {
-        key: "bmi_first_check",
-        kind: "date",
-        label: "Tanggal cek BMI slot 1",
-        help: "BMI Tracker, GA Health & Vitality Campaign (slide 15).",
-      },
+      { key: "bmi_first_check", kind: "date", label: "Tanggal cek BMI ke-1", help: "Cek berikutnya dijadwalkan dari tanggal ini." },
       {
         key: "bmi_interval_days",
         kind: "int",
-        label: "Interval cek BMI, ada catatan (hari)",
-        help: "Per 2 minggu untuk SDM yang memiliki catatan (slide 15). Rentang 1 sampai 90 hari.",
+        label: "Interval cek, ada catatan BMI",
+        help: "1 sampai 90 hari.",
         unit: "hari",
       },
       {
         key: "bmi_interval_months",
         kind: "int",
-        label: "Interval cek BMI, tanpa catatan (bulan)",
-        help: "Per bulan untuk SDM tanpa catatan (slide 15). Rentang 1 sampai 12 bulan.",
+        label: "Interval cek, tanpa catatan BMI",
+        help: "1 sampai 12 bulan.",
         unit: "bulan",
       },
-      {
-        key: "bmi_periods",
-        kind: "int",
-        label: "Jumlah slot cek di sheet BMI",
-        help: "Sheet Cek BMI menyediakan 6 slot. Rentang 1 sampai 12.",
-        unit: "slot",
-      },
+      { key: "bmi_periods", kind: "int", label: "Jumlah cek BMI", help: "1 sampai 12.", unit: "kali" },
     ],
   },
   {
     id: "klasifikasi-bmi",
     title: "Klasifikasi BMI",
-    description: "Harus berurutan: batas Kurus ≤ batas Normal ≤ batas Overweight ≤ 100.",
     fields: [
       {
         key: "bmi_underweight_below",
         kind: "decimal",
-        label: "BMI kategori Kurus jika <",
-        help: "Klasifikasi IMT Kemenkes RI (P2PTM): Kurus <18,5.",
+        label: "Kurus jika BMI di bawah",
+        help: "Kemenkes RI: 18,5.",
       },
-      { key: "bmi_normal_max", kind: "decimal", label: "BMI Normal s.d.", help: "Normal 18,5 sampai 25,0." },
+      { key: "bmi_normal_max", kind: "decimal", label: "Normal sampai BMI", help: "Kemenkes RI: 25,0." },
       {
         key: "bmi_overweight_max",
         kind: "decimal",
-        label: "BMI Overweight s.d. (di atasnya Obesitas)",
-        help: "Gemuk/Overweight >25,0 sampai 27,0; Obesitas >27,0.",
+        label: "Overweight sampai BMI",
+        help: "Di atasnya Obesitas. Kemenkes RI: 27,0.",
       },
     ],
   },
   {
     id: "kelulusan",
     title: "Kriteria kelulusan",
-    description: "Final Result = Role Play × bobot Role Play + Post-Test × bobot Post-Test, dibulatkan 1 desimal.",
     fields: [
-      {
-        key: "pass_grade",
-        kind: "decimal",
-        label: "Passing grade (skor ≥)",
-        help: "Standar kelulusan ≥85 (slide 4, 6, 17 sampai 20). Rentang 0 sampai 100.",
-      },
+      { key: "pass_grade", kind: "decimal", label: "Nilai lulus (minimal)", help: "0 sampai 100." },
       {
         key: "weight_role_play",
         kind: "percent",
         label: "Bobot Role Play di Final Result",
-        help: "Disimpulkan dari tabel peserta slide 19, 21, 22. Rentang 0 sampai 100 %.",
+        help: "Jumlah kedua bobot 100 %.",
         unit: "%",
       },
       {
         key: "weight_post_test",
         kind: "percent",
         label: "Bobot Post-Test di Final Result",
-        help: "Sumber sama dengan bobot Role Play. Rentang 0 sampai 100 %.",
+        help: "Jumlah kedua bobot 100 %.",
         unit: "%",
       },
     ],
   },
   {
     id: "target",
-    title: "Target KPI (slide 15)",
+    title: "Target KPI",
     fields: [
       {
         key: "target_overweight_max",
         kind: "percent",
-        label: "Target proporsi BMI overweight (maks.)",
-        help: "Penurunan persentase BMI overweight hingga <20 %.",
+        label: "BMI overweight + obesitas, maksimal",
+        help: "Proporsi SDM yang sudah dicek.",
         unit: "%",
       },
       {
         key: "target_overweight_months",
         kind: "int",
-        label: "Jangka waktu target BMI (bulan)",
-        help: "Dalam 6 bulan. Rentang 1 sampai 36.",
+        label: "Jangka waktu target BMI",
+        help: "1 sampai 36 bulan.",
         unit: "bulan",
       },
       {
         key: "target_knowledge",
         kind: "percent",
-        label: "Target ketepatan jawaban Product Knowledge",
-        help: "Lebih dari 90 %.",
+        label: "Product Knowledge, minimal",
+        help: "Rata-rata skor aspek Product Knowledge.",
         unit: "%",
       },
       {
         key: "target_interactive",
         kind: "percent",
-        label: "Target skor Interactive Communicating",
-        help: "Lebih dari 92 %.",
+        label: "Interactive Communicating, minimal",
+        help: "Rata-rata skor aspek komunikasi.",
         unit: "%",
       },
       {
         key: "target_coverage",
         kind: "int",
-        label: "Target cakupan coaching (jumlah frontliner)",
-        help: "Cakupan coaching 100 % dari total 812 frontliner. Lebih dari 0.",
+        label: "Target cakupan coaching",
+        help: "Jumlah frontliner.",
         unit: "orang",
       },
       {
         key: "coverage_done",
         kind: "int",
-        label: "Frontliner sudah coaching (update manual)",
-        help: "Posisi PDF: 795 frontliner (slide 2). Perbarui bila ada coaching susulan.",
+        label: "Frontliner sudah coaching",
+        help: "Perbarui bila ada coaching susulan.",
         unit: "orang",
       },
       {
         key: "target_pass_rate",
         kind: "percent",
-        label: "Target kelulusan peserta IULS/RUST setelah remedial",
-        help: "Tidak tertulis di PDF: asumsi seluruh peserta Failed mengikuti remedial hingga lulus (slide 27).",
+        label: "Kelulusan IULS dan RUST setelah remedial",
+        help: "Termasuk peserta yang lulus remedial.",
         unit: "%",
       },
     ],
@@ -211,7 +179,7 @@ export const SETTING_SECTIONS: SettingSection[] = [
         key: "replacement_deadline",
         kind: "date",
         label: "Batas waktu penggantian SDM",
-        help: "Tidak ada di PDF: default akhir periode training (W2 Des). Dipakai untuk status Ketepatan Waktu.",
+        help: "Dipakai untuk status ketepatan waktu.",
       },
     ],
   },

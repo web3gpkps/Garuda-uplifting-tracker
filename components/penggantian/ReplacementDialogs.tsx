@@ -498,7 +498,7 @@ export function ReplacementDeleteButton({ ctx, id, name }: { ctx: ReplacementCon
     <>
       <Button
         size="sm"
-        variant="quiet"
+        variant="ghost"
         tabIndex={-1}
         onClick={() => {
           setError(null);
@@ -567,7 +567,7 @@ export function ReplacementRowActions({ ctx, row }: { ctx: ReplacementContext; r
         <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
           Ubah
         </Button>
-        <Button variant="quiet" size="sm" onClick={() => setDeleteOpen(true)}>
+        <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)}>
           Hapus
         </Button>
       </div>

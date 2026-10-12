@@ -17,8 +17,8 @@ remedial bagi peserta yang belum lulus, penggantian SDM, dan target KPI dari sli
 | KPS | tautan ruang kerja dengan lingkup KPS, tanpa akun | semua stasiun, baseline training SDM, pembaruan Tindak Lanjut |
 | Pemilik | masuk di `/login`, area `/admin` | semua stasiun, termasuk tautan, Parameter dan sinkronisasi |
 
-Sheet yang tersedia: Dashboard, Master SDM, Log Performa, Cek BMI, Tindak Lanjut, Remedial,
-Penggantian SDM, Laporan Mingguan (bisa dicetak A4) dan Acuan PDF. Di desktop pengisian memakai
+Halaman: Beranda, Laporan Mingguan (bisa dicetak A4), Penilaian Mingguan, Cek BMI, Remedial,
+Tindak Lanjut (KPS dan pemilik), Data SDM dan Penggantian SDM. Di desktop pengisian memakai
 tabel ala spreadsheet (navigasi keyboard, tempel dari Excel, simpan otomatis per baris); di
 ponsel memakai kartu.
 

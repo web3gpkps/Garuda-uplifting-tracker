@@ -15,7 +15,6 @@ import { formatDecimal } from "@/lib/format";
 import { Button } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { DataGrid, type CellValue, type GridColumn, type SaveRowResult } from "@/components/grid/DataGrid";
-import { toneOf } from "@/components/performa/format";
 import { StaffDialog } from "./StaffDialog";
 import { StaffCards } from "./StaffCards";
 import { DeleteStaffDialog } from "./DeleteStaffDialog";
@@ -58,7 +57,7 @@ function text(value: CellValue): string | null {
 
 function chip(value: CellValue) {
   const label = text(value);
-  return label ? <StatusChip label={label} tone={toneOf(label)} bordered /> : null;
+  return label ? <StatusChip label={label} /> : null;
 }
 
 /**
@@ -218,7 +217,7 @@ export function StaffGrid(props: StaffGridProps) {
               type="button"
               tabIndex={-1}
               onClick={() => setDeleting(row)}
-              className="inline-flex min-h-8 items-center rounded-control px-2 text-xs font-semibold text-critical transition-colors duration-150 hover:bg-critical-tint"
+              className="inline-flex min-h-8 items-center rounded-control px-2 text-xs font-semibold text-critical transition-colors duration-120 hover:bg-critical-tint"
             >
               Hapus<span className="sr-only"> SDM {row.name}</span>
             </button>

@@ -1,51 +1,53 @@
 @import "tailwindcss";
 
 /*
- * Design tokens from DESIGN.md (Garuda Indonesia × Gapura Airport Services, light only).
+ * Design tokens from DESIGN.md (light only; printed reports are light too).
  * Raw tokens keep the DESIGN.md names; @theme maps them to Tailwind utilities
- * (bg-paper, text-ink, border-line-strong, bg-brand, text-critical, ...).
- * The default Tailwind palette, radii, shadows and animations are cleared on
- * purpose so screens can only use the agreed system. Ratios are WCAG 2 contrast.
+ * (bg-bg, bg-surface, bg-surface-sunken, text-ink, border-line-strong, bg-brand, text-critical, ...).
+ * The default Tailwind palette, radii, shadows, weights and animations are cleared on purpose
+ * so screens can only use the agreed system. Ratios are WCAG 2 contrast.
+ *
+ * Depth is borders only (1px --line). --shadow-float is reserved for menus, popovers,
+ * dialogs and the phone menu sheet.
  */
 :root {
   color-scheme: light;
 
-  --paper: #f7f8fa; /* cool off-white, sits under the navy without a warm cast */
-  --surface: #ffffff;
-  --ink: #1c2433; /* 14.6:1 on paper */
-  --ink-muted: #535b68; /* 6.5:1 on paper, 6.9:1 on surface */
-  --line: #d5dae1;
-  --line-strong: #7c8390; /* control borders: 3.8:1 on surface, 3.6:1 on paper and input tint */
-  --brand: #0b2f5b; /* Garuda navy: white on it 13.4:1, on paper 12.6:1 */
-  --brand-strong: #082446; /* pressed/hover fill for --brand; white text 15.5:1 */
-  --brand-tint: #e7eef7; /* selected rows, current week; brand on it 11.4:1, ink 13.3:1 */
-  /* Garuda teal, the one accent: current-week marker and the brand edge. 5.3:1 on paper,
-     5.6:1 on surface, 4.8:1 on brand-tint. The logo's own #008898 (4.0:1 on paper) and
-     #00808c (4.4:1) fall short for small text, so the accent is this darker step. */
-  --accent: #00737e;
-  /* Editable grid cells only (workbook: "Kuning = sel input"). Ink 14.7:1, muted 6.5:1, brand 12.6:1. */
-  --input-tint: #fff9d6;
-  --mark-lime: #b6d655; /* Gapura brand moment only, never text or control borders */
-  --mark-emerald: #46bb7f;
+  --bg: #f7f8fa; /* page */
+  --surface: #ffffff; /* panels, tables, inputs, editable grid cells */
+  --surface-sunken: #f1f3f6; /* table headers, computed (read-only) cells */
+  --ink: #1c2433; /* 15.6:1 on surface, 14.0:1 on sunken */
+  --ink-muted: #535b68; /* 6.85:1 on surface, 6.17:1 on sunken */
+  --line: #d5dae1; /* dividers only */
+  --line-strong: #7c8390; /* control borders, 3.81:1 on surface; never on sunken */
+  --brand: #0b2f5b; /* Garuda navy: primary button, active nav, focus ring; white on it 13.4:1 */
+  --brand-strong: #082446; /* hover / pressed */
+  --brand-tint: #e7eef7; /* active nav, selected row; navy on it 11.4:1 */
+  --accent: #00737e; /* Garuda teal: the "now" marker and inline links only; 5.59:1 */
 
-  /* Status tones (workbook colour code: hijau / oranye / merah, plus violet for "in progress"
-     so it never reads as the navy brand). Text on its own tint. */
+  /* Status tones: text on its own tint. */
   --good: #1d6b40; /* 5.7:1 */
   --good-tint: #e6f3ea;
-  --warning: #8a4b00; /* 6.1:1 */
+  --warning: #8a4b00; /* 6.07:1 */
   --warning-tint: #fdf1d8;
-  --critical: #a1261b; /* 6.3:1 */
-  --critical-strong: #8a1f16; /* pressed/hover fill for danger buttons; white text 9.2:1 */
+  --critical: #a1261b; /* 6.28:1 */
+  --critical-strong: #8a1f16; /* hover / pressed for danger buttons */
   --critical-tint: #fbe7e3;
   --progress: #6b3fa0; /* 6.3:1 */
   --progress-tint: #f1ebf8;
   --neutral: #535b68; /* 5.9:1 */
   --neutral-tint: #eceef2;
+
+  /* Shell metrics (DESIGN.md Shell and navigation). */
+  --sidebar-width: 232px;
+  --topbar-height: 56px;
+  --bottombar-height: 56px;
 }
 
 @theme {
   --color-*: initial;
   --font-*: initial;
+  --font-weight-*: initial;
   --text-*: initial;
   --radius-*: initial;
   --shadow-*: initial;
@@ -56,36 +58,47 @@
 
   --color-white: #ffffff;
 
-  /* Type scale from DESIGN.md: 13 / 14 / 16 / 18 / 22 / 28. */
-  --text-xs: 0.8125rem; /* 13: dense tables, section labels, captions */
-  --text-xs--line-height: 1.25rem;
-  --text-sm: 0.875rem; /* 14: body and tables */
-  --text-sm--line-height: 1.375rem;
-  --text-base: 1rem; /* 16: inputs on phones (no iOS zoom) */
-  --text-base--line-height: 1.5rem;
-  --text-lg: 1.125rem; /* 18 */
-  --text-lg--line-height: 1.625rem;
-  --text-xl: 1.375rem; /* 22: page titles on phones */
-  --text-xl--line-height: 1.75rem;
-  --text-2xl: 1.75rem; /* 28: page titles on desktop */
-  --text-2xl--line-height: 2.125rem;
+  /* Two weights only (DESIGN.md Typography). font-medium and font-bold do not exist. */
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
 
-  /* Shape: 6 px controls and chips, 10 px panels. No pills. */
+  /*
+   * Type scale (DESIGN.md): caption 13/18, body 14/20, phone inputs and section titles 16/24,
+   * page title 20/28. text-lg is the section title, text-xl the page title; text-2xl is kept
+   * as an alias of text-xl so older screens cannot grow past the page title size.
+   */
+  --text-xs: 0.8125rem; /* 13 */
+  --text-xs--line-height: 1.125rem; /* 18 */
+  --text-sm: 0.875rem; /* 14 */
+  --text-sm--line-height: 1.25rem; /* 20 */
+  --text-base: 1rem; /* 16 */
+  --text-base--line-height: 1.5rem; /* 24 */
+  --text-lg: 1rem; /* 16 section title */
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem; /* 20 page title */
+  --text-xl--line-height: 1.75rem; /* 28 */
+  --text-2xl: 1.25rem; /* alias of xl */
+  --text-2xl--line-height: 1.75rem;
+
+  /* Shape: 6 controls, 8 panels and dialogs, 4 status labels. No pills. */
   --radius-control: 6px;
-  --radius-panel: 10px;
+  --radius-panel: 8px;
+  --radius-status: 4px;
 
-  /* Shadow only for things that float above the page: menus, popovers, dialogs. */
   --shadow-float: 0 12px 32px -8px rgb(28 36 51 / 0.2), 0 2px 6px rgb(28 36 51 / 0.08);
 
-  /* Top bar collapses to a menu button under 900 px (DESIGN.md Layout). */
-  --breakpoint-nav: 56.25rem;
+  /* DataGrid switches to phone cards under 900px (components/grid/useNarrowViewport.ts). */
+  --breakpoint-grid: 56.25rem;
 }
 
 @theme inline {
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
 
-  --color-paper: var(--paper);
+  --color-bg: var(--bg);
+  /* Deprecated alias of bg (older screens use bg-paper / hover:bg-paper). Prefer bg-bg. */
+  --color-paper: var(--bg);
   --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
   --color-line: var(--line);
@@ -94,9 +107,6 @@
   --color-brand-strong: var(--brand-strong);
   --color-brand-tint: var(--brand-tint);
   --color-accent: var(--accent);
-  --color-input-tint: var(--input-tint);
-  --color-mark-lime: var(--mark-lime);
-  --color-mark-emerald: var(--mark-emerald);
 
   --color-good: var(--good);
   --color-good-tint: var(--good-tint);
@@ -113,18 +123,19 @@
 
 @layer base {
   html {
-    background-color: var(--paper);
+    background-color: var(--bg);
     color: var(--ink);
     -webkit-text-size-adjust: 100%;
   }
 
   body {
     min-height: 100dvh;
-    background-color: var(--paper);
+    background-color: var(--bg);
     color: var(--ink);
     font-family: var(--font-sans);
     font-size: var(--text-sm);
     line-height: var(--text-sm--line-height);
+    font-weight: 400;
     font-synthesis-weight: none;
     -webkit-font-smoothing: antialiased;
   }
@@ -135,7 +146,7 @@
     text-wrap: balance;
   }
 
-  /* Visible focus everywhere. The ring is --brand (12.6:1 on paper, 11.4:1 on brand-tint). */
+  /* One focus ring everywhere: 2px navy outline (12.6:1 on bg, 11.4:1 on brand-tint). */
   :focus-visible {
     outline: 2px solid var(--brand);
     outline-offset: 2px;
@@ -146,10 +157,12 @@
     color: var(--ink);
   }
 
-  /* Numbers line up in every table cell, score input, date and KPI. */
+  /* Numbers, dates and codes line up everywhere. */
   time,
-  td[data-numeric],
-  th[data-numeric] {
+  input[inputmode="numeric"],
+  input[inputmode="decimal"],
+  [data-numeric],
+  .tabular {
     font-variant-numeric: tabular-nums;
   }
 
@@ -158,22 +171,31 @@
   }
 }
 
-/* MOTION 1: only hover, focus and pressed transitions, and never for people who opt out. */
+/* MOTION 1: colour and outline transitions of at most 120ms, none for people who opt out. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
 @layer components {
-  /* Section labels: sentence case, 13/600, muted. Never uppercase with wide tracking. */
+  /* Section labels and nav group headings: sentence case, 13/600, muted. Never uppercase. */
   .section-label {
     font-size: var(--text-xs);
     line-height: var(--text-xs--line-height);
     font-weight: 600;
     color: var(--ink-muted);
+  }
+
+  /* Station codes (CGK, DPS): the identity motif. Tabular semibold, never letter-spaced. */
+  .station-code {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
   }
 
   /* Native select with a drawn chevron; the control keeps its 3.8:1 border. */
@@ -214,7 +236,7 @@
   .dt th,
   .dt td {
     padding: 0.5rem 0.75rem;
-    height: 2.5rem; /* 40 px rows on desktop */
+    height: 2.5rem; /* 40px rows */
     border-bottom: 1px solid var(--line);
     text-align: left;
     vertical-align: middle;
@@ -233,8 +255,7 @@
     font-weight: 600;
     color: var(--ink-muted);
     white-space: nowrap;
-    background-color: var(--paper);
-    border-bottom-color: var(--line-strong);
+    background-color: var(--surface-sunken);
   }
 
   .dt[data-sticky-header="true"] thead th {
@@ -256,7 +277,7 @@
 
   /*
    * Phones: cap the sticky column so it never covers the data it is pinned beside.
-   * A fixed width (not max-width, which table cells ignore) keeps it at 40 % of the
+   * A fixed width (not max-width, which table cells ignore) keeps it at 40% of the
    * screen; long names wrap instead.
    */
   @media (width < 40rem) {
@@ -278,7 +299,7 @@
   }
 
   .dt tbody tr:hover > * {
-    background-color: var(--paper);
+    background-color: var(--bg);
   }
 
   .dt tbody tr[data-selected="true"] > * {
@@ -286,7 +307,7 @@
   }
 }
 
-/* Printed weekly report: A4 landscape, no app chrome, colours kept for status chips. */
+/* Printed weekly report: A4 landscape, no app chrome, colours kept for status labels. */
 @media print {
   @page {
     size: A4 landscape;
@@ -294,7 +315,7 @@
   }
 
   :root {
-    --paper: #ffffff;
+    --bg: #ffffff;
   }
 
   html,
@@ -310,6 +331,13 @@
 
   [data-print="hide"] {
     display: none !important;
+  }
+
+  /* The shell reserves room for the sidebar and the phone bars; paper has neither. */
+  [data-shell-main] {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
   }
 
   a {

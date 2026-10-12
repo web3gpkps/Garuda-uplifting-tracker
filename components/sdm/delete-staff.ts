@@ -41,12 +41,11 @@ export type DeleteStaffResult =
 
 const NOT_OWNER: LinkError = {
   code: "unauthorized",
-  message: "Hanya pemilik aplikasi (masuk lewat /admin) yang bisa menghapus SDM.",
+  message: "Hanya pemilik aplikasi yang bisa menghapus SDM.",
 };
 
-function failed(error: DbError): DeleteStaffResult {
-  return { ok: false, error: { code: "unknown", message: `Database menolak penghapusan (${error.message}). Coba lagi.` } };
-}
+/** Database failures are reported in plain words; the raw text is never shown. */
+const FAILED: DeleteStaffResult = { ok: false, error: { code: "unknown", message: "Tidak bisa dihapus. Coba lagi." } };
 
 export async function deleteStaffAs(
   access: { kind: "owner" | "link" },
@@ -59,7 +58,7 @@ export async function deleteStaffAs(
   }
 
   const found = await client.from("staff").select("code, name").eq("code", code);
-  if (found.error) return failed(found.error);
+  if (found.error) return FAILED;
   const row = Array.isArray(found.data) ? (found.data[0] as { code: string; name: string } | undefined) : undefined;
   if (!row) {
     return { ok: false, error: { code: "unknown", message: `SDM ${code} tidak ditemukan; mungkin sudah dihapus. Muat ulang halaman.` } };
@@ -73,10 +72,10 @@ export async function deleteStaffAs(
     count("remedials"),
     count("replacements"),
   ]);
-  for (const r of [scores, checks, remedials, replacements]) if (r.error) return failed(r.error);
+  for (const r of [scores, checks, remedials, replacements]) if (r.error) return FAILED;
 
   const removed = await client.from("staff").delete({ count: "exact" }).eq("code", code);
-  if (removed.error) return failed(removed.error);
+  if (removed.error) return FAILED;
   // RLS hides the row from a non-admin session: nothing deleted, no error.
   if (!removed.count) return { ok: false, error: NOT_OWNER };
 

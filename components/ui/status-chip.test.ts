@@ -43,6 +43,13 @@ describe("toneForStatus", () => {
     expect(toneForStatus(null)).toBe("neutral");
   });
 
+  test("failure causes and KPI statuses come from the same map", () => {
+    expect(toneForStatus("Role play & post-test belum optimal")).toBe("warning");
+    expect(toneForStatus("Remedial")).toBe("progress");
+    expect(toneForStatus("Tercapai")).toBe("good");
+    expect(toneForStatus("Di bawah posisi awal")).toBe("warning");
+  });
+
   test("matching ignores case and extra spaces", () => {
     expect(toneForStatus("  belum   lulus ")).toBe("critical");
   });

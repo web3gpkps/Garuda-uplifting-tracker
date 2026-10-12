@@ -1,42 +1,59 @@
-import { Suspense, type ReactNode } from "react";
-import { APP_NAME } from "@/lib/app-info";
-import { Brand } from "./Brand";
-import { ProgrammeContext } from "./ProgrammeContext";
+import { Suspense, cache, type ReactNode } from "react";
+import { createClient } from "@/lib/supabase/server";
+import { OWNER_ACCESS, navSections } from "@/lib/workspace/access";
 import { ShellFrame, ShellLoading } from "./ShellFrame";
 import { SignOutButton } from "./SignOutButton";
-import { OWNER_NAV } from "./nav-items";
+import { programmeWeekLine, todayInJakarta } from "./programme-calendar";
 
-const ownerBrand = (
-  <Brand
-    href="/admin"
-    linkLabel="Dashboard, pemilik"
-    title="Pemilik · semua stasiun"
-    subtitle={APP_NAME}
-  />
-);
+const OWNER_SCOPE = "Pemilik · semua stasiun";
 
 /**
- * Owner area chrome (/admin): the full workbook for every station (the same sheets as a
- * station link), then Tautan, Parameter and Sinkronisasi. Signed-in admin only.
+ * "Minggu ke-N dari 10" for the owner, from public.settings (id = 1). Renders nothing when
+ * the schedule cannot be read or is incomplete: the line is context, never a blocker.
+ * Render inside <Suspense>; it reads cookies and the clock at request time.
+ */
+const readSchedule = cache(async () => {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("settings")
+    .select("week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_interval_months, bmi_periods")
+    .eq("id", 1)
+    .maybeSingle();
+  return data;
+});
+
+async function OwnerWeekLine() {
+  // Rendered twice (sidebar and phone sheet); cache() makes it one query per request.
+  const data = await readSchedule();
+  if (!data?.week1_start || !data.weeks || !data.bmi_first_check || !data.bmi_interval_days || !data.bmi_periods) {
+    return null;
+  }
+  return <>{programmeWeekLine(data, todayInJakarta())}</>;
+}
+
+/**
+ * Owner area chrome (/admin): every station, plus Pengelolaan (Tautan Akses, Parameter,
+ * Sinkronisasi). Signed-in admin only. Footer: the account email and "Keluar".
  */
 export function OwnerShell({ email, children }: { email: string; children: ReactNode }) {
   return (
     <ShellFrame
-      brand={ownerBrand}
-      items={OWNER_NAV}
-      navLabel="Menu pemilik"
-      aside={
-        <>
-          <span className="min-w-0 truncate text-sm text-ink-muted" title={email}>
+      sections={navSections(OWNER_ACCESS, true)}
+      homeHref={OWNER_ACCESS.basePath}
+      scopeLabel={OWNER_SCOPE}
+      scopeShort="Pemilik"
+      weekLine={
+        <Suspense fallback={null}>
+          <OwnerWeekLine />
+        </Suspense>
+      }
+      footer={
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-xs text-ink-muted" title={email}>
             {email}
           </span>
-          <SignOutButton variant="secondary" />
-        </>
-      }
-      context={
-        <Suspense fallback={<p className="text-xs text-ink-muted">Memuat jadwal program…</p>}>
-          <ProgrammeContext />
-        </Suspense>
+          <SignOutButton variant="ghost" size="sm" />
+        </div>
       }
     >
       {children}
@@ -45,5 +62,5 @@ export function OwnerShell({ email, children }: { email: string; children: React
 }
 
 export function OwnerShellLoading() {
-  return <ShellLoading brand={ownerBrand} label="Memeriksa akses pemilik" />;
+  return <ShellLoading scopeLabel={OWNER_SCOPE} />;
 }

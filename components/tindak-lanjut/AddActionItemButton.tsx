@@ -136,7 +136,7 @@ function AddForm({
             ))}
           </Select>
         </Field>
-        <Field label="Sumber" help="Slide PDF, misalnya Slide 15." error={errors.source}>
+        <Field label="Sumber" help="Asal butir ini, misalnya hasil evaluasi." error={errors.source}>
           <Input value={values.source} onChange={(e) => set("source")(e.target.value)} />
         </Field>
       </div>
@@ -171,7 +171,7 @@ function AddForm({
         <Input value={values.schedule} onChange={(e) => set("schedule")(e.target.value)} />
       </Field>
       {message ? (
-        <p role="alert" className="text-sm font-medium text-critical">
+        <p role="alert" className="text-sm font-semibold text-critical">
           {message}
         </p>
       ) : null}

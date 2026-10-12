@@ -82,7 +82,7 @@ function orderOf(items: ActionView[], f: Filters): string[] {
 }
 
 function chip(value: CellValue, empty?: string) {
-  return value ? <StatusChip label={String(value)} bordered /> : empty ? <span className="text-ink-muted">{empty}</span> : null;
+  return value ? <StatusChip label={String(value)} /> : empty ? <span className="text-ink-muted">{empty}</span> : null;
 }
 
 const toolSelect =
@@ -384,7 +384,7 @@ export function ActionGrid({ accessKey, canEdit, isOwner, today, items, initialA
           onChange={(e) => changeFilters({ order: e.target.value === "id" ? "id" : "urgency" })}
         >
           <option value="urgency">Paling mendesak dulu</option>
-          <option value="id">Urutan ID workbook</option>
+          <option value="id">Urutan ID</option>
         </select>
       </label>
     </>

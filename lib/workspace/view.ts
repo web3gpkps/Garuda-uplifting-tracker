@@ -113,9 +113,9 @@ export function trackerData(ws: Workspace, station: string | null = null): Track
 type LinkContext = Pick<Workspace, "linkId" | "linkLabels">;
 type ChangedRow = { updatedByLink?: string | null; updatedAt?: string | null };
 
-/** Who last changed a row: "tautan ini", another link's label, or "pemilik / Google Sheet". */
+/** Who last changed a row: "tautan ini", another link's label, or "pengelola" (owner or data sync). */
 export function changedVia(row: ChangedRow, ws: LinkContext): string {
-  if (!row.updatedByLink) return "pemilik / Google Sheet";
+  if (!row.updatedByLink) return "pengelola";
   if (row.updatedByLink === ws.linkId) return "tautan ini";
   return ws.linkLabels[row.updatedByLink] ?? "tautan lain";
 }

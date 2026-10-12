@@ -4,7 +4,7 @@ import { cx } from "./cx";
 export function tabClasses(isSelected: boolean): string {
   return cx(
     "-mb-px inline-flex min-h-11 shrink-0 items-center border-b-2 px-3 text-sm font-semibold whitespace-nowrap",
-    "transition-colors duration-150",
+    "transition-colors duration-120",
     isSelected
       ? "border-brand text-ink"
       : "border-transparent text-ink-muted hover:border-line-strong hover:text-ink",

@@ -126,6 +126,18 @@ export function programmeSummary(settings: ProgrammeSettings, today: IsoDate): s
   return first + second;
 }
 
+/**
+ * The shell's one programme line (DESIGN.md Shell): "Minggu ke-2 dari 10" during the
+ * programme, "Mulai 5 Okt 2026" before it, "Selesai 13 Des 2026" after it.
+ */
+export function programmeWeekLine(settings: ProgrammeSettings, today: IsoDate): string {
+  const s = asRuleSettings(settings);
+  const status = programmeStatus(s, today);
+  if (status.phase === "before") return `Mulai ${formatTanggal(status.startDate)}`;
+  if (status.phase === "after") return `Selesai ${formatTanggal(status.endDate)}`;
+  return `Minggu ke-${status.week} dari ${s.weeks}`;
+}
+
 /** "tiap 14 hari" / "tiap 2 minggu", for the BMI cadence note. */
 function everyDays(days: number): string {
   return days % 7 === 0 ? `tiap ${days / 7 === 1 ? "minggu" : `${days / 7} minggu`}` : `tiap ${days} hari`;

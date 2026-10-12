@@ -154,7 +154,7 @@ export function validateNewItem(
 export async function addActionItem(isOwner: boolean, port: ActionItemsPort | null, input: NewItemInput): Promise<OwnerResult> {
   if (!isOwner || !port) return { ok: false, message: OWNER_ONLY_MESSAGE };
   const existing = await port.list();
-  if (existing.error) return { ok: false, message: `Daftar butir tidak terbaca (${existing.error.message}).` };
+  if (existing.error) return { ok: false, message: "Tidak bisa disimpan. Coba lagi." };
 
   const { fieldErrors, row } = validateNewItem(input, existing.data);
   if (!row) return { ok: false, message: "Periksa isian yang ditandai.", fieldErrors };
@@ -165,9 +165,9 @@ export async function addActionItem(isOwner: boolean, port: ActionItemsPort | nu
     return { ok: false, message: `ID ${row.code} sudah dipakai.`, fieldErrors: { code: `ID ${row.code} sudah dipakai.` } };
   }
   if (error.code === "23514" || error.code === "23502") {
-    return { ok: false, message: `Database menolak isian butir ini (${error.message}).` };
+    return { ok: false, message: "Ada isian yang tidak valid. Periksa lagi isinya." };
   }
-  return { ok: false, message: `Butir belum ditambahkan: database menolak (${error.message}).` };
+  return { ok: false, message: "Tidak bisa disimpan. Coba lagi." };
 }
 
 /** "Hapus butir". */
@@ -176,7 +176,7 @@ export async function removeActionItem(isOwner: boolean, port: ActionItemsPort |
   const target = clean(code);
   if (!target) return { ok: false, message: "Butir tidak dikenali." };
   const { deleted, error } = await port.remove(target);
-  if (error) return { ok: false, message: `Butir belum dihapus: database menolak (${error.message}).` };
+  if (error) return { ok: false, message: "Tidak bisa dihapus. Coba lagi." };
   if (deleted === 0) return { ok: false, message: `Butir ${target} tidak ditemukan; mungkin sudah dihapus.` };
   return { ok: true, code: target };
 }

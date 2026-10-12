@@ -10,15 +10,12 @@ import { formatWaktu } from "@/components/admin/format";
 import { requireAdmin } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: "Pengaturan" };
+export const metadata: Metadata = { title: "Parameter" };
 
 export default function PengaturanPage() {
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Pengaturan"
-        description="Parameter program, sama dengan sheet Parameter di workbook: jadwal pemantauan, slot cek BMI, klasifikasi BMI, passing grade dan bobot Final Result, target KPI slide 15, serta batas penggantian SDM. Semua rumus di aplikasi membaca nilai ini."
-      />
+      <PageHeader title="Parameter" />
       <Suspense fallback={<LoadingState label="Memuat parameter" />}>
         <SettingsData />
       </Suspense>
@@ -36,7 +33,7 @@ async function SettingsData() {
       <Panel>
         <ErrorState
           title="Parameter tidak bisa dimuat"
-          cause={`Database menjawab: ${settingsResult.error.message}`}
+          cause="Data parameter tidak terbaca saat ini."
           action={<ReloadButton />}
         />
       </Panel>
@@ -46,10 +43,7 @@ async function SettingsData() {
   if (!row) {
     return (
       <Panel>
-        <EmptyState title="Baris Parameter belum ada di database">
-          Tabel settings seharusnya berisi satu baris (id = 1) dari migrasi awal. Jalankan ulang migrasi
-          stations_settings atau hubungi pengelola aplikasi; formulir ini hanya mengubah baris yang sudah ada.
-        </EmptyState>
+        <EmptyState title="Parameter belum tersedia">Hubungi pengelola aplikasi.</EmptyState>
       </Panel>
     );
   }

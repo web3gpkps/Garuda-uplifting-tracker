@@ -16,7 +16,7 @@ function subscribe(onChange: () => void): () => void {
 /**
  * true under 900 px, false from 900 px, null before hydration (unknown on the server).
  * While it is null, render both the grid and the cards and let CSS pick
- * (`nav:hidden` / `hidden nav:block`) so nothing flashes; once known, mount only one.
+ * (`grid:hidden` / `hidden grid:block`) so nothing flashes; once known, mount only one.
  */
 export function useNarrowViewport(): boolean | null {
   return useSyncExternalStore(

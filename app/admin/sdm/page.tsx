@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { OwnerScreenRoute } from "@/components/shell/ScreenRoute";
 import { SdmLoading, SdmScreen } from "@/components/sdm/SdmScreen";
 
-export const metadata: Metadata = { title: "Master SDM" };
+export const metadata: Metadata = { title: "Data SDM" };
 
 /** Master SDM, owner (all stations). The screen is shared with /s/[token]/sdm. */
 export default function Page({ searchParams }: PageProps<"/admin/sdm">) {

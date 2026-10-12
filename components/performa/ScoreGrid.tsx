@@ -5,7 +5,7 @@ import { GAP_TOPICS, TOUCH_POINTS, coachingAvg, coachingStatus, deltaVsBaseline,
 import { formatDecimal, formatScore, formatSignedScore } from "@/lib/format";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { DataGrid, type CellValue, type GridColumn, type SaveRowResult } from "@/components/grid/DataGrid";
-import { ASPECT_FIELDS, toneOf, type AspectField } from "./format";
+import { ASPECT_FIELDS, type AspectField } from "./format";
 import type { SaveScoreAction } from "./ScoreRow";
 
 /** One staff member's Log Performa row for the selected week (column keys = RPC field names). */
@@ -90,7 +90,7 @@ export function ScoreGrid(props: ScoreGridProps) {
           row.assignmentStatus && row.assignmentStatus !== "Aktif" ? (
             <span className="flex items-center gap-1.5">
               <span className="truncate">{value}</span>
-              <StatusChip label={row.assignmentStatus} tone={toneOf(row.assignmentStatus)} bordered />
+              <StatusChip label={row.assignmentStatus} />
             </span>
           ) : (
             value
@@ -146,7 +146,7 @@ export function ScoreGrid(props: ScoreGridProps) {
         derive: (_row, value) => coachingStatus(avgOf(value), settings),
         render: (value) => {
           const label = textOrNull(value);
-          return <StatusChip label={label} tone={toneOf(label)} emptyLabel="Belum dinilai" bordered />;
+          return <StatusChip label={label} emptyLabel="Belum dinilai" />;
         },
       },
       {

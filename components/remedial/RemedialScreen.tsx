@@ -16,7 +16,6 @@ import { ButtonLink } from "@/components/ui/Button";
 import { PageHeader, PageLoading } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { EmptyState } from "@/components/ui/States";
-import { HowToTip } from "@/components/ui/HowToTip";
 import { RememberView } from "@/components/ui/RememberView";
 import { rememberScope } from "@/components/ui/remember";
 import { RemedialCard } from "./RemedialCard";
@@ -78,22 +77,13 @@ export function RemedialScreen({ access, ws, searchParams: query }: ScreenProps)
 
   const gridRows: RemedialGridRow[] = rows.map((r) => ({ ...r, changed: changedWhen(r, ws) }));
   const pass = formatScore1(settings.passGrade);
-  const wRp = Math.round(settings.weightRolePlay * 100);
-  const wPt = Math.round(settings.weightPostTest * 100);
 
   return (
     <RemedialPageStatus>
       <div className="flex flex-col gap-6">
         <PageHeader
           title={TITLE}
-          context={ws.scopeLabel}
-          description={
-            <>
-              Fase remidiasi (PDF slide 27): setiap peserta IULS dan RUST yang Failed mendapat refresher dan remedial
-              assessment, atau individual coaching. Lulus bila Final ulang minimal {pass} (role play {wRp}%, post-test{" "}
-              {wPt}%).
-            </>
-          }
+          meta={ws.scopeLabel}
         >
           {ws.isKps ? (
             <RememberView
@@ -120,12 +110,6 @@ export function RemedialScreen({ access, ws, searchParams: query }: ScreenProps)
         <Panel
           padding="flush"
           title={`Daftar remedial, ${scopeName}`}
-          description={
-            <HowToTip id="remedial">
-              pilih tindakan dan tanggal saat remedial dijadwalkan, lalu isi role play ulang dan post-test ulang
-              setelah dinilai. Final ulang, kenaikan, dan status dihitung otomatis. Baris tersimpan sendiri.
-            </HowToTip>
-          }
         >
           {all.length === 0 ? (
             <div className="px-4 sm:px-6">

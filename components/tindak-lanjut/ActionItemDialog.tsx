@@ -380,7 +380,7 @@ function DefinitionForm({ accessKey, today, item, onBusyChange, onSaved }: FormP
         <Field label="Batas waktu" help="Kosongkan jika belum ditetapkan." error={errors.dueDate}>
           <Input type="date" value={values.dueDate} onChange={(e) => set("dueDate")(e.target.value)} />
         </Field>
-        <Field label="Sumber" help="Slide PDF, misalnya Slide 15." error={errors.source}>
+        <Field label="Sumber" help="Asal butir ini, misalnya hasil evaluasi." error={errors.source}>
           <Input value={values.source} onChange={(e) => set("source")(e.target.value)} />
         </Field>
       </div>

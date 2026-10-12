@@ -10,7 +10,7 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import type { WeeklyScoreResult } from "@/components/performa/actions";
 import type { WeeklyScoreInput } from "@/components/performa/weekly-input";
 import { formatScore, formatSignedScore, toInputText } from "@/lib/format";
-import { ASPECT_FIELDS, parseScore, toneOf } from "./format";
+import { ASPECT_FIELDS, parseScore } from "./format";
 
 export type SavedScore = {
   touchPoint: string | null;
@@ -191,7 +191,7 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
           </p>
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
             <span className="tabular-nums">{staff.code}</span>
-            {notActive ? <StatusChip label={staff.assignmentStatus} tone={toneOf(staff.assignmentStatus)} /> : null}
+            {notActive ? <StatusChip label={staff.assignmentStatus} /> : null}
           </p>
           {staff.changedLabel ? <p className="text-xs text-ink-muted">{staff.changedLabel}</p> : null}
         </div>
@@ -240,7 +240,7 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
               ) : null}
             </p>
           ) : null}
-          <StatusChip label={status} tone={toneOf(status)} emptyLabel="Belum dinilai" />
+          <StatusChip label={status} emptyLabel="Belum dinilai" />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -285,7 +285,7 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
         </label>
 
         {message ? (
-          <p id={messageId} className="text-sm font-medium text-critical">
+          <p id={messageId} className="text-sm font-semibold text-critical">
             {message}
           </p>
         ) : null}

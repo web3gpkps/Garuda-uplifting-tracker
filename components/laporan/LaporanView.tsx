@@ -9,7 +9,7 @@ import { APP_NAME, APP_TAGLINE } from "@/lib/app-info";
 import { Logo } from "@/components/shell/Logo";
 import { WeekRail } from "@/components/shell/WeekRail";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { LinkSelect } from "@/components/grid/LinkSelect";
+import { StationSelect } from "@/components/ui/StationSelect";
 import { EmptyState } from "@/components/ui/States";
 import { ActionProgressTable } from "@/components/ringkasan/DashboardTables";
 import { saveWeeklyFindings } from "./actions";
@@ -89,7 +89,7 @@ export function LaporanView({
   return (
     <div className="flex flex-col gap-6 print:gap-4">
       <div className="hidden print:flex print:items-center print:gap-4">
-        <Logo height={48} />
+        <Logo height={32} />
         <div className="border-l border-line pl-4">
           <p className="text-sm font-semibold text-ink">{APP_NAME}</p>
           <p className="text-xs text-ink-muted">{APP_TAGLINE}</p>
@@ -98,15 +98,12 @@ export function LaporanView({
 
       <PageHeader
         title={`Laporan Mingguan, Minggu ke-${week}`}
-        context={scopeName}
-        description="Hasil coaching frontliner, training IULS & RUST, cek BMI dan tindak lanjut People Development."
+        meta={scopeName}
         actions={<PrintButton label={station ? `Cetak laporan ${station}` : undefined} />}
       >
         {ws.isKps ? (
-          <LinkSelect
-            label="Laporan untuk stasiun"
+          <StationSelect
             current={station ?? "semua"}
-            rememberStation
             options={[null, ...stationCodes(ws)].map((code) => ({
               value: code ?? "semua",
               label: code ?? "Semua stasiun",
@@ -159,7 +156,7 @@ export function LaporanView({
           <a
             key={sec.id}
             href={`#${sec.id}`}
-            className="inline-flex min-h-11 items-center rounded-control border border-line-strong bg-surface px-3 text-sm text-ink transition-colors duration-150 hover:bg-neutral-tint sm:min-h-9"
+            className="inline-flex min-h-11 items-center rounded-control border border-line-strong bg-surface px-3 text-sm text-ink transition-colors duration-120 hover:bg-neutral-tint sm:min-h-9"
           >
             <span className="font-semibold">{sec.letter}</span>
             <span className="ml-1.5">{sec.label}</span>
@@ -183,7 +180,7 @@ export function LaporanView({
           title="A. Performa coaching minggu ini"
           subtitle={`Rata-rata skor 4 aspek, skala 0 sampai 100. Lulus = rata-rata ≥ ${s.passGrade}.`}
           note={notScoredNote}
-          footnote="* Kenaikan vs baseline = rata-rata minggu ini (SDM yang dinilai) dikurangi rata-rata Final Result training semua SDM, sesuai rumus workbook."
+          footnote="* Kenaikan = rata-rata minggu ini (SDM yang dinilai) dikurangi rata-rata Final Result training semua SDM."
         >
           <TableFrame>
             <WeeklyPerformanceTable caption={`Performa coaching Minggu ke-${week}`} rows={report.performance} />
@@ -193,7 +190,7 @@ export function LaporanView({
         <Section
           id="bagian-a2"
           title="A2. Rata-rata per aspek terhadap target"
-          subtitle={`Target PDF slide 15: Product Knowledge > ${formatPercent(s.targetKnowledge)}, Interactive Communicating > ${formatPercent(s.targetInteractive)} (skor ÷ 100).`}
+          subtitle={`Target: Product Knowledge > ${formatPercent(s.targetKnowledge)}, Interactive Communicating > ${formatPercent(s.targetInteractive)} (skor ÷ 100).`}
           note={noScores && !weekNotStarted ? <>Belum ada skor aspek untuk Minggu ke-{week}.</> : null}
         >
           <TableFrame>

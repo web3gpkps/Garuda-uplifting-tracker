@@ -2,7 +2,6 @@ import type { StaffRekap } from "@/lib/rules";
 import { DataTable, DataTableEmpty, Td, Th } from "@/components/ui/DataTable";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { formatDecimal, formatScore, formatSignedScore } from "@/lib/format";
-import { toneOf } from "./format";
 
 export type RekapRow = {
   code: string;
@@ -82,9 +81,9 @@ export function RekapTable({ caption, rows, weeks, currentWeek, showStation }: R
               <Td numeric>{formatSignedScore(rekap.gain)}</Td>
               <Td numeric>{rekap.weeksAssessed}</Td>
               <Td>
-                <StatusChip label={rekap.currentStatus} tone={toneOf(rekap.currentStatus)} emptyLabel="Belum dinilai" />
+                <StatusChip label={rekap.currentStatus} emptyLabel="Belum dinilai" />
               </Td>
-              <Td>{rekap.trend ? <StatusChip label={rekap.trend} tone={toneOf(rekap.trend)} /> : null}</Td>
+              <Td>{rekap.trend ? <StatusChip label={rekap.trend} /> : null}</Td>
             </tr>
           ))
         )}

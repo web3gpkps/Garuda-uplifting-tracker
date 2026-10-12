@@ -11,14 +11,13 @@ import { requireAdmin } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { linkAccess } from "@/lib/workspace/access";
 
-export const metadata: Metadata = { title: "Tautan" };
+export const metadata: Metadata = { title: "Tautan Akses" };
 
 export default function TautanPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Tautan stasiun"
-        description="Stasiun dan KPS mengisi data lewat tautan, tanpa akun. Satu lingkup per tautan: KPS (semua stasiun) atau satu stasiun dari daftar stasiun. Tautan berlaku seperti kata sandi: bagikan hanya kepada pemegangnya."
       />
       <Suspense fallback={<LoadingState label="Memuat daftar tautan" />}>
         <LinksData />

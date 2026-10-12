@@ -53,7 +53,7 @@ export function Field({
     [control?.props["aria-describedby"], helpId, errorId].filter(Boolean).join(" ") || undefined;
 
   return (
-    <div className={cx("flex flex-col gap-1.5", className)}>
+    <div className={cx("flex flex-col gap-1", className)}>
       <label
         htmlFor={controlId}
         className={cx("text-sm font-semibold text-ink", hideLabel && "sr-only")}
@@ -75,7 +75,7 @@ export function Field({
           })
         : children}
       {error ? (
-        <p id={errorId} className="text-sm font-medium text-critical">
+        <p id={errorId} className="text-xs font-semibold text-critical">
           {error}
         </p>
       ) : null}
@@ -84,21 +84,22 @@ export function Field({
 }
 
 /*
- * Shared control look: white surface, 3.45:1 border, 6 px radius,
- * 16 px text and 44 px height on phones (no iOS zoom, thumb-sized), 14 px / 40 px from 640 px.
- * aria-invalid switches the border to --critical.
+ * Shared control look (DESIGN.md Field): white surface, --line-strong border (3.81:1), 6px
+ * radius, 2px navy focus outline (global :focus-visible). 16px text and 44px height below
+ * 1024px (no iOS zoom, thumb-sized), 14px / 40px from 1024px. aria-invalid switches the
+ * border to --critical.
  */
 const controlBase =
   "block w-full min-w-0 rounded-control border border-line-strong bg-surface text-ink " +
-  "text-base sm:text-sm placeholder:text-ink-muted " +
-  "transition-colors duration-150 hover:border-ink " +
+  "text-base lg:text-sm placeholder:text-ink-muted " +
+  "transition-colors duration-120 hover:border-ink focus-visible:outline-offset-0 " +
   "aria-invalid:border-critical aria-invalid:ring-1 aria-invalid:ring-inset aria-invalid:ring-critical " +
   "disabled:bg-neutral-tint disabled:text-ink-muted disabled:cursor-not-allowed";
 
 // :read-only also matches <select>, so only text-like controls get the read-only look.
-const readOnlyLook = "read-only:bg-paper";
+const readOnlyLook = "read-only:bg-surface-sunken read-only:border-line";
 
-const singleLine = "min-h-11 px-3 sm:min-h-10";
+const singleLine = "min-h-11 px-3 lg:min-h-10";
 
 export function Input({ className, type = "text", ...rest }: ComponentProps<"input">) {
   return (

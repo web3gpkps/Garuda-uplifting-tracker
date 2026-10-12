@@ -1,47 +1,35 @@
 import type { ReactNode } from "react";
-import { APP_NAME, APP_TAGLINE } from "@/lib/app-info";
+import { APP_NAME } from "@/lib/app-info";
 import { Logo } from "./Logo";
 
 type AuthFrameProps = {
   /** Page heading (h1). */
   title: ReactNode;
-  /** One or two sentences under the heading. */
+  /** One short sentence under the heading, when the screen needs it. */
   intro?: ReactNode;
   children?: ReactNode;
-  /** Muted note under the panel. */
+  /** One muted line under the panel. */
   footnote?: ReactNode;
 };
 
 /**
- * Frame for screens outside the shells (login, access problems). The panel's top edge is the
- * app's one brand moment: Garuda navy to teal across most of it, then a short Gapura
- * lime-to-emerald run, in the same order as the logos.
+ * Frame for screens outside the shells (login, access problems): logos, app name, title,
+ * then the content, on one white panel. No gradient, no decoration.
  */
 export function AuthFrame({ title, intro, children, footnote }: AuthFrameProps) {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center px-4 py-10 sm:py-16">
-      <div className="w-full max-w-[26rem]">
-        <section
-          aria-labelledby="auth-frame-title"
-          className="overflow-hidden rounded-panel border border-line bg-surface"
-        >
-          <div aria-hidden="true" className="flex h-1">
-            <span className="flex-3 bg-linear-to-r from-brand to-accent" />
-            <span className="flex-1 bg-linear-to-r from-mark-lime to-mark-emerald" />
-          </div>
-          {/* Panel padding (24 px+) is the lockup's clear space (≥ 25 % of 48 px = 12 px). */}
-          <div className="px-6 pt-6 pb-8 sm:px-8 sm:pt-8">
-            <Logo height={48} compactHeight={40} clearSpace={false} />
-            <p className="mt-5 text-sm font-semibold text-ink">{APP_NAME}</p>
-            <p className="text-xs text-ink-muted">{APP_TAGLINE}</p>
-            <h1 id="auth-frame-title" className="mt-5 border-t border-line pt-5 text-xl font-semibold text-ink sm:text-2xl">
-              {title}
-            </h1>
-            {intro ? <div className="mt-2 text-sm wrap-break-word text-ink-muted">{intro}</div> : null}
-            {children ? <div className="mt-6">{children}</div> : null}
-          </div>
+      <div className="w-full max-w-[25rem]">
+        <section aria-labelledby="auth-frame-title" className="rounded-panel border border-line bg-surface px-6 py-8 sm:px-8">
+          <Logo height={36} />
+          <p className="mt-6 text-xs text-ink-muted">{APP_NAME}</p>
+          <h1 id="auth-frame-title" className="mt-1 text-xl font-semibold text-ink">
+            {title}
+          </h1>
+          {intro ? <div className="mt-2 text-sm wrap-break-word text-ink-muted">{intro}</div> : null}
+          {children ? <div className="mt-6">{children}</div> : null}
         </section>
-        {footnote ? <div className="mt-4 px-1 text-sm text-ink-muted">{footnote}</div> : null}
+        {footnote ? <p className="mt-4 px-1 text-xs text-ink-muted">{footnote}</p> : null}
       </div>
     </main>
   );

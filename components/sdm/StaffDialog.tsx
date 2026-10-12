@@ -7,7 +7,6 @@ import { Dialog, DialogActions } from "@/components/ui/Dialog";
 import { Field, Input, NumberInput, Select, Textarea, parseDecimal } from "@/components/ui/Field";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { formatDecimal } from "@/lib/format";
-import { toneOf } from "@/components/performa/format";
 import { REMARKS, type StaffBaselineInput } from "./staff-input";
 import type { SaveStaffAction, SdmRow } from "./types";
 
@@ -207,7 +206,7 @@ function StaffForm({
   return (
     <form ref={formRef} id={formId} onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
       {formError ? (
-        <p role="alert" className="rounded-control bg-critical-tint px-3 py-2 text-sm font-medium text-critical">
+        <p role="alert" className="rounded-control bg-critical-tint px-3 py-2 text-sm font-semibold text-critical">
           {formError}
         </p>
       ) : null}
@@ -333,13 +332,13 @@ function StaffForm({
             <div>
               <dt className="section-label">Status ≥{pass}</dt>
               <dd>
-                <StatusChip label={preview.status} tone={toneOf(preview.status)} />
+                <StatusChip label={preview.status} />
               </dd>
             </div>
             <div>
               <dt className="section-label">Cek Konsistensi</dt>
               <dd>
-                <StatusChip label={preview.consistency} tone={toneOf(preview.consistency)} emptyLabel="Belum bisa dicek" />
+                <StatusChip label={preview.consistency} emptyLabel="Belum bisa dicek" />
               </dd>
             </div>
           </dl>
@@ -360,7 +359,7 @@ function StaffForm({
               onClose();
               onDelete(row);
             }}
-            className="inline-flex min-h-11 items-center justify-center rounded-control px-3 text-sm font-semibold text-critical transition-colors duration-150 hover:bg-critical-tint sm:mr-auto sm:min-h-10"
+            className="inline-flex min-h-11 items-center justify-center rounded-control px-3 text-sm font-semibold text-critical transition-colors duration-120 hover:bg-critical-tint sm:mr-auto sm:min-h-10"
           >
             Hapus SDM
           </button>

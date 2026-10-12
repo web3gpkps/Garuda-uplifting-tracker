@@ -1,21 +1,16 @@
 import { Suspense } from "react";
-import type { Metadata } from "next";
-import type { SearchParams } from "@/lib/workspace";
-import { LinkScreenRoute } from "@/components/shell/ScreenRoute";
-import { AcuanLoading, AcuanScreen } from "@/components/acuan/AcuanScreen";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Acuan PDF" };
-
-type Props = { params: Promise<{ token: string }>; searchParams: Promise<SearchParams> };
-
-/**
- * Acuan PDF, station link. Static reference numbers, but still behind the token gate
- * (layouts do not re-run on client navigation). The screen is shared with /admin/acuan.
- */
-export default function Page({ params, searchParams }: Props) {
+/** Removed page: old /s/<token>/acuan links land on Beranda. */
+export default function Page({ params }: PageProps<"/s/[token]/acuan">) {
   return (
-    <Suspense fallback={<AcuanLoading />}>
-      <LinkScreenRoute params={params} searchParams={searchParams} screen={AcuanScreen} />
+    <Suspense fallback={null}>
+      <RedirectHome params={params} />
     </Suspense>
   );
+}
+
+async function RedirectHome({ params }: { params: PageProps<"/s/[token]/acuan">["params"] }): Promise<null> {
+  const { token } = await params;
+  redirect(`/s/${encodeURIComponent(token)}`);
 }

@@ -61,7 +61,7 @@ const COLUMN_OF_FIELD: Record<string, string> = {
 };
 
 function chip(value: CellValue) {
-  return value ? <StatusChip label={String(value)} bordered /> : null;
+  return value ? <StatusChip label={String(value)} /> : null;
 }
 
 const dateRule = (value: CellValue) =>

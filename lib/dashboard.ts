@@ -1,6 +1,6 @@
 /*
- * Dashboard parts (docs/UX.md §3) for the Garuda programme: the KPI tiles (slide 15 targets
- * against the PDF baseline, plus the work of the running week) and the per-station
+ * Dashboard parts for the Garuda programme: the KPI tiles (programme targets against the
+ * posisi awal from lib/baseline, plus the work of the running week) and the per-station
  * comparison. Built only from lib/aggregate and lib/rules, so every number agrees with the
  * workbook tables. Pure: "today" is an argument, links are { sheet, query } and the screen
  * turns them into hrefs(access).
@@ -55,9 +55,9 @@ export type Tile = {
   total: number | null;
   /** Target in words, e.g. "Target < 20%". */
   target: string | null;
-  /** PDF baseline in words, e.g. "Baseline PDF 37,3%". */
+  /** Posisi awal in words, e.g. "Posisi awal 37,3%". */
   baseline: string | null;
-  /** lib/aggregate KPI status, when the tile is a slide-15 KPI. */
+  /** lib/aggregate KPI status, when the tile is a programme KPI. */
   status: KpiStatus | null;
   tone: Tone;
   /** The comparison basis in words, always shown. */
@@ -112,7 +112,7 @@ export type DashboardSummary = {
   dash: Dashboard;
   /** Per-staff values, shared with the attention list. */
   derived: StaffDerived[];
-  /** Slide-15 targets (5 tiles). */
+  /** Programme targets (5 tiles). */
   targets: Tile[];
   /** Work of the running week (4 tiles). */
   work: Tile[];
@@ -149,8 +149,8 @@ export function targetText(row: Pick<KpiRow, "direction" | "target">): string | 
 }
 
 export function toneForStatus(status: KpiStatus | null): Tone {
-  if (status === "Tercapai" || status === "Di atas baseline") return "good";
-  if (status === "Belum tercapai" || status === "Di bawah baseline") return "warning";
+  if (status === "Tercapai" || status === "Di atas posisi awal") return "good";
+  if (status === "Belum tercapai" || status === "Di bawah posisi awal") return "warning";
   return "neutral";
 }
 
@@ -207,7 +207,7 @@ function kpiTile(
     value: row.actual,
     total: null,
     target: targetText(row),
-    baseline: row.baseline === null ? null : `Baseline PDF ${formatPercent(row.baseline)}`,
+    baseline: row.baseline === null ? null : `Posisi awal ${formatPercent(row.baseline)}`,
     status: row.status,
     tone: toneForStatus(row.status),
     basis,
@@ -233,7 +233,7 @@ function targetTiles(data: TrackerData, dash: Dashboard, today: IsoDate): Tile[]
         : "Belum tercapai";
 
   return [
-    kpiTile(kpi("coverage"), "coverage", "Cakupan coaching", { sheet: "acuan" }, "Parameter cakupan belum diisi.",
+    kpiTile(kpi("coverage"), "coverage", "Cakupan coaching", { sheet: "sdm" }, "Parameter cakupan belum diisi.",
       `${s.coverageDone} dari ${s.targetCoverage} frontliner sudah coaching (Parameter)`),
     kpiTile(
       kpi("overweight"),
@@ -254,7 +254,7 @@ function targetTiles(data: TrackerData, dash: Dashboard, today: IsoDate): Tile[]
       value: total.pctFinalPassed,
       total: null,
       target: `Target ${DIRECTION_TEXT[">="]} ${formatPercent(s.targetPassRate)}`,
-      baseline: total.pdfBaseline === null ? null : `Baseline PDF ${formatPercent(total.pdfBaseline)}`,
+      baseline: total.pdfBaseline === null ? null : `Posisi awal ${formatPercent(total.pdfBaseline)}`,
       status: passStatus,
       tone: toneForStatus(passStatus),
       basis: `${total.finalPassed} dari ${total.participants} peserta: Passed + lulus remedial`,

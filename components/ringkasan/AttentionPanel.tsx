@@ -167,7 +167,6 @@ export function AttentionPanel({ attention: a, links, multiStation }: AttentionP
     <Panel
       id="perlu-ditangani"
       title="Perlu ditangani"
-      description="Diurutkan dari yang paling mendesak. Tiap bagian membuka sheet tempat datanya diisi."
     >
       {isQuiet(a) ? (
         <EmptyState title="Tidak ada yang mendesak saat ini" layout="inline">

@@ -41,7 +41,7 @@ export function KpiTile({ tile, href }: { tile: Tile; href: string }) {
     <Link
       href={href}
       aria-label={spoken}
-      className="group flex min-h-32 w-full flex-col gap-1.5 rounded-panel border border-line bg-surface p-4 transition-colors duration-150 hover:border-line-strong"
+      className="group flex min-h-32 w-full flex-col gap-1.5 rounded-panel border border-line bg-surface p-4 transition-colors duration-120 hover:border-line-strong"
     >
       <span className="text-sm font-semibold text-ink-muted">{tile.label}</span>
       {tile.value === null ? (

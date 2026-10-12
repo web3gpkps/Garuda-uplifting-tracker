@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { ACTION_GROUPS, ASPECTS, PROGRAMS } from "@/lib/rules";
 import { formatHariTanggal } from "@/lib/dates";
@@ -6,7 +5,7 @@ import { dashboardSummary, sortComparison, type ComparisonSort } from "@/lib/das
 import { hrefs, stationCodes, trackerData, type Workspace, type WorkspaceAccess } from "@/lib/workspace";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
-import { LinkSelect } from "@/components/grid/LinkSelect";
+import { StationSelect } from "@/components/ui/StationSelect";
 import { KpiStrip } from "@/components/dashboard/KpiTile";
 import { ComparisonSortNav, StationComparison } from "@/components/dashboard/StationComparison";
 import { AttentionPanel } from "./AttentionPanel";
@@ -31,8 +30,6 @@ type RingkasanViewProps = {
   sort: ComparisonSort;
 };
 
-const linkClass = "font-semibold text-brand underline underline-offset-2";
-
 export function RingkasanView({ ws, access, today, stationFilter, sort }: RingkasanViewProps) {
   const links = hrefs(access);
   const allStations = stationCodes(ws);
@@ -46,21 +43,17 @@ export function RingkasanView({ ws, access, today, stationFilter, sort }: Ringka
   const { dash } = summary;
   const attention = buildAttention(data, summary.derived, stations, today, summary.week);
   const rows = sortComparison(summary.comparison, sort);
-  const asOf = formatHariTanggal(today);
   const programRows = dash.programs.filter((r) => r.participants > 0 || !(PROGRAMS as readonly string[]).includes(r.key));
 
   return (
     <div className="flex flex-col gap-6 sm:gap-8">
       <PageHeader
-        title="Dashboard"
-        context={ws.scopeLabel}
-        description={`Posisi per ${asOf}: posisi program, KPI terhadap target, yang perlu ditangani, lalu perbandingan stasiun.`}
+        title="Beranda"
+        meta={ws.scopeLabel}
       >
         {ws.isKps ? (
-          <LinkSelect
-            label="Stasiun"
+          <StationSelect
             current={stationFilter ?? "semua"}
-            rememberStation
             options={[null, ...allStations].map((code) => ({
               value: code ?? "semua",
               label: code ?? "Semua stasiun",
@@ -91,8 +84,7 @@ export function RingkasanView({ ws, access, today, stationFilter, sort }: Ringka
             KPI terhadap target{single ? ` · ${station}` : ""}
           </h2>
           <p className="text-sm text-ink-muted">
-            Target dari PDF slide 15, dibanding baseline PDF. Angka nyata hari ini; pilih angka untuk membuka sheet-nya.
-            Cakupan coaching dan baseline bersifat nasional.
+            Dibanding posisi awal (evaluasi Agu 2026). Cakupan coaching dan posisi awal bersifat nasional.
           </p>
         </div>
         <KpiStrip tiles={summary.targets} links={links} label="KPI terhadap target" />
@@ -127,7 +119,6 @@ export function RingkasanView({ ws, access, today, stationFilter, sort }: Ringka
         <Panel
           headingLevel={3}
           title="Hasil per program"
-          description="Baseline PDF = tingkat kelulusan peserta Gapura di laporan training (slide 18 dan 20)."
           padding="flush"
         >
           <ProgramResultsTable caption="Hasil training per program" rows={programRows} />
@@ -185,7 +176,7 @@ export function RingkasanView({ ws, access, today, stationFilter, sort }: Ringka
           <span className="min-w-0">
             <span className="block text-lg font-semibold text-ink">Detail per bagian</span>
             <span className="block text-sm text-ink-muted">
-              Bagian 1, 5 dan 6 dari sheet Dashboard di workbook, dengan rumus yang sama.
+              KPI, per stasiun dan penggantian SDM.
               {single ? ` Hanya ${station}.` : " Baris TOTAL menjumlahkan semua stasiun."}
             </span>
           </span>
@@ -196,26 +187,16 @@ export function RingkasanView({ ws, access, today, stationFilter, sort }: Ringka
         </summary>
 
         <div className="flex flex-col gap-4 border-t border-line bg-paper p-3 sm:p-4">
-          <Panel headingLevel={3} title="1. KPI slide 15: baseline, target dan aktual" padding="flush">
-            <KpiTable caption="KPI slide 15" rows={dash.kpis} />
-            <Footnotes>
-              <p>
-                Pass rate coaching tidak punya target eksplisit di PDF, jadi dibanding baseline nasional. Angka acuan
-                lengkap ada di{" "}
-                <Link href={links.acuan} className={linkClass}>
-                  Acuan PDF
-                </Link>
-                .
-              </p>
-            </Footnotes>
+          <Panel headingLevel={3} title="1. KPI: posisi awal, target dan aktual" padding="flush">
+            <KpiTable caption="KPI program" rows={dash.kpis} />
           </Panel>
 
           <Panel headingLevel={3} title="5. Per stasiun" padding="flush">
             <UnitTable caption="Ringkasan per stasiun" rows={single ? dash.units.filter((u) => u.key === station) : dash.units} />
             <Footnotes>
               <p>
-                Kenaikan = rata-rata skor terkini SDM yang sudah dinilai dikurangi rata-rata Final Result training (rumus
-                workbook). Overweight + obesitas memakai cek BMI terakhir tiap SDM.
+                Kenaikan = rata-rata skor terkini SDM yang sudah dinilai dikurangi rata-rata Final Result training.
+                Overweight + obesitas memakai cek BMI terakhir tiap SDM.
               </p>
             </Footnotes>
           </Panel>

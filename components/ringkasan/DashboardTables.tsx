@@ -57,7 +57,7 @@ export function KpiTable({ caption, rows, hideCaption = true }: TableProps<KpiRo
       <thead>
         <tr>
           <Th className="align-bottom">KPI</Th>
-          <ColTh>Baseline PDF</ColTh>
+          <ColTh>Posisi awal</ColTh>
           <ColTh>Target</ColTh>
           <ColTh>Aktual</ColTh>
           <ColTh numeric={false}>Status</ColTh>
@@ -169,7 +169,7 @@ export function ProgramResultsTable({ caption, rows, hideCaption = true }: Table
           <ColTh>Lulus remedial</ColTh>
           <ColTh>Lulus akhir</ColTh>
           <ColTh>% lulus akhir</ColTh>
-          <ColTh>Baseline PDF (Gapura)</ColTh>
+          <ColTh>Posisi awal (Gapura)</ColTh>
           <ColTh>Beda – verifikasi</ColTh>
         </tr>
       </thead>

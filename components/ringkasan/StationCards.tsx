@@ -11,7 +11,7 @@ function Metric({ label, href, children }: { label: string; href: string; childr
     <li>
       <Link
         href={href}
-        className="flex min-h-11 flex-col justify-center gap-1 px-4 py-2 transition-colors duration-150 hover:bg-paper"
+        className="flex min-h-11 flex-col justify-center gap-1 px-4 py-2 transition-colors duration-120 hover:bg-paper"
       >
         <span className="flex items-baseline justify-between gap-3">
           <span className="text-sm text-ink-muted">{label}</span>

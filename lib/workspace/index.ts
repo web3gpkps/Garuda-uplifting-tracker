@@ -25,6 +25,7 @@ export {
   OWNER_ACCESS_KEY,
   OWNER_PAGES,
   SHEETS,
+  sheetLabel,
   hrefs,
   linkAccess,
   toQuery,

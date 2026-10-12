@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ASPECT_FIELDS, parseScore, toneOf } from "./format";
+import { ASPECT_FIELDS, parseScore } from "./format";
 import { checkWeeklyInput, weeklyArgs, type WeeklyScoreInput } from "./weekly-input";
 
 const INPUT: WeeklyScoreInput = {
@@ -27,13 +27,6 @@ test("parseScore: 0 to 100, decimal comma, at most two decimals", () => {
   expect(parseScore("100")).toBe(100);
   expect(parseScore("")).toBeNull();
   for (const bad of ["101", "-1", "8,555", "x", "1e2"]) expect(parseScore(bad)).toBe("invalid");
-});
-
-test("tones follow the workbook colours", () => {
-  expect(toneOf("Lulus")).toBe("good");
-  expect(toneOf("Belum Lulus")).toBe("critical");
-  expect(toneOf("Beda – verifikasi")).toBe("warning");
-  expect(toneOf(null)).toBe("neutral");
 });
 
 describe("checkWeeklyInput", () => {

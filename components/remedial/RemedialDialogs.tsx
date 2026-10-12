@@ -64,7 +64,7 @@ export function RemedialDeleteButton({ accessKey, staffCode, name, variant = "gr
     <>
       <Button
         size="sm"
-        variant="quiet"
+        variant="ghost"
         tabIndex={variant === "grid" ? -1 : undefined}
         onClick={() => {
           setError(null);

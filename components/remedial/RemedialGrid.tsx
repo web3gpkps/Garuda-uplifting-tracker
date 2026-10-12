@@ -198,7 +198,7 @@ export function RemedialGrid({
           remedialResult({ action: text(value("action")), rolePlay: num(value("role_play")), postTest: num(value("post_test")) }, s)
             .status,
         render: (value) =>
-          value ? <StatusChip label={String(value)} tone={remedialTone(String(value))} bordered /> : null,
+          value ? <StatusChip label={String(value)} tone={remedialTone(String(value))} /> : null,
       },
       {
         key: "reported",
@@ -210,7 +210,7 @@ export function RemedialGrid({
         options: [{ value: "Ya" }, { value: "Belum" }],
         get: (r) => (r.remedial?.reported === "Ya" || r.remedial?.reported === "Belum" ? r.remedial.reported : null),
         render: (value) =>
-          value ? <StatusChip label={String(value)} tone={value === "Ya" ? "good" : "warning"} bordered /> : null,
+          value ? <StatusChip label={String(value)} tone={value === "Ya" ? "good" : "warning"} /> : null,
       },
       {
         key: "notes",

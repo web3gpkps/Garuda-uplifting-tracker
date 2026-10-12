@@ -64,7 +64,7 @@ export function DeleteActionItemDialog({ accessKey, item, onClose, onDeleted }: 
             aplikasi, dan dari Google Sheet pada sinkronisasi berikutnya. Penghapusan tidak bisa dibatalkan.
           </p>
           {error ? (
-            <p role="alert" className="font-medium text-critical">
+            <p role="alert" className="font-semibold text-critical">
               {error}
             </p>
           ) : null}

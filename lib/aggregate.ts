@@ -52,7 +52,7 @@ import {
   type WeeklyScoreRow,
 } from './rules';
 import { toIsoDate } from './dates';
-import { COACHING_SUMMARY, PROGRAM_RESULTS, SERVICE_GAPS } from './reference';
+import { BASELINE_BMI_GAP, BASELINE_COACHING, baselinePassRate } from './baseline';
 
 export const TOTAL = 'TOTAL';
 export const SEMUA = 'SEMUA';
@@ -73,9 +73,9 @@ export interface TrackerData {
 // Output rows
 // ---------------------------------------------------------------------------
 
-export type KpiStatus = 'Tercapai' | 'Belum tercapai' | 'Di atas baseline' | 'Di bawah baseline' | 'Belum ada data';
+export type KpiStatus = 'Tercapai' | 'Belum tercapai' | 'Di atas posisi awal' | 'Di bawah posisi awal' | 'Belum ada data';
 
-/** Dashboard 1: one KPI (PDF slide 15). Values are fractions 0..1. */
+/** Dashboard 1: one programme KPI. Values are fractions 0..1. */
 export interface KpiRow {
   key: 'coverage' | 'overweight' | 'knowledge' | 'interactive' | 'passRate' | 'iuls' | 'rust';
   label: string;
@@ -118,7 +118,7 @@ export interface ProgramResultRow {
   /** Passed + remedial passed. */
   finalPassed: number;
   pctFinalPassed: number | null;
-  /** Gapura pass rate from the PDF (slide 18 / 20). */
+  /** Gapura pass rate at the posisi awal (evaluasi Agu 2026), lib/baseline. */
   pdfBaseline: number | null;
   /** Remark in the report differs from the criteria. */
   beda: number;
@@ -335,16 +335,6 @@ export function actionByAspect(items: readonly ActionItemRow[], today: DateInput
 // Dashboard 4: results per program
 // ---------------------------------------------------------------------------
 
-function pdfGapuraPassRate(key: string): number {
-  if (key === 'IULS' || key === 'RUST') {
-    const p = PROGRAM_RESULTS[key];
-    return p.gapuraPassed / p.gapuraParticipants;
-  }
-  const i = PROGRAM_RESULTS.IULS;
-  const r = PROGRAM_RESULTS.RUST;
-  return (i.gapuraPassed + r.gapuraPassed) / (i.gapuraParticipants + r.gapuraParticipants);
-}
-
 export function programResults(derived: readonly StaffDerived[]): ProgramResultRow[] {
   const row = (key: string): ProgramResultRow => {
     const rows = derived.filter((d) => hasText(d.staff.name) && inProgram(d.staff.program, key));
@@ -363,7 +353,7 @@ export function programResults(derived: readonly StaffDerived[]): ProgramResultR
       remedialPassed,
       finalPassed,
       pctFinalPassed: ratio(finalPassed, participants),
-      pdfBaseline: pdfGapuraPassRate(key),
+      pdfBaseline: baselinePassRate(key),
       beda: count(rows, (d) => startsWithText(d.baseline.consistency, 'Beda')),
     };
   };
@@ -436,7 +426,7 @@ function kpiStatus(
   if (actual === null) return 'Belum ada data';
   if (direction === 'baseline') {
     if (baseline === null) return 'Belum ada data';
-    return actual >= baseline ? 'Di atas baseline' : 'Di bawah baseline';
+    return actual >= baseline ? 'Di atas posisi awal' : 'Di bawah posisi awal';
   }
   if (target === null) return 'Belum ada data';
   const ok = direction === '>=' ? actual >= target : direction === '>' ? actual > target : actual < target;
@@ -457,7 +447,7 @@ export function kpis(data: TrackerData, derived: readonly StaffDerived[]): KpiRo
   const passRate = ratio(count(logAverages, (v) => coachingStatus(v, s) === 'Lulus'), logAverages.length);
   const programs = programResults(derived);
   const prog = (k: 'IULS' | 'RUST') => programs.find((p) => p.key === k)!;
-  const gapBmi = SERVICE_GAPS.find((g) => g.item === 'BMI')?.pct ?? null;
+  const gapBmi = BASELINE_BMI_GAP;
 
   const make = (
     key: KpiRow['key'],
@@ -479,20 +469,20 @@ export function kpis(data: TrackerData, derived: readonly StaffDerived[]): KpiRo
   });
 
   return [
-    make('coverage', 'Cakupan coaching frontliner', COACHING_SUMMARY.coverage, 1, '>=',
+    make('coverage', 'Cakupan coaching frontliner', BASELINE_COACHING.coverage, 1, '>=',
       ratio(s.coverageDone, s.targetCoverage),
       `Frontliner sudah coaching (Parameter) ÷ ${s.targetCoverage}`),
     make('overweight', 'Proporsi BMI overweight + obesitas', gapBmi, s.targetOverweightMax, '<', overweight,
-      'Kategori cek terakhir tiap SDM yang sudah dicek; baseline = gap BMI PDF'),
+      'Kategori cek terakhir tiap SDM yang sudah dicek; posisi awal = gap BMI evaluasi Agu 2026'),
     make('knowledge', 'Ketepatan jawaban Product Knowledge', null, s.targetKnowledge, '>',
       knowledge === null ? null : knowledge / 100, 'Rata-rata skor aspek B ÷ 100'),
     make('interactive', 'Skor Interactive Communicating', null, s.targetInteractive, '>',
       communication === null ? null : communication / 100, 'Rata-rata skor aspek D ÷ 100'),
-    make('passRate', 'Pass rate coaching (skor ≥ passing grade)', COACHING_SUMMARY.passRate, null, 'baseline', passRate,
-      'Penilaian Lulus ÷ seluruh penilaian mingguan, dibanding baseline nasional'),
-    make('iuls', 'Kelulusan IULS peserta Gapura (termasuk remedial)', pdfGapuraPassRate('IULS'), s.targetPassRate, '>=',
+    make('passRate', 'Pass rate coaching (skor ≥ passing grade)', BASELINE_COACHING.passRate, null, 'baseline', passRate,
+      'Penilaian Lulus ÷ seluruh penilaian mingguan, dibanding posisi awal nasional'),
+    make('iuls', 'Kelulusan IULS peserta Gapura (termasuk remedial)', baselinePassRate('IULS'), s.targetPassRate, '>=',
       prog('IULS').pctFinalPassed, 'Passed + lulus remedial ÷ peserta IULS'),
-    make('rust', 'Kelulusan RUST peserta Gapura (termasuk remedial)', pdfGapuraPassRate('RUST'), s.targetPassRate, '>=',
+    make('rust', 'Kelulusan RUST peserta Gapura (termasuk remedial)', baselinePassRate('RUST'), s.targetPassRate, '>=',
       prog('RUST').pctFinalPassed, 'Passed + lulus remedial ÷ peserta RUST'),
   ];
 }

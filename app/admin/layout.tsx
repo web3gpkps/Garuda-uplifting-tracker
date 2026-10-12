@@ -21,7 +21,7 @@ async function AdminGate({ children }: { children: ReactNode }) {
 
   if (session.status === "signed-out") redirect("/login");
   if (session.status === "unavailable") {
-    return <GateUnavailableScreen reason={session.reason} detail={session.detail} />;
+    return <GateUnavailableScreen reason={session.reason} />;
   }
   if (session.status === "not-admin") return <NotAdminScreen email={session.email} />;
 

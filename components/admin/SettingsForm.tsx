@@ -45,7 +45,7 @@ function scheduleOf(values: SettingsValues): Settings | null {
 }
 
 /**
- * Parameter form: every settings column with the workbook's labels and help, checked
+ * Parameter form: every settings column with its label and short help, checked
  * like the database checks it, saved in one update. Typed values survive a failed save.
  */
 export function SettingsForm({ initial }: SettingsFormProps) {
@@ -104,7 +104,7 @@ export function SettingsForm({ initial }: SettingsFormProps) {
 
   function note(key: SettingKey) {
     if ((key === "week1_start" || key === "bmi_first_check") && notMonday(values[key])) {
-      return <p className="text-sm text-warning">Tanggal ini bukan Senin. Workbook memakai hari Senin.</p>;
+      return <p className="text-sm text-warning">Tanggal ini bukan hari Senin.</p>;
     }
     return null;
   }
@@ -112,7 +112,7 @@ export function SettingsForm({ initial }: SettingsFormProps) {
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-6">
       {SETTING_SECTIONS.map((section) => (
-        <Panel key={section.id} id={`param-${section.id}`} title={section.title} description={section.description}>
+        <Panel key={section.id} id={`param-${section.id}`} title={section.title}>
           <div className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {section.fields.map((field) => (
@@ -148,7 +148,7 @@ export function SettingsForm({ initial }: SettingsFormProps) {
             {section.id === "kelulusan" && weights !== null && weights !== 100 ? (
               <p role="note" className="rounded-control border border-warning bg-warning-tint p-3 text-sm text-ink">
                 <span className="font-semibold text-warning">Jumlah bobot {String(weights).replace(".", ",")} %.</span>{" "}
-                Workbook memakai 40 % + 60 % = 100 %. Selain 100 %, Final Result keluar dari skala 0 sampai 100.
+                Jumlahkan menjadi 100 % agar Final Result tetap 0 sampai 100.
               </p>
             ) : null}
           </div>

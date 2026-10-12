@@ -39,27 +39,106 @@ export const OWNER_ACCESS: WorkspaceAccess = {
   basePath: "/admin",
 };
 
-/** The workbook sheets every role sees (UX.md §1), in nav order, with their path under basePath. */
-export const SHEETS = [
-  { key: "dashboard", label: "Dashboard", path: "" },
-  { key: "sdm", label: "Master SDM", path: "/sdm" },
-  { key: "performa", label: "Log Performa", path: "/performa" },
-  { key: "bmi", label: "Cek BMI", path: "/bmi" },
-  { key: "tindakLanjut", label: "Tindak Lanjut", path: "/tindak-lanjut" },
-  { key: "remedial", label: "Remedial", path: "/remedial" },
-  { key: "penggantian", label: "Penggantian SDM", path: "/penggantian" },
-  { key: "laporan", label: "Laporan Mingguan", path: "/laporan" },
-  { key: "acuan", label: "Acuan PDF", path: "/acuan" },
+/** Navigation groups, in order (DESIGN.md Shell and navigation). */
+export const NAV_GROUPS = [
+  { key: "pantau", label: "Pantau" },
+  { key: "input", label: "Input mingguan" },
+  { key: "data", label: "Data" },
+  { key: "pengelolaan", label: "Pengelolaan" },
 ] as const;
+
+export type NavGroupKey = (typeof NAV_GROUPS)[number]["key"];
+
+type SheetDef = {
+  key: string;
+  /** Nav label and page title. */
+  label: string;
+  /** Shorter label for the phone bottom bar, when it differs. */
+  shortLabel?: string;
+  /** Path under basePath ("" is the index page). Route paths never change, only labels. */
+  path: string;
+  group: NavGroupKey;
+  /** Shown in navigation only for KPS links and the owner (the route itself stays reachable). */
+  kpsOnly?: boolean;
+};
+
+/**
+ * The workspace pages every role shares, in nav order, with their path under basePath.
+ * Keys and paths are stable (links, redirects and remembered views depend on them).
+ */
+export const SHEETS = [
+  { key: "dashboard", label: "Beranda", path: "", group: "pantau" },
+  { key: "laporan", label: "Laporan Mingguan", path: "/laporan", group: "pantau" },
+  { key: "performa", label: "Penilaian Mingguan", shortLabel: "Penilaian", path: "/performa", group: "input" },
+  { key: "bmi", label: "Cek BMI", path: "/bmi", group: "input" },
+  { key: "remedial", label: "Remedial", path: "/remedial", group: "input" },
+  { key: "tindakLanjut", label: "Tindak Lanjut", path: "/tindak-lanjut", group: "input", kpsOnly: true },
+  { key: "sdm", label: "Data SDM", path: "/sdm", group: "data" },
+  { key: "penggantian", label: "Penggantian SDM", path: "/penggantian", group: "data" },
+] as const satisfies readonly SheetDef[];
 
 export type SheetKey = (typeof SHEETS)[number]["key"];
 
-/** Owner-only pages (no station link ever reaches them). */
+/** Owner-only pages (no station link ever reaches them), group "Pengelolaan". */
 export const OWNER_PAGES = [
-  { key: "tautan", label: "Tautan", path: "/admin/tautan" },
-  { key: "pengaturan", label: "Parameter", path: "/admin/pengaturan" },
-  { key: "sinkronisasi", label: "Sinkronisasi", path: "/admin/sinkronisasi" },
+  { key: "tautan", label: "Tautan Akses", path: "/admin/tautan", group: "pengelolaan" },
+  { key: "pengaturan", label: "Parameter", path: "/admin/pengaturan", group: "pengelolaan" },
+  { key: "sinkronisasi", label: "Sinkronisasi", path: "/admin/sinkronisasi", group: "pengelolaan" },
 ] as const;
+
+/** Page title of a workspace sheet, e.g. sheetLabel("performa") === "Penilaian Mingguan". */
+export function sheetLabel(key: SheetKey): string {
+  return SHEETS.find((s) => s.key === key)!.label;
+}
+
+/** One navigation link. Plain data, so server components can build it and pass it to the client shell. */
+export type NavLink = {
+  key: string;
+  label: string;
+  shortLabel: string;
+  href: string;
+  /** Active only on this exact path (index pages), not on its children. */
+  exact: boolean;
+};
+
+export type NavSection = { key: NavGroupKey; label: string; items: NavLink[] };
+
+/**
+ * The navigation for an access, grouped (Pantau / Input mingguan / Data / Pengelolaan).
+ * Tindak Lanjut is listed only for KPS links and the owner; Pengelolaan only for the owner.
+ * Empty groups are left out.
+ */
+export function navSections(access: Pick<WorkspaceAccess, "kind" | "basePath">, isKps: boolean): NavSection[] {
+  const owner = access.kind === "owner";
+  const sections: NavSection[] = NAV_GROUPS.map((g) => ({ key: g.key, label: g.label, items: [] }));
+  const add = (group: NavGroupKey, link: NavLink) => sections.find((s) => s.key === group)!.items.push(link);
+
+  for (const sheet of SHEETS as readonly SheetDef[]) {
+    if (sheet.kpsOnly && !isKps && !owner) continue;
+    add(sheet.group, {
+      key: sheet.key,
+      label: sheet.label,
+      shortLabel: sheet.shortLabel ?? sheet.label,
+      href: `${access.basePath}${sheet.path}`,
+      exact: sheet.path === "",
+    });
+  }
+  if (owner) {
+    for (const page of OWNER_PAGES) {
+      add(page.group, { key: page.key, label: page.label, shortLabel: page.label, href: page.path, exact: false });
+    }
+  }
+  return sections.filter((section) => section.items.length > 0);
+}
+
+/** The phone bottom bar destinations (DESIGN.md): Beranda, Penilaian, Cek BMI; "Menu" is added by the shell. */
+export const BOTTOM_BAR_KEYS = ["dashboard", "performa", "bmi"] as const satisfies readonly SheetKey[];
+
+/** True when `item` is the page at `pathname` (index pages match exactly, others also match their children). */
+export function isNavActive(pathname: string, item: Pick<NavLink, "href" | "exact">): boolean {
+  if (item.exact) return pathname === item.href;
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
 
 export type QueryValue = string | number | null | undefined | false;
 

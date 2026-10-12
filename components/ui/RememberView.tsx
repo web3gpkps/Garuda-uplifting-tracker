@@ -56,7 +56,7 @@ export function RememberView({ scope, allowed, shown }: RememberViewProps) {
   const keyOf = (param: RememberedParam) => `${PREFIX}.${scope}.${param}`;
 
   // "Semua stasiun" has no URL param, so the station filter records each choice itself:
-  // a link with data-remember-stasiun on click, the StationFilter select on change.
+  // a link with data-remember-stasiun on click, the StationSelect select on change.
   useEffect(() => {
     if (!allowed.stasiun) return;
     const key = `${PREFIX}.${scope}.stasiun`;

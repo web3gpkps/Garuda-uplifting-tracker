@@ -1,5 +1,4 @@
 import { PageHeader, PageLoading } from "@/components/ui/PageHeader";
-import { HowToTip } from "@/components/ui/HowToTip";
 import { Panel } from "@/components/ui/Panel";
 import { EmptyState } from "@/components/ui/States";
 import { todayInJakarta } from "@/components/shell/programme-calendar";
@@ -7,7 +6,7 @@ import { ActionGrid } from "@/components/tindak-lanjut/ActionGrid";
 import { AddActionItemButton } from "@/components/tindak-lanjut/AddActionItemButton";
 import { GroupFilter } from "@/components/tindak-lanjut/GroupFilter";
 import { TindakLanjutBoard, type GroupSummary } from "@/components/tindak-lanjut/TindakLanjutBoard";
-import { READ_ONLY_NOTE, parseAspect, parseGroup, toActionView } from "@/components/tindak-lanjut/action-view";
+import { parseAspect, parseGroup, toActionView } from "@/components/tindak-lanjut/action-view";
 import { actionByGroup, TOTAL } from "@/lib/aggregate";
 import { firstParam, hrefs, type ScreenProps } from "@/lib/workspace";
 
@@ -67,17 +66,8 @@ export function TindakLanjutScreen({ access, ws, searchParams }: ScreenProps) {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        context={ws.scopeLabel}
+        meta={ws.scopeLabel}
         title="Tindak Lanjut"
-        description={
-          <>
-            {all.length} butir tindak lanjut nasional dari People Development Overview (slide 15, 16, dan 27), dalam
-            tiga kelompok: Coaching Frontliner, Timeline Training, dan Evaluasi IULS & RUST.
-            {canEdit
-              ? " Perbarui Status, % Progres, Tgl update, dan Realisasi / Bukti setiap minggu; Catatan Garuda / KPS dan definisi butir juga diisi di sini."
-              : ` ${READ_ONLY_NOTE} Tautan stasiun bisa melihat progres, tetapi tidak mengubahnya.`}
-          </>
-        }
         actions={
           isOwner ? (
             <AddActionItemButton
@@ -114,17 +104,6 @@ export function TindakLanjutScreen({ access, ws, searchParams }: ScreenProps) {
         <Panel
           padding="flush"
           title={`Tindak Lanjut ${scopeName}`}
-          description={
-            canEdit ? (
-              <HowToTip id="tindak-lanjut">
-                pilih Status, ketik % Progres (0 sampai 100) dan bukti yang bisa dicek. Saat progres diubah, Tgl update
-                terisi tanggal hari ini kecuali Anda mengetiknya sendiri. Sisa hari dan Flag dihitung otomatis dari Batas
-                waktu; butir tanpa batas waktu ditandai &quot;Batas waktu belum ditetapkan&quot;.
-              </HowToTip>
-            ) : (
-              <span className="text-sm text-ink-muted">{READ_ONLY_NOTE} Hanya tampilan baca.</span>
-            )
-          }
         >
           <div className="px-4 pb-4 sm:px-6 sm:pb-6">
             <ActionGrid

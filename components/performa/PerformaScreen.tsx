@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { PROGRAMS, coachingAvg, finalResult, staffRekap, weekEnd, weekOfDate, weekStart, type Program } from "@/lib/rules";
-import { formatDecimal } from "@/lib/format";
 import { formatTanggal, formatTanggalPendek, formatHariTanggal } from "@/lib/dates";
 import {
   hrefs,
@@ -18,12 +17,13 @@ import { todayInJakarta } from "@/components/shell/programme-calendar";
 import { WeekRail } from "@/components/shell/WeekRail";
 import { PageHeader, PageLoading } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
-import { HowToTip } from "@/components/ui/HowToTip";
 import { RememberView } from "@/components/ui/RememberView";
 import { oneTo, rememberScope } from "@/components/ui/remember";
 import { TabNav } from "@/components/ui/TabNav";
 import { EmptyState } from "@/components/ui/States";
-import { LinkSelect, type LinkSelectOption } from "@/components/grid/LinkSelect";
+import { StationSelect } from "@/components/ui/StationSelect";
+import { UrlSelect } from "@/components/ui/UrlSelect";
+import type { UrlOption } from "@/components/ui/url-options";
 import { parseProgram } from "@/components/sdm/rows";
 import { WeeklyEntry, type EntryGroup } from "@/components/performa/WeeklyEntry";
 import type { EntryStaff } from "@/components/performa/ScoreRow";
@@ -32,7 +32,7 @@ import { ScoreGrid, type ScoreGridRow } from "@/components/performa/ScoreGrid";
 import { parseWeek } from "@/components/performa/workspace-data";
 import { saveWeeklyScore } from "./actions";
 
-const TITLE = "Log Performa";
+const TITLE = "Penilaian Mingguan";
 
 export function PerformaLoading() {
   return <PageLoading title={TITLE} label="Memuat nilai performa" />;
@@ -78,7 +78,7 @@ export function PerformaScreen({ access, ws, searchParams: sp }: ScreenProps) {
   const countLabel = (list: WorkspaceStaff[]) =>
     query.tab === "input" ? `${assessedCount(list)}/${list.length} dinilai` : `${list.length} SDM`;
 
-  const stationOptions: LinkSelectOption[] = ws.isKps
+  const stationOptions: UrlOption[] = ws.isKps
     ? [null, ...stationCodes(ws)].map((code) => {
         const list = code ? byProgram.filter((s) => s.station === code) : byProgram;
         return {
@@ -88,7 +88,7 @@ export function PerformaScreen({ access, ws, searchParams: sp }: ScreenProps) {
         };
       })
     : [];
-  const programOptions: LinkSelectOption[] = [null, ...PROGRAMS].map((p) => {
+  const programOptions: UrlOption[] = [null, ...PROGRAMS].map((p) => {
     const list = p ? inStation.filter((s) => s.program === p) : inStation;
     return {
       value: p ?? "semua",
@@ -98,9 +98,9 @@ export function PerformaScreen({ access, ws, searchParams: sp }: ScreenProps) {
   });
   const filters = (
     <div className="flex flex-wrap gap-4">
-      <LinkSelect label="Program" options={programOptions} current={query.program ?? "semua"} />
+      <UrlSelect label="Program" options={programOptions} current={query.program ?? "semua"} />
       {stationOptions.length > 0 ? (
-        <LinkSelect label="Unit (stasiun)" options={stationOptions} current={query.station ?? "semua"} rememberStation />
+        <StationSelect options={stationOptions} current={query.station ?? "semua"} />
       ) : null}
     </div>
   );
@@ -118,8 +118,7 @@ export function PerformaScreen({ access, ws, searchParams: sp }: ScreenProps) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title={TITLE}
-        context={`${ws.scopeLabel} · ${query.tab === "input" ? `Minggu ke-${query.week}, ${weekRange}` : `Rekap ${settings.weeks} minggu`}`}
-        description="Skor coaching mingguan per SDM untuk empat aspek (0 sampai 100) beserta rekap perkembangannya dibanding Final Result training."
+        meta={`${ws.scopeLabel} · ${query.tab === "input" ? `Minggu ke-${query.week}, ${weekRange}` : `Rekap ${settings.weeks} minggu`}`}
       >
         <TabNav
           label="Tampilan performa"
@@ -178,11 +177,8 @@ function InputView({
   filters: ReactNode;
 }) {
   const settings = ruleSettings(ws.settings);
-  const start = weekStart(query.week, settings);
-  const isFuture = today < start;
   const total = staff.length;
   const percent = total === 0 ? 0 : Math.round((assessed / total) * 100);
-  const pass = formatDecimal(settings.passGrade, 0, 2);
 
   const groups: EntryGroup[] = [];
   const gridRows: ScoreGridRow[] = [];
@@ -237,9 +233,6 @@ function InputView({
   }
 
   const weekHref = (w: number) => hrefFor(access, { ...query, week: w });
-  const futureNote = isFuture
-    ? `Minggu ke-${query.week} belum berjalan (mulai ${formatHariTanggal(start)}). Nilai tetap bisa diisi bila coaching sudah dilakukan.`
-    : null;
   const label = `Nilai Minggu ke-${query.week}, ${scopeName}`;
   const emptyState = (
     <EmptyState title={`Belum ada SDM di ${scopeName}`} layout="inline">
@@ -251,7 +244,7 @@ function InputView({
   return (
     <>
       {/* Phones: the week and filters sit above the cards (on desktop they are in the grid toolbar). */}
-      <div className="flex flex-col gap-4 nav:hidden">
+      <div className="flex flex-col gap-4 grid:hidden">
         {ws.schedule ? (
           <WeekRail
             settings={ws.schedule}
@@ -268,19 +261,6 @@ function InputView({
       <Panel
         padding="flush"
         title={label}
-        description={
-          <>
-            <span className="hidden nav:inline">
-              <HowToTip id="performa">
-                isi skor 0 sampai 100 (boleh desimal, contoh 87,5) di sel kuning; Rata-rata, Status (lulus bila {pass} atau
-                lebih) dan Δ Final Result terhitung sendiri. Blok nilai dari Excel bisa ditempel dengan Ctrl+V. Touch
-                point kosong memakai touch point di Master SDM. Baris tersimpan sendiri; kosongkan semua isian sebuah
-                baris untuk menghapus nilai minggu itu.
-              </HowToTip>{" "}
-            </span>
-            {futureNote}
-          </>
-        }
       >
         <div className="px-4 pb-4 sm:px-6 sm:pb-6">
           <ScoreGrid
@@ -379,11 +359,6 @@ function RekapView({
     <Panel
       padding="flush"
       title={`Rekap performa, ${scopeName}`}
-      description={`Rata-rata skor coaching per minggu. Minggu tanpa nilai dibiarkan kosong. Kenaikan = skor terkini dikurangi Final Result training; status terkini lulus bila skor terkini ${formatDecimal(
-        settings.passGrade,
-        0,
-        2,
-      )} atau lebih.`}
     >
       {!anyScore ? (
         <div className="border-t border-line px-4 sm:px-6">

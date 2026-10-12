@@ -1,18 +1,19 @@
 import { signOut } from "@/app/auth/actions";
-import type { ButtonVariant } from "@/components/ui/Button";
+import type { ButtonSize, ButtonVariant } from "@/components/ui/Button";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 
 type SignOutButtonProps = {
   variant?: ButtonVariant;
+  size?: ButtonSize;
   fullWidth?: boolean;
   children?: React.ReactNode;
 };
 
 /** A one-button form posting to the signOut server action. Works before hydration. */
-export function SignOutButton({ variant = "quiet", fullWidth, children = "Keluar" }: SignOutButtonProps) {
+export function SignOutButton({ variant = "ghost", size, fullWidth, children = "Keluar" }: SignOutButtonProps) {
   return (
     <form action={signOut} className={fullWidth ? "w-full" : undefined}>
-      <SubmitButton variant={variant} fullWidth={fullWidth} pendingText="Keluar…">
+      <SubmitButton variant={variant} size={size} fullWidth={fullWidth} pendingText="Keluar…">
         {children}
       </SubmitButton>
     </form>

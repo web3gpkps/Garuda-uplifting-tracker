@@ -8,7 +8,7 @@ import { PageLoading } from "@/components/ui/PageHeader";
 import { RingkasanView } from "./RingkasanView";
 
 export function RingkasanLoading() {
-  return <PageLoading title="Dashboard" label="Memuat dashboard" />;
+  return <PageLoading title="Beranda" label="Memuat beranda" />;
 }
 
 /** Workbook sheet "Dashboard": programme position, KPI vs target, what needs attention, stations, sections 1 to 6. */

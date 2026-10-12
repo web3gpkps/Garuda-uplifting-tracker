@@ -20,8 +20,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { PageHeader, PageLoading } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { EmptyState, ErrorState } from "@/components/ui/States";
-import { LinkSelect } from "@/components/grid/LinkSelect";
-import { HowToTip } from "@/components/ui/HowToTip";
+import { StationSelect } from "@/components/ui/StationSelect";
 import { RememberView } from "@/components/ui/RememberView";
 import { rememberScope } from "@/components/ui/remember";
 import { StatusChip, toneForStatus } from "@/components/ui/StatusChip";
@@ -83,7 +82,7 @@ export function PenggantianScreen({ access, ws, searchParams: query }: ScreenPro
   if (!settingsComplete(ws.settings)) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title={TITLE} context={ws.scopeLabel} />
+        <PageHeader title={TITLE} meta={ws.scopeLabel} />
         <Panel>
           <ErrorState
             title="Parameter penggantian belum terbaca"
@@ -125,24 +124,16 @@ export function PenggantianScreen({ access, ws, searchParams: query }: ScreenPro
   }));
 
   const deadline = countdown(settings.replacementDeadline, today);
-  const minPass = formatDecimal(settings.passGrade, 0, 2);
 
   return (
     <ReplacementPageStatus>
       <div className="flex flex-col gap-6">
         <PageHeader
           title={TITLE}
-          context={ws.scopeLabel}
-          description={
-            <>
-              Komitmen: SDM yang tidak memenuhi spesifikasi diganti paling lambat{" "}
-              {formatTanggal(settings.replacementDeadline)}. Pengganti baru boleh bertugas setelah lulus training:
-              post-test dan nilai akhir (0 sampai 100) masing-masing minimal {minPass}.
-            </>
-          }
+          meta={ws.scopeLabel}
           actions={
             // With rows, desktop adds through the grid toolbar ("Tambah baris"); phones keep this button.
-            <div className={rows.length > 0 ? "nav:hidden" : undefined}>
+            <div className={rows.length > 0 ? "grid:hidden" : undefined}>
               <AddReplacementButton ctx={ctx} />
             </div>
           }
@@ -151,9 +142,7 @@ export function PenggantianScreen({ access, ws, searchParams: query }: ScreenPro
             <RememberView scope={rememberScope(access, ws)} allowed={{ stasiun: stations }} shown={{ stasiun: stationFilter }} />
           ) : null}
           {ws.isKps ? (
-            <LinkSelect
-              label="Stasiun"
-              rememberStation
+            <StationSelect
               current={stationFilter ?? "semua"}
               options={[null, ...stations].map((code) => {
                 const count = code ? ws.replacements.filter((r) => r.station === code).length : ws.replacements.length;
@@ -189,7 +178,6 @@ export function PenggantianScreen({ access, ws, searchParams: query }: ScreenPro
           <Panel
             padding="flush"
             title={`Penggantian SDM, ${scopeName}`}
-            description={<HowToTip id="penggantian">ketik langsung di sel kuning, baris tersimpan sendiri. Pilih ID SDM dari Master SDM untuk mengisi nama otomatis.</HowToTip>}
           >
             <div className="px-4 pb-4 sm:px-6 sm:pb-6">
               <ReplacementGrid

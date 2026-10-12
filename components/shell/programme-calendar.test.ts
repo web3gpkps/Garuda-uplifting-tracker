@@ -4,6 +4,7 @@ import {
   nextBmiCheck,
   programmeStatus,
   programmeSummary,
+  programmeWeekLine,
   railWeeks,
   slotsAfterRail,
   type ProgrammeSettingsRow,
@@ -55,6 +56,14 @@ describe("programme status and summary", () => {
       "Minggu ke-2 dari 10: 12 Okt s.d. 18 Okt 2026. Cek BMI berikutnya: ke-2 dari 6, Senin, 26 Okt 2026.",
     );
     expect(programmeSummary(settings, "2026-10-12")).toContain("Cek BMI ke-1 dijadwalkan hari ini.");
+  });
+});
+
+describe("programmeWeekLine", () => {
+  test("one short line for the shell", () => {
+    expect(programmeWeekLine(settings, "2026-10-14")).toBe("Minggu ke-2 dari 10");
+    expect(programmeWeekLine(settings, "2026-10-01")).toBe("Mulai 5 Okt 2026");
+    expect(programmeWeekLine(settings, "2026-12-14")).toBe("Selesai 13 Des 2026");
   });
 });
 

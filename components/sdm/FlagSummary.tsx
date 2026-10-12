@@ -22,11 +22,10 @@ export type FlagItem = {
  * data (lib/rules staffBaseline: consistency, status, failure cause). Each one filters the
  * table through a real link (?cek=...). Server component.
  */
-export function FlagSummary({ items, scopeName }: { items: FlagItem[]; scopeName: string }) {
+export function FlagSummary({ items }: { items: FlagItem[] }) {
   return (
     <Panel
       title="Perlu diperiksa"
-      description={`Data SDM ${scopeName} yang tidak cocok atau belum lengkap. Pilih salah satu untuk menyaring tabel.`}
       padding="flush"
     >
       <ul className="grid border-t border-line sm:grid-cols-3">

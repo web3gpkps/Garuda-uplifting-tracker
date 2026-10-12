@@ -127,8 +127,8 @@ report_remark, feedback), `share_kps_update_action_item` (progress fields + defi
 Aggregations (`lib/aggregate.ts`) reproduce Dashboard 1–6 and Laporan Mingguan A–E of the workbook
 (per program IULS/RUST/TOTAL, per action group, per aspect, per station).
 
-PDF reference numbers (Data Coaching, Data Training sheets) are static content in
-`lib/reference.ts`, shown on the "Acuan PDF" screen. They are not synced.
+The starting position ("posisi awal", evaluation of Aug 2026) is static content in
+`lib/baseline.ts`, used only as the comparison point of the KPIs. It is not synced and has no screen.
 
 ## Google Sheets two-way replication (same engine as JOUMPA)
 

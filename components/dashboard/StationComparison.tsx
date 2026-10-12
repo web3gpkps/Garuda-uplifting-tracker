@@ -260,7 +260,7 @@ export function ComparisonSortNav({
             scroll={false}
             aria-current={active ? "true" : undefined}
             className={cx(
-              "inline-flex min-h-11 items-center rounded-control border px-3 text-sm whitespace-nowrap transition-colors duration-150 sm:min-h-9",
+              "inline-flex min-h-11 items-center rounded-control border px-3 text-sm whitespace-nowrap transition-colors duration-120 sm:min-h-9",
               active
                 ? "border-brand bg-brand-tint font-semibold text-ink"
                 : "border-line-strong bg-surface text-ink hover:bg-neutral-tint",

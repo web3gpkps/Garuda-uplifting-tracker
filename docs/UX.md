@@ -22,7 +22,6 @@ workbook, so nothing has to be relearned:
 | Remedial | Remedial | CRUD | CRUD | CRUD (own) |
 | Penggantian SDM | Penggantian SDM | CRUD | CRUD | CRUD (own) |
 | Laporan Mingguan | Laporan Mingguan | all + print | all + print | own + print |
-| Acuan PDF | Data Coaching, Data Training | read | read | read |
 | Tautan, Parameter, Sinkronisasi | Parameter | owner only | | |
 
 Owner area routes live under `/admin/*`, station workspace under `/s/[token]/*`. Same screen

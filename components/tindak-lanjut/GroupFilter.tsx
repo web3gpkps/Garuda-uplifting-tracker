@@ -22,7 +22,7 @@ export function GroupFilter({ options, current }: { options: GroupFilterOption[]
                 scroll={false}
                 className={cx(
                   "inline-flex min-h-11 items-center gap-2 rounded-control border px-3 text-sm whitespace-nowrap sm:min-h-9",
-                  "transition-colors duration-150",
+                  "transition-colors duration-120",
                   active
                     ? "border-brand bg-brand-tint font-semibold text-ink"
                     : "border-line-strong bg-surface text-ink hover:bg-neutral-tint",

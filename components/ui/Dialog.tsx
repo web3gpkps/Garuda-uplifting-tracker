@@ -20,7 +20,7 @@ type DialogProps = {
   footer?: ReactNode;
   /** Close when the backdrop is clicked. Default true; turn off while a save is running. */
   dismissible?: boolean;
-  /** Width: "sm" 28rem (confirmations) or "md" 40rem (forms). */
+  /** Width from 640px: "sm" 28rem (confirmations) or "md" 35rem / 560px (forms). Phones always get a full-screen sheet. */
   size?: "sm" | "md";
 };
 
@@ -120,21 +120,23 @@ export function Dialog({
         if (dismissible && event.target === event.currentTarget) onCloseRef.current();
       }}
       className={cx(
-        "m-auto max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-hidden rounded-panel border border-line bg-surface p-0 text-ink shadow-float",
+        // Phones: a full-screen sheet. From 640px: a centred 8px-radius panel, at most 560px wide.
+        "fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none overflow-hidden border-0 bg-surface p-0 text-ink",
+        "sm:m-auto sm:h-fit sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)] sm:rounded-panel sm:border sm:border-line sm:shadow-float",
         "open:flex open:flex-col",
         "backdrop:bg-ink/40",
-        size === "sm" ? "max-w-md" : "max-w-2xl",
+        size === "sm" ? "sm:max-w-md" : "sm:max-w-[35rem]",
       )}
     >
-      <div className="flex shrink-0 flex-col gap-2 px-4 pt-4 pb-3 sm:px-6 sm:pt-6">
-        <div className="flex items-start justify-between gap-4">
+      <div className="flex shrink-0 flex-col gap-1 border-b border-line px-4 py-3 sm:px-6">
+        <div className="flex items-center justify-between gap-4">
           <h2 id={titleId} className="text-lg font-semibold text-ink">
             {title}
           </h2>
           <button
             type="button"
             onClick={() => onCloseRef.current()}
-            className="-mt-2 -mr-2 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control text-sm font-semibold text-ink-muted transition-colors duration-150 hover:bg-neutral-tint hover:text-ink"
+            className="-mr-2 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control text-sm font-semibold text-ink-muted transition-colors duration-120 hover:bg-bg hover:text-ink lg:min-h-9"
           >
             Tutup
           </button>
@@ -148,11 +150,11 @@ export function Dialog({
       {children ? (
         // The body scrolls on its own, so the header and the footer stay on screen on phones.
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="px-4 pt-1 pb-4 text-sm sm:px-6 sm:pb-6">{children}</div>
+          <div className="px-4 py-4 text-sm sm:px-6">{children}</div>
         </div>
       ) : null}
       {footer ? (
-        <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-line px-4 py-3 sm:flex-row sm:justify-end sm:px-6 sm:py-4">
+        <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-line px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:px-6 sm:pb-3">
           {footer}
         </div>
       ) : null}

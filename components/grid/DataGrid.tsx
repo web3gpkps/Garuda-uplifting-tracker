@@ -11,7 +11,7 @@
  *     { key: "score_knowledge", header: "Product Knowledge", group: "Skor coaching (0 sampai 100)", width: 120,
  *       editor: "number", min: 0, max: 100, decimals: 2, get: (r) => r.scoreKnowledge },
  *     { key: "status", header: "Status", width: 120, editor: "readonly",
- *       render: (_v, r) => <StatusChip label={r.status} bordered /> },
+ *       render: (_v, r) => <StatusChip label={r.status} /> },
  *   ], [deps]);
  *
  *   <DataGrid
@@ -19,7 +19,7 @@
  *     rows={rows} rowKey={(r) => r.code} rowLabel={(r) => `${r.code}, ${r.name}`}
  *     columns={columns}                             // MEMOISE: a new array re-renders every row
  *     onSaveRow={async (key, changes, row) => …}    // per-row autosave, see below
- *     toolbar={<StationFilter …/>} actions={<AddButton/>} summary="271 SDM · 12 sudah dinilai"
+ *     toolbar={<StationSelect …/>} actions={<AddButton/>} summary="271 SDM · 12 sudah dinilai"
  *     search={{ placeholder: "Cari nama atau ID", text: (r) => `${r.code} ${r.name}` }}
  *     rowActions={{ header: "Aksi", width: 88, render: (r) => <Button size="sm">Ubah</Button> }}
  *     confirmClear={{ fields: ["score_grooming", …], message: (r) => `Hapus nilai ${r.name}?` }}
@@ -221,8 +221,8 @@ export function DataGrid<Row>(props: DataGridProps<Row>) {
   // Before hydration: both, CSS decides (no flash, no layout jump).
   return (
     <>
-      <div className="nav:hidden">{props.phone}</div>
-      <div className="hidden nav:block">
+      <div className="grid:hidden">{props.phone}</div>
+      <div className="hidden grid:block">
         <Grid {...props} />
       </div>
     </>
@@ -739,7 +739,7 @@ function Grid<Row>({
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-col gap-3 nav:flex-row nav:flex-wrap nav:items-end nav:justify-between" data-print="hide">
+      <div className="flex flex-col gap-3 grid:flex-row grid:flex-wrap grid:items-end grid:justify-between" data-print="hide">
         <div className="flex min-w-0 flex-wrap items-end gap-3">
           {toolbar}
           {search ? (
@@ -769,19 +769,7 @@ function Grid<Row>({
         </div>
       </div>
 
-      {anyEditable ? (
-        <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted" data-print="hide">
-          <span className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="inline-block size-3.5 rounded-[3px] border border-line-strong bg-input-tint" />
-            Kuning: sel isian
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="inline-block size-3.5 rounded-[3px] border border-line-strong bg-surface" />
-            Putih: dihitung otomatis
-          </span>
-          <span>Ketik atau Enter untuk mengisi, Tab ke kanan, Ctrl+V menempel dari Excel. Tersimpan otomatis per baris.</span>
-        </p>
-      ) : null}
+      {anyEditable ? <GridLegend /> : null}
 
       <div
         ref={scrollRef}
@@ -797,6 +785,7 @@ function Grid<Row>({
           aria-multiselectable={multi || undefined}
           aria-describedby={`${id}-help`}
           className="dg"
+          data-editable-grid={anyEditable ? "" : undefined}
           style={{ width: tableWidth }}
           onKeyDown={onKeyDown}
           onMouseDown={onMouseDown}
@@ -1027,6 +1016,25 @@ type GridRowProps<Row> = {
   rowKeyValue: string;
 };
 
+/**
+ * The two-item cell legend of an editable grid (DESIGN.md Tokens): white cells are input,
+ * sunken cells are computed. Shown in the toolbar row under the filters.
+ */
+export function GridLegend() {
+  return (
+    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted" data-print="hide">
+      <span className="flex items-center gap-1.5">
+        <span aria-hidden="true" className="inline-block size-3.5 rounded-status border border-line-strong bg-surface" />
+        Isian
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span aria-hidden="true" className="inline-block size-3.5 rounded-status border border-line bg-surface-sunken" />
+        Dihitung otomatis
+      </span>
+    </p>
+  );
+}
+
 const STATUS_VIEW: Record<RowEdits["status"], { mark: string; text: string; tone: string }> = {
   dirty: { mark: "•", text: "Belum tersimpan", tone: "text-ink-muted" },
   saving: { mark: "…", text: "Menyimpan", tone: "text-ink-muted" },
@@ -1068,13 +1076,13 @@ function GridRowImpl<Row>({
             tabIndex={-1}
             title={`${edits.message ?? "Gagal menyimpan"}. Klik untuk simpan ulang.`}
             onClick={() => onRetry(rowKeyValue)}
-            className="inline-flex h-7 min-w-7 items-center justify-center rounded-control bg-critical-tint px-1 text-xs font-bold text-critical hover:bg-critical hover:text-white"
+            className="inline-flex h-7 min-w-7 items-center justify-center rounded-control bg-critical-tint px-1 text-xs font-semibold text-critical hover:bg-critical hover:text-white"
           >
             <span aria-hidden="true">!</span>
             <span className="sr-only">Gagal menyimpan: {edits.message}. Simpan ulang</span>
           </button>
         ) : status ? (
-          <span className={cx("text-sm font-bold", invalidCells ? "text-critical" : status.tone)} title={invalidCells ? "Ada isian tidak valid" : status.text}>
+          <span className={cx("text-sm font-semibold", invalidCells ? "text-critical" : status.tone)} title={invalidCells ? "Ada isian tidak valid" : status.text}>
             <span aria-hidden="true">{invalidCells ? "!" : status.mark}</span>
             <span className="sr-only">{invalidCells ? "Ada isian tidak valid" : status.text}</span>
           </span>

@@ -14,14 +14,15 @@ import { Panel } from "@/components/ui/Panel";
 import { ButtonLink } from "@/components/ui/Button";
 import { RememberView } from "@/components/ui/RememberView";
 import { rememberScope } from "@/components/ui/remember";
-import { LinkSelect } from "@/components/grid/LinkSelect";
+import { StationSelect } from "@/components/ui/StationSelect";
+import { UrlSelect } from "@/components/ui/UrlSelect";
 import { FlagSummary, type FlagItem } from "@/components/sdm/FlagSummary";
 import { StaffGrid } from "@/components/sdm/StaffGrid";
 import { AddStaffButton } from "@/components/sdm/AddStaffButton";
 import { MATCHES, parseCheck, parseProgram, toRows, type Check } from "@/components/sdm/rows";
 import { deleteStaff, saveStaff } from "./actions";
 
-const TITLE = "Master SDM";
+const TITLE = "Data SDM";
 
 export function SdmLoading() {
   return <PageLoading title={TITLE} label="Memuat daftar SDM" />;
@@ -107,8 +108,7 @@ export function SdmScreen({ access, ws, searchParams: sp }: ScreenProps) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title={TITLE}
-        context={ws.scopeLabel}
-        description="Peserta training IULS dan RUST per unit: data SDM, hasil training (Role Play, Post-Test, Final Result) dan status penugasannya."
+        meta={ws.scopeLabel}
         actions={
           <AddStaffButton
             accessKey={access.key}
@@ -121,13 +121,11 @@ export function SdmScreen({ access, ws, searchParams: sp }: ScreenProps) {
         }
       >
         <div className="flex flex-wrap gap-4">
-          <LinkSelect label="Program" options={programOptions} current={query.program ?? "semua"} />
+          <UrlSelect label="Program" options={programOptions} current={query.program ?? "semua"} />
           {ws.isKps ? (
-            <LinkSelect
-              label="Unit (stasiun)"
+            <StationSelect
               options={stationOptions}
               current={query.station ?? "semua"}
-              rememberStation
             />
           ) : null}
         </div>
@@ -136,20 +134,11 @@ export function SdmScreen({ access, ws, searchParams: sp }: ScreenProps) {
         ) : null}
       </PageHeader>
 
-      <FlagSummary items={flags} scopeName={scopeName} />
+      <FlagSummary items={flags} />
 
       <Panel
         padding="flush"
         title={`Master SDM, ${scopeName}`}
-        description={
-          activeFlag
-            ? `Menampilkan ${rows.length} dari ${scopeRows.length} SDM: ${activeFlag.title}.`
-            : `${scopeRows.length} SDM. ${
-                ws.isKps
-                  ? "Sel kuning bisa diisi langsung; hasil training juga lewat tombol Ubah."
-                  : "Sel kuning bisa diisi langsung. Hasil training hanya bisa diubah lewat tautan KPS."
-              }`
-        }
         actions={
           activeFlag ? (
             <ButtonLink size="sm" href={hrefFor(access, { ...query, check: null })}>

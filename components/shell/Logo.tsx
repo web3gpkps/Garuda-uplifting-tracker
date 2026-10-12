@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import Image, { type StaticImageData } from "next/image";
 import garuda from "@/public/brand/garuda-indonesia.png";
 import gapura from "@/public/brand/gapura-airport-services.png";
@@ -14,16 +13,7 @@ import { cx } from "@/components/ui/cx";
  * height. At that ratio both wordmarks read at about the same letter size.
  */
 
-type PartnerLogoProps = {
-  src: StaticImageData;
-  alt: string;
-  /** Rendered height used for the intrinsic width/height attributes (CSS sets the real one). */
-  height: number;
-  eager: boolean;
-  className: string;
-};
-
-function PartnerLogo({ src, alt, height, eager, className }: PartnerLogoProps) {
+function PartnerLogo({ src, alt, height, eager }: { src: StaticImageData; alt: string; height: number; eager: boolean }) {
   return (
     <Image
       src={src}
@@ -31,66 +21,33 @@ function PartnerLogo({ src, alt, height, eager, className }: PartnerLogoProps) {
       width={Math.round(height * (src.width / src.height))}
       height={height}
       loading={eager ? "eager" : "lazy"}
-      className={cx("w-auto max-w-none shrink-0", className)}
-      style={{ aspectRatio: `${src.width} / ${src.height}` }}
+      className="w-auto max-w-none shrink-0"
+      style={{ height, aspectRatio: `${src.width} / ${src.height}` }}
     />
   );
 }
 
 type LogoProps = {
   /**
-   * Height of the Gapura logo in px; the Garuda logo follows at 0.78 of it. DESIGN.md sizes:
-   * app header 36 (28 on phones), login 64, share page header 40, printed report 48.
+   * Height of the lockup in px (the Gapura logo; Garuda follows at 0.78 of it).
+   * DESIGN.md sizes: sidebar 24, phone top bar 20, login 36, printed report 32.
    */
-  height?: number;
-  /** Height under 640 px, where the header also has to fit the scope and the menu button. */
-  compactHeight?: number;
-  /**
-   * Logos sit at the top of every screen, so they load eagerly by default
-   * (Next 16: `priority` is deprecated; eager loading is the replacement).
-   */
+  height: 20 | 24 | 32 | 36;
+  /** Logos sit at the top of every screen, so they load eagerly by default. */
   eager?: boolean;
-  /**
-   * Keep clear space around the lockup (25 % of the height on every side) as padding.
-   * Default true; turn off only when the parent already reserves it.
-   */
-  clearSpace?: boolean;
   className?: string;
 };
 
 /**
- * Co-brand lockup: Garuda Indonesia first (the programme owner), a thin divider, then
- * Gapura Airport Services (the handling partner whose frontliners are tracked).
- * Sizes come from two CSS variables, so one render serves phones and desktops.
+ * Co-brand lockup: Garuda Indonesia, a 1px --line divider, then Gapura Airport Services.
+ * Server-component friendly.
  */
-export function Logo({ height = 36, compactHeight, eager = true, clearSpace = true, className }: LogoProps) {
-  const small = compactHeight ?? height;
-  const vars = { "--lh": `${height}px`, "--lh-sm": `${small}px` } as CSSProperties;
+export function Logo({ height, eager = true, className }: LogoProps) {
   return (
-    <span
-      style={vars}
-      className={cx(
-        "inline-flex shrink-0 items-center",
-        "gap-[calc(var(--lh-sm)*0.33)] sm:gap-[calc(var(--lh)*0.33)]",
-        clearSpace && "p-[calc(var(--lh-sm)*0.25)] sm:p-[calc(var(--lh)*0.25)]",
-        className,
-      )}
-    >
-      <PartnerLogo
-        src={garuda}
-        alt="Garuda Indonesia"
-        height={Math.round(height * 0.78)}
-        eager={eager}
-        className="h-[calc(var(--lh-sm)*0.78)] sm:h-[calc(var(--lh)*0.78)]"
-      />
-      <span aria-hidden="true" className="h-[calc(var(--lh-sm)*0.8)] w-px shrink-0 bg-line-strong sm:h-[calc(var(--lh)*0.8)]" />
-      <PartnerLogo
-        src={gapura}
-        alt="Gapura Airport Services"
-        height={height}
-        eager={eager}
-        className="h-(--lh-sm) sm:h-(--lh)"
-      />
+    <span className={cx("inline-flex shrink-0 items-center", className)} style={{ gap: Math.round(height / 3) }}>
+      <PartnerLogo src={garuda} alt="Garuda Indonesia" height={Math.round(height * 0.78)} eager={eager} />
+      <span aria-hidden="true" className="w-px shrink-0 self-stretch bg-line" />
+      <PartnerLogo src={gapura} alt="Gapura Airport Services" height={height} eager={eager} />
     </span>
   );
 }

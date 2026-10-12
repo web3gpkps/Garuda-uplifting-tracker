@@ -1,30 +1,30 @@
 import type { ReactNode } from "react";
 import { cx } from "./cx";
-import { LoadingState } from "./States";
+import { TableSkeleton } from "./States";
 
 type PageHeaderProps = {
-  /** The page's h1. One per page. */
+  /** The page's h1 (20/600). One per page. */
   title: ReactNode;
-  /** One or two sentences: what this screen is for. */
-  description?: ReactNode;
-  /** Primary actions for the whole page (e.g. "Tambah SDM"). Wrap onto their own row on phones. */
+  /**
+   * At most one meta line (13, muted): counts and nouns, never a sentence of explanation.
+   * e.g. "CGK · Minggu ke-2 · 31 dari 45 dinilai".
+   */
+  meta?: ReactNode;
+  /** Page actions on the right (wrap below the title on phones). At most one primary. */
   actions?: ReactNode;
-  /** Small context line above the title, e.g. the selected week or station. Not a badge. */
-  context?: ReactNode;
-  /** Filters or a WeekRail that belong to the header (sit under the title). */
+  /** Optional row under the title, e.g. a <Toolbar>. Prefer placing the Toolbar right after the header. */
   children?: ReactNode;
   className?: string;
 };
 
-/** Page title block. 22 px on phones, 28 px from 640 px, weight 600. Server-component friendly. */
-export function PageHeader({ title, description, actions, context, children, className }: PageHeaderProps) {
+/** Page title block (DESIGN.md PageHeader). No description. Server-component friendly. */
+export function PageHeader({ title, meta, actions, children, className }: PageHeaderProps) {
   return (
     <header className={cx("flex flex-col gap-4", className)}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          {context ? <p className="section-label mb-1">{context}</p> : null}
-          <h1 className="text-xl font-semibold text-ink sm:text-2xl">{title}</h1>
-          {description ? <p className="mt-2 max-w-3xl text-sm text-ink-muted">{description}</p> : null}
+          <h1 className="text-xl font-semibold text-ink">{title}</h1>
+          {meta ? <p className="mt-0.5 text-xs text-ink-muted">{meta}</p> : null}
         </div>
         {actions ? (
           <div className="flex shrink-0 flex-wrap gap-2" data-print="hide">
@@ -37,12 +37,12 @@ export function PageHeader({ title, description, actions, context, children, cla
   );
 }
 
-/** Suspense fallback for a page: its title right away, then what is loading. */
+/** Suspense fallback for a page: its title right away, then static skeleton rows. */
 export function PageLoading({ title, label }: { title: ReactNode; label: string }) {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={title} />
-      <LoadingState label={label} />
+      <TableSkeleton label={label} />
     </div>
   );
 }

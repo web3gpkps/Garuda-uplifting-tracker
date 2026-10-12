@@ -4,7 +4,6 @@ import type { Settings } from "@/lib/rules";
 import { formatDecimal } from "@/lib/format";
 import { Button } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { toneOf } from "@/components/performa/format";
 import type { SdmRow } from "./types";
 
 type StaffCardsProps = {
@@ -47,12 +46,12 @@ export function StaffCards({ rows, emptyTitle, emptyHint, settings, onEdit, onDe
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {row.status ? <StatusChip label={row.status} tone={toneOf(row.status)} bordered /> : null}
+              {row.status ? <StatusChip label={row.status} /> : null}
               {row.consistency === "Beda – verifikasi" ? (
-                <StatusChip label={row.consistency} tone={toneOf(row.consistency)} bordered />
+                <StatusChip label={row.consistency} />
               ) : null}
               {row.assignmentStatus !== "Aktif" ? (
-                <StatusChip label={row.assignmentStatus} tone={toneOf(row.assignmentStatus)} bordered />
+                <StatusChip label={row.assignmentStatus} />
               ) : null}
             </div>
           </div>
@@ -108,7 +107,7 @@ export function StaffCards({ rows, emptyTitle, emptyHint, settings, onEdit, onDe
               <button
                 type="button"
                 onClick={() => onDelete(row)}
-                className="inline-flex min-h-11 items-center rounded-control px-3 text-sm font-semibold text-critical transition-colors duration-150 hover:bg-critical-tint"
+                className="inline-flex min-h-11 items-center rounded-control px-3 text-sm font-semibold text-critical transition-colors duration-120 hover:bg-critical-tint"
               >
                 Hapus SDM<span className="sr-only"> {row.name}</span>
               </button>

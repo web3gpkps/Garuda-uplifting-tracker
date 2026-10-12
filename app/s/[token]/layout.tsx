@@ -11,7 +11,7 @@ import { InvalidLinkScreen, WorkspaceUnavailableScreen } from "@/components/shel
  * headers on every /s/* response, and this metadata repeats both as <meta> tags.
  */
 export const metadata: Metadata = {
-  title: { default: `Ruang kerja | ${APP_NAME}`, template: `%s | ${APP_NAME}` },
+  title: { default: APP_NAME, template: `%s | ${APP_NAME}` },
   referrer: "no-referrer",
   robots: { index: false, follow: false, nocache: true },
 };
@@ -35,7 +35,7 @@ async function WorkspaceGate({
   const result = await getWorkspace(token);
 
   if (!result.ok && result.reason === "invalid-link") return <InvalidLinkScreen />;
-  if (!result.ok) return <WorkspaceUnavailableScreen detail={result.detail} />;
+  if (!result.ok) return <WorkspaceUnavailableScreen />;
 
   return (
     <WorkspaceShell access={linkAccess(token)} workspace={result.workspace} today={todayInJakarta()}>

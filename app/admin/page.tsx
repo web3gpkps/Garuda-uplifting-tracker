@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { OwnerScreenRoute } from "@/components/shell/ScreenRoute";
 import { RingkasanLoading, RingkasanScreen } from "@/components/ringkasan/RingkasanScreen";
 
-export const metadata: Metadata = { title: "Dashboard" };
+export const metadata: Metadata = { title: "Beranda" };
 
 // Sits in the same segment as the owner gate, which must check the session on every request.
 export const instant = false;

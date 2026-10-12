@@ -157,7 +157,7 @@ export function TindakLanjutBoard({
           <Field label="Urutan">
             <Select value={order} onChange={(e) => setOrder(e.target.value === "id" ? "id" : "urgency")}>
               <option value="urgency">Paling mendesak dulu</option>
-              <option value="id">Urutan ID workbook</option>
+              <option value="id">Urutan ID</option>
             </Select>
           </Field>
         </div>
@@ -166,7 +166,7 @@ export function TindakLanjutBoard({
             Menampilkan {visible.length} dari {items.length} butir.
           </p>
           {filtersActive ? (
-            <Button variant="quiet" size="sm" onClick={clearFilters}>
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
               Hapus filter
             </Button>
           ) : null}

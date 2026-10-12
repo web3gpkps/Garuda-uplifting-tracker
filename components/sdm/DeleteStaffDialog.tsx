@@ -95,7 +95,7 @@ export function DeleteStaffDialog({ row, onClose, accessKey, deleteAction, onDel
               : "Tidak ada baris Penggantian SDM yang tertaut ke SDM ini."}
           </p>
           {error ? (
-            <p role="alert" className="rounded-control bg-critical-tint px-3 py-2 font-medium text-critical">
+            <p role="alert" className="rounded-control bg-critical-tint px-3 py-2 font-semibold text-critical">
               {error}
             </p>
           ) : null}

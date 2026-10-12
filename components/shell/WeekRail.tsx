@@ -137,7 +137,7 @@ function WeekCell({ week, compact, selected, interactive, href, onSelect }: Week
 
   const box = cx(
     "relative flex w-full rounded-control border text-left",
-    "transition-colors duration-150",
+    "transition-colors duration-120",
     compact
       ? cx("h-7 items-center justify-center", interactive && "min-h-11 sm:min-h-7")
       : "min-h-16 flex-col items-start justify-start gap-0.5 px-1.5 py-1.5 sm:px-2",
@@ -156,7 +156,7 @@ function WeekCell({ week, compact, selected, interactive, href, onSelect }: Week
       <span
         className={cx(
           "text-xs tabular-nums",
-          isCurrent ? "font-bold text-accent" : isPast ? "text-ink-muted" : "font-semibold text-ink",
+          isCurrent ? "font-semibold text-accent" : isPast ? "text-ink-muted" : "font-semibold text-ink",
         )}
       >
         {week.week}

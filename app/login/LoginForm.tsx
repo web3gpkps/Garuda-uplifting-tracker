@@ -23,9 +23,9 @@ const NetworkErrorBoundary = catchError(function LoginNetworkError(
     <div className="flex flex-col gap-4">
       <p
         role="alert"
-        className="rounded-control bg-critical-tint px-3 py-2.5 text-sm font-medium text-critical"
+        className="rounded-control bg-critical-tint px-3 py-2.5 text-sm font-semibold text-critical"
       >
-        Tidak bisa terhubung ke server. Periksa koneksi internet perangkat ini, lalu coba lagi.
+        Tidak bisa terhubung ke server. Periksa koneksi, lalu coba lagi.
       </p>
       <Button fullWidth onClick={() => reset()}>
         Coba lagi
@@ -62,7 +62,7 @@ function LoginFormFields() {
       {/* Always mounted so screen readers announce the message when it appears. */}
       <div role="alert" aria-live="assertive" className="not-empty:mb-5">
         {error ? (
-          <p className="rounded-control bg-critical-tint px-3 py-2.5 text-sm font-medium text-critical">
+          <p className="rounded-control bg-critical-tint px-3 py-2.5 text-sm font-semibold text-critical">
             {error.message}
           </p>
         ) : null}

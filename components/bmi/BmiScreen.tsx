@@ -18,8 +18,8 @@ import { DataTable, Td, Th, Tr } from "@/components/ui/DataTable";
 import { PageHeader, PageLoading } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { EmptyState, ErrorState } from "@/components/ui/States";
-import { StationFilter } from "@/components/ui/StationFilter";
-import { HowToTip } from "@/components/ui/HowToTip";
+import { StationSelect } from "@/components/ui/StationSelect";
+import { ALL_STATIONS } from "@/components/ui/url-options";
 import { RememberView } from "@/components/ui/RememberView";
 import { oneTo, rememberScope } from "@/components/ui/remember";
 import { StatusChip, type StatusTone } from "@/components/ui/StatusChip";
@@ -30,9 +30,7 @@ import { formatRatio } from "@/lib/format";
 import { PeriodRail, type RailPeriod } from "./PeriodRail";
 import { defaultPeriod, scheduleTone, slotCounts, type BmiSlotCounts } from "./summary";
 
-const TITLE = "Cek BMI 2 mingguan";
-const DESCRIPTION =
-  "Ukur tinggi dan berat tiap SDM pada tanggal cek, lalu simpan per baris. BMI, kategori, dan jadwal cek berikutnya dihitung otomatis: SDM dengan catatan BMI dicek tiap 2 minggu, tanpa catatan tiap bulan.";
+const TITLE = "Cek BMI";
 
 const CATEGORY_TONES: Record<string, StatusTone> = {
   Normal: "good",
@@ -70,7 +68,7 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
   if (!settings) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title={TITLE} context={ws.scopeLabel} description={DESCRIPTION} />
+        <PageHeader title={TITLE} meta={ws.scopeLabel} />
         <Panel>
           <ErrorState
             title="Jadwal cek BMI belum terbaca"
@@ -164,10 +162,8 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
     ? [null, ...stations].map((code) => {
         const counts = slotCounts(summariesOf(code), period);
         return {
-          code,
-          label: code ?? "Semua stasiun",
-          meta: `${counts.checked}/${counts.staffCount}`,
-          metaLabel: `${counts.checked} dari ${counts.staffCount} SDM sudah dicek`,
+          value: code ?? ALL_STATIONS,
+          label: `${code ?? "Semua stasiun"} (${counts.checked}/${counts.staffCount})`,
           href: href(period, code),
         };
       })
@@ -182,8 +178,8 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={TITLE} context={ws.scopeLabel} description={DESCRIPTION}>
-        {stationOptions ? <StationFilter options={stationOptions} current={stationFilter} /> : null}
+      <PageHeader title={TITLE} meta={ws.scopeLabel}>
+        {stationOptions ? <StationSelect options={stationOptions} current={stationFilter ?? ALL_STATIONS} /> : null}
         <RememberView
           scope={rememberScope(access, ws)}
           allowed={{ periode: oneTo(settings.bmiPeriods), ...(ws.isKps ? { stasiun: stations } : {}) }}
@@ -248,13 +244,6 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
       <Panel
         padding="flush"
         title={`Cek BMI ${scopeName}`}
-        description={
-          <HowToTip id="bmi">
-            isi TB dan BB (desimal pakai koma, 165,5). Tanggal kosong memakai tanggal cek terjadwal. Isi &ldquo;Ada
-            catatan BMI&rdquo; Ya atau Tidak untuk menentukan jadwal cek. Kosongkan TB dan BB suatu cek untuk
-            menghapusnya.
-          </HowToTip>
-        }
       >
         {staffInView.length === 0 ? (
           <div className="px-4 sm:px-6">
@@ -343,7 +332,6 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
         <Panel
           padding="flush"
           title={`Kategori BMI cek ke-${period} per stasiun`}
-          description={`Dihitung dari hasil cek ke-${period}, seperti bagian C Laporan Mingguan. Target overweight + obesitas di bawah ${formatRatio(overweightTarget)} dalam ${settings.targetOverweightMonths} bulan.`}
         >
           <DataTable
             caption={`Kategori BMI cek ke-${period} per stasiun`}

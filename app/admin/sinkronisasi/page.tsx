@@ -22,7 +22,6 @@ export default function SinkronisasiPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Sinkronisasi Google Sheet"
-        description="Database aplikasi adalah sumber utama; Google Sheet adalah salinan yang ikut bisa diubah. Di sini terlihat kapan sinkronisasi terakhir berhasil, galat terakhir, dan konflik yang perlu ditinjau."
       />
       <Suspense fallback={<LoadingState label="Memuat status sinkronisasi" />}>
         <SyncData />
@@ -105,7 +104,6 @@ async function SyncData() {
   const openRows = (openResult.data ?? []).map(toConflict);
   const resolvedRows = (resolvedResult.data ?? []).map(toConflict);
   const openCount = openResult.count ?? openRows.length;
-  const resolvedCount = resolvedResult.count ?? resolvedRows.length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -185,11 +183,6 @@ async function SyncData() {
 
       <Panel
         title={`Belum ditinjau (${openCount})`}
-        description={
-          openCount > openRows.length
-            ? `Menampilkan ${openRows.length} terbaru dari ${openCount}. Tandai selesai setelah nilai yang benar dipastikan di aplikasi atau Sheet.`
-            : "Tandai selesai setelah nilai yang benar dipastikan di aplikasi atau Sheet. Mengubah nilai dilakukan di tempat datanya, bukan di sini."
-        }
         padding="flush"
       >
         {openResult.error ? (
@@ -215,7 +208,6 @@ async function SyncData() {
 
       <Panel
         title="Sudah ditinjau"
-        description={`${resolvedCount} konflik sudah ditandai selesai${resolvedCount > resolvedRows.length ? `; menampilkan ${resolvedRows.length} terbaru` : ""}.`}
         padding="flush"
       >
         {resolvedResult.error ? (

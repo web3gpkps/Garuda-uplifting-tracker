@@ -3,11 +3,11 @@ import { cx } from "./cx";
 
 type DataTableProps = {
   /**
-   * What the table shows. Rendered as the <caption> (visible by default) and used
-   * as the accessible name of the scroll region.
+   * What the table shows. Rendered as the <caption> (screen readers only by default,
+   * DESIGN.md DataTable) and used as the accessible name of the scroll region.
    */
   caption: string;
-  /** Hide the caption visually (keep it for screen readers) when a Panel title already says the same. */
+  /** Default true: the caption is sr-only (the Panel title says the same). Pass false to show it. */
   hideCaption?: boolean;
   /** Keep the first column (staff name, item code) visible while scrolling sideways. Default true. */
   stickyFirstColumn?: boolean;
@@ -41,7 +41,7 @@ type DataTableProps = {
  */
 export function DataTable({
   caption,
-  hideCaption = false,
+  hideCaption = true,
   stickyFirstColumn = true,
   stickyHeader = true,
   maxHeight = "min(70dvh, 760px)",

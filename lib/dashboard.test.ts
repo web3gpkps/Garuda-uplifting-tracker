@@ -58,9 +58,9 @@ describe('dashboardSummary', () => {
     expect(summary.bmiPeriod).toBe(1);
   });
 
-  test('slide-15 tiles: actual against target and PDF baseline', () => {
+  test('target tiles: actual against target and posisi awal', () => {
     expect(summary.targets.map((t) => t.key)).toEqual(['coverage', 'overweight', 'knowledge', 'interactive', 'kelulusan']);
-    expect(tile(summary.targets, 'overweight')).toMatchObject({ value: 0.5, status: 'Belum tercapai', target: 'Target < 20%', baseline: 'Baseline PDF 37,3%' });
+    expect(tile(summary.targets, 'overweight')).toMatchObject({ value: 0.5, status: 'Belum tercapai', target: 'Target < 20%', baseline: 'Posisi awal 37,3%' });
     // Mean of aspect B (95, 85) = 90: not above 90 %.
     expect(tile(summary.targets, 'knowledge')).toMatchObject({ value: 0.9, status: 'Belum tercapai' });
     // Passed 2 (one of them withdrawn) + remedial passed 1, of 4 participants.

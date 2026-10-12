@@ -53,7 +53,7 @@ export function PeriodRail({ periods, selected, hrefForPeriod }: PeriodRailProps
                 scroll={false}
                 className={cx(
                   "flex min-h-16 w-full min-w-0 flex-col items-start gap-0.5 rounded-control border px-1.5 py-1.5 sm:px-2",
-                  "transition-colors duration-150",
+                  "transition-colors duration-120",
                   isCurrent
                     ? "border-brand border-b-[3px] bg-brand-tint"
                     : isPast

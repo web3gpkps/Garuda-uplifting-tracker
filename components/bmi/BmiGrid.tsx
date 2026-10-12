@@ -70,7 +70,7 @@ const SEARCH = { placeholder: "Nama atau ID", text: (r: BmiGridRow) => `${r.code
 const FIELD_OF_ERROR: Record<string, string> = { height_cm: "tb", weight_kg: "bb", check_date: "tgl" };
 
 function chip(value: CellValue) {
-  return value ? <StatusChip label={String(value)} bordered /> : null;
+  return value ? <StatusChip label={String(value)} /> : null;
 }
 
 /**
@@ -227,7 +227,7 @@ export function BmiGrid({
         width: 128,
         editor: "readonly",
         get: (r) => r.scheduleStatus,
-        render: (value) => (value ? <StatusChip label={String(value)} tone={scheduleTone(String(value))} bordered /> : null),
+        render: (value) => (value ? <StatusChip label={String(value)} tone={scheduleTone(String(value))} /> : null),
       },
       {
         key: "changed",
