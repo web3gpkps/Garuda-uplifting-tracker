@@ -12,12 +12,14 @@ import { bmi, bmiCategory, type BmiSummary, type Settings } from "@/lib/rules";
 import type { LinkError } from "@/lib/workspace/errors";
 import { formatDecimal, formatSignedKg, toInputText } from "@/lib/format";
 import { hasMoreThanOneDecimal, isPlausibleDate } from "./format";
+import { checkRhythm, hasNoteLabel, parseHasNote, scheduleTone } from "./summary";
 
 export type BmiRowStaff = {
   code: string;
   name: string;
   station: string | null;
   gender: string | null;
+  bmiHasNote: boolean | null;
   bmiNote: string | null;
   assignmentStatus: string | null;
 };
@@ -79,8 +81,9 @@ function hasErrors(errors: CheckErrors): boolean {
 
 /**
  * One staff member in the BMI entry list: this period's check (Tgl cek, Tinggi, Berat, live
- * BMI and Kategori, saved per row) and, folded below, L/P, the BB programme note, the latest
- * values and the five-period history. Enter in any field saves the row.
+ * BMI and Kategori, saved per row) and, folded below, L/P, "Ada catatan BMI", the fitness
+ * programme note, the latest values, the next check and the history of every slot. Enter in
+ * any field saves the row.
  */
 export function BmiStaffRow({
   accessKey,
@@ -234,9 +237,18 @@ export function BmiStaffRow({
             ) : null}
           </div>
           <p className="text-xs text-ink-muted">{meta}</p>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
+            <span>
+              Cek {checkRhythm(staff.bmiHasNote, settings)}, berikutnya{" "}
+              <time dateTime={summary.nextCheck} className="tabular-nums">
+                {formatTanggalPendek(summary.nextCheck)}
+              </time>
+            </span>
+            <StatusChip label={summary.scheduleStatus} tone={scheduleTone(summary.scheduleStatus)} />
+          </p>
           {staff.bmiNote ? (
             <p className="line-clamp-2 text-xs text-ink">
-              <span className="text-ink-muted">Catatan BB: </span>
+              <span className="text-ink-muted">Catatan kebugaran: </span>
               {staff.bmiNote}
             </p>
           ) : null}
@@ -315,6 +327,7 @@ export function BmiStaffRow({
         plannedDates={plannedDates}
         staff={staff}
         summary={summary}
+        settings={settings}
       />
 
       <Dialog
@@ -349,6 +362,7 @@ type BmiProfileProps = {
   plannedDates: string[];
   staff: BmiRowStaff;
   summary: BmiSummary;
+  settings: Settings;
 };
 
 function genderText(gender: string | null): string {
@@ -357,15 +371,24 @@ function genderText(gender: string | null): string {
   return "belum diisi";
 }
 
-/** L/P + BB programme note (share_save_profile, both sent), latest values and history. */
-function BmiProfile({ accessKey, period, plannedDates, staff, summary }: BmiProfileProps) {
+/**
+ * L/P, "Ada catatan BMI" and the fitness programme note (share_save_profile, all three sent),
+ * latest values, next check and history.
+ */
+function BmiProfile({ accessKey, period, plannedDates, staff, summary, settings }: BmiProfileProps) {
   const savedGender = staff.gender === "L" || staff.gender === "P" ? staff.gender : "";
+  const savedHasNote = hasNoteLabel(staff.bmiHasNote) ?? "";
   const savedNote = staff.bmiNote ?? "";
   const [gender, setGender] = useState(savedGender);
+  const [hasNote, setHasNote] = useState<string>(savedHasNote);
   const [note, setNote] = useState(savedNote);
   const [save, setSave] = useState<SaveState>({ status: "idle" });
   const [pending, startTransition] = useTransition();
-  const dirty = gender !== savedGender || note.trim() !== savedNote.trim();
+  const dirty = gender !== savedGender || hasNote !== savedHasNote || note.trim() !== savedNote.trim();
+
+  function touched() {
+    if (save.status !== "saving") setSave({ status: "idle" });
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -376,6 +399,7 @@ function BmiProfile({ accessKey, period, plannedDates, staff, summary }: BmiProf
         const result = await saveBmiProfile(accessKey, {
           staffCode: staff.code,
           gender: gender === "L" || gender === "P" ? gender : null,
+          bmiHasNote: parseHasNote(hasNote),
           bmiNote: note.trim() === "" ? null : note,
         });
         setSave(result.ok ? { status: "saved", at: result.savedAt } : { status: "error", message: result.error.message });
@@ -394,21 +418,32 @@ function BmiProfile({ accessKey, period, plannedDates, staff, summary }: BmiProf
           Profil, catatan, dan riwayat
         </span>
         <span className="text-xs text-ink-muted">
-          L/P: {genderText(staff.gender)} · {checkCount} dari {plannedDates.length} cek tercatat
+          L/P: {genderText(staff.gender)} · Ada catatan BMI: {hasNoteLabel(staff.bmiHasNote) ?? "belum diisi"} ·{" "}
+          {checkCount} dari {plannedDates.length} cek tercatat
         </span>
       </summary>
 
       <div className="grid gap-6 px-4 pt-2 pb-5 sm:px-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:gap-10">
         <form onSubmit={onSubmit} aria-label={`Profil BMI ${staff.name}`} className="flex flex-col gap-3">
-          <Field label="L/P" help="Dipakai untuk syarat tinggi badan.">
-            <Select value={gender} onChange={(e) => { setGender(e.target.value); if (save.status !== "saving") setSave({ status: "idle" }); }}>
+          <Field label="L/P">
+            <Select value={gender} onChange={(e) => { setGender(e.target.value); touched(); }}>
               <option value="">Belum diisi</option>
               <option value="L">L (laki-laki)</option>
               <option value="P">P (perempuan)</option>
             </Select>
           </Field>
-          <Field label="Catatan / program penyesuaian BB">
-            <Textarea value={note} maxLength={2000} onChange={(e) => { setNote(e.target.value); if (save.status !== "saving") setSave({ status: "idle" }); }} />
+          <Field
+            label="Ada catatan BMI"
+            help={`Ya: cek tiap ${settings.bmiIntervalDays} hari. Tidak: cek ${checkRhythm(false, settings)}. Belum diisi dihitung seperti Ya.`}
+          >
+            <Select value={hasNote} onChange={(e) => { setHasNote(e.target.value); touched(); }}>
+              <option value="">Belum diisi</option>
+              <option value="Ya">Ya</option>
+              <option value="Tidak">Tidak</option>
+            </Select>
+          </Field>
+          <Field label="Catatan program kebugaran">
+            <Textarea value={note} maxLength={2000} onChange={(e) => { setNote(e.target.value); touched(); }} />
           </Field>
           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
             <Button type="submit" variant="secondary" loading={pending} loadingText="Menyimpan…">
@@ -424,7 +459,7 @@ function BmiProfile({ accessKey, period, plannedDates, staff, summary }: BmiProf
         </form>
 
         <div className="flex min-w-0 flex-col gap-4">
-          <LatestValues summary={summary} gender={staff.gender} />
+          <LatestValues summary={summary} />
           <div className="flex flex-col gap-1">
             <h3 className="section-label">Riwayat {plannedDates.length} periode</h3>
             <ol className="flex flex-col divide-y divide-line">
@@ -465,20 +500,8 @@ function BmiProfile({ accessKey, period, plannedDates, staff, summary }: BmiProf
   );
 }
 
-function LatestValues({ summary, gender }: { summary: BmiSummary; gender: string | null }) {
+function LatestValues({ summary }: { summary: BmiSummary }) {
   const weights = summary.periods.filter((p) => p?.weightKg !== null && p?.weightKg !== undefined).length;
-  let requirement: ReactNode;
-  if (summary.heightRequirement === "Memenuhi" || summary.heightRequirement === "Tidak Memenuhi") {
-    requirement = <StatusChip label={summary.heightRequirement} />;
-  } else if (summary.latestHeight === null) {
-    requirement = <span className="text-ink-muted">Belum ada data tinggi</span>;
-  } else if (gender !== "L" && gender !== "P") {
-    requirement = <span className="text-ink-muted">Isi L/P dulu</span>;
-  } else {
-    // The missing height standard is explained once, below the list.
-    requirement = <span className="text-ink-muted">Belum bisa dinilai</span>;
-  }
-
   const rows: Array<{ term: string; value: ReactNode }> = [
     {
       term: "Tinggi terakhir",
@@ -509,7 +532,15 @@ function LatestValues({ summary, gender }: { summary: BmiSummary; gender: string
           <span className="text-ink-muted">Butuh minimal 2 cek</span>
         ),
     },
-    { term: "Syarat tinggi badan", value: requirement },
+    {
+      term: "Cek berikutnya",
+      value: (
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <time dateTime={summary.nextCheck}>{formatTanggal(summary.nextCheck)}</time>
+          <StatusChip label={summary.scheduleStatus} tone={scheduleTone(summary.scheduleStatus)} />
+        </span>
+      ),
+    },
   ];
 
   return (

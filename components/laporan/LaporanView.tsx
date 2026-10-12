@@ -2,22 +2,20 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { SEMUA, TOTAL, weeklyReport } from "@/lib/aggregate";
 import { formatHariTanggal, formatTanggal } from "@/lib/dates";
-import { formatScore } from "@/lib/format";
+import { formatPercent, phaseOf } from "@/lib/dashboard";
 import { weekStart } from "@/lib/rules";
 import { hrefs, lastChangedLabel, stationCodes, trackerData, type Workspace, type WorkspaceAccess } from "@/lib/workspace";
-import { saveWeeklyFindings } from "./actions";
 import { APP_NAME, APP_TAGLINE } from "@/lib/app-info";
 import { Logo } from "@/components/shell/Logo";
 import { WeekRail } from "@/components/shell/WeekRail";
-import { programmeStatus } from "@/components/shell/programme-calendar";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { StationFilter } from "@/components/ui/StationFilter";
+import { LinkSelect } from "@/components/grid/LinkSelect";
 import { EmptyState } from "@/components/ui/States";
 import { ActionProgressTable } from "@/components/ringkasan/DashboardTables";
-import { withoutTotals } from "@/components/ringkasan/data";
+import { saveWeeklyFindings } from "./actions";
 import { FindingsEditor, PrintedFindings } from "./FindingsEditor";
 import { PrintButton } from "./PrintButton";
-import { BmiPeriodTable, TrendTable, WeeklyPerformanceTable } from "./ReportTables";
+import { AspectTable, BmiSlotTable, TrendTable, WeeklyPerformanceTable } from "./ReportTables";
 import { TrendChart } from "./TrendChart";
 
 const linkClass = "font-semibold text-brand underline underline-offset-2";
@@ -25,6 +23,7 @@ const linkClass = "font-semibold text-brand underline underline-offset-2";
 /** Jump links for the screen version (the printed report reads top to bottom). */
 const SECTIONS = [
   { id: "bagian-a", letter: "A", label: "Performa" },
+  { id: "bagian-a2", letter: "A2", label: "Aspek" },
   { id: "bagian-b", letter: "B", label: "Tindak lanjut" },
   { id: "bagian-c", letter: "C", label: "BMI" },
   { id: "bagian-d", letter: "D", label: "Tren" },
@@ -42,7 +41,7 @@ export function LaporanView({
   access: WorkspaceAccess;
   today: string;
   week: number;
-  /** KPS / owner: print one station's report (?stasiun=SUB); null = all stations. */
+  /** KPS / owner: one station's report (?stasiun=CGK); null = all stations. */
   station: string | null;
 }) {
   const links = hrefs(access);
@@ -54,24 +53,38 @@ export function LaporanView({
   const scopeName = station ? `Stasiun ${station}` : single ? ws.scopeLabel : "Semua stasiun";
   const weekHref = (w: number) => links.to("laporan", { minggu: w, stasiun: station });
   const report = weeklyReport(data, week, today);
-  const programme = programmeStatus(s, today);
+  const phase = phaseOf(s, today);
 
   const totalPerf = report.performance.find((r) => r.key === TOTAL);
   const totalBmi = report.bmi.find((r) => r.key === TOTAL);
-  const stationTrend = report.trend.filter((r) => r.key !== SEMUA);
+  const programTrend = report.trend.filter((r) => r.key !== SEMUA);
   const semua = report.trend.find((r) => r.key === SEMUA) ?? null;
-  const trendRows = withoutTotals(report.trend, single);
-  const trendEmpty = trendRows.every((r) => r.weeks.every((v) => v === null));
+  const trendEmpty = report.trend.every((r) => r.weeks.every((v) => v === null));
   const weekNotStarted = weekStart(week, s) > today;
+  const noScores = totalPerf !== undefined && totalPerf.assessed === 0;
 
   const own = ws.weeklyReports.find((r) => r.week === week && r.scope === ws.scope) ?? null;
   const viewed = station ? (ws.weeklyReports.find((r) => r.week === week && r.scope === station) ?? null) : null;
-  const stationFindings = ws.isKps && !station
-    ? stationCodes(ws).map((code) => ({
-        code,
-        row: ws.weeklyReports.find((r) => r.week === week && r.scope === code) ?? null,
-      }))
-    : [];
+  const stationFindings =
+    ws.isKps && !station
+      ? stationCodes(ws).map((code) => ({
+          code,
+          row: ws.weeklyReports.find((r) => r.week === week && r.scope === code) ?? null,
+        }))
+      : [];
+  const filledFindings = stationFindings.filter((f) => f.row?.findings);
+  const emptyFindings = stationFindings.filter((f) => !f.row?.findings).map((f) => f.code);
+
+  const notScoredNote = weekNotStarted ? (
+    <>Minggu ke-{week} belum berjalan (mulai {formatHariTanggal(weekStart(week, s))}).</>
+  ) : noScores ? (
+    <>
+      Belum ada skor untuk Minggu ke-{week}.{" "}
+      <Link href={links.to("performa", { minggu: week, stasiun: station })} className={linkClass} data-print="hide">
+        Isi skor Minggu ke-{week}
+      </Link>
+    </>
+  ) : null;
 
   return (
     <div className="flex flex-col gap-6 print:gap-4">
@@ -86,15 +99,16 @@ export function LaporanView({
       <PageHeader
         title={`Laporan Mingguan, Minggu ke-${week}`}
         context={scopeName}
-        description="Kenaikan performa SDM dan tindak lanjut Uplifting Service JOUMPA."
+        description="Hasil coaching frontliner, training IULS & RUST, cek BMI dan tindak lanjut People Development."
         actions={<PrintButton label={station ? `Cetak laporan ${station}` : undefined} />}
       >
         {ws.isKps ? (
-          <StationFilter
+          <LinkSelect
             label="Laporan untuk stasiun"
-            current={station}
+            current={station ?? "semua"}
+            rememberStation
             options={[null, ...stationCodes(ws)].map((code) => ({
-              code,
+              value: code ?? "semua",
               label: code ?? "Semua stasiun",
               href: links.to("laporan", { minggu: week, stasiun: code }),
             }))}
@@ -105,21 +119,23 @@ export function LaporanView({
           <dd className="font-semibold text-ink">
             {formatTanggal(report.periodStart)} s.d. {formatTanggal(report.periodEnd)}
           </dd>
-          <dt className="text-ink-muted">Periode cek BMI terkait</dt>
+          <dt className="text-ink-muted">Slot cek BMI terkait</dt>
           <dd className="text-ink">
             Cek ke-{report.bmiPeriod} (rencana {formatTanggal(report.bmiPlannedDate)})
           </dd>
           <dt className="text-ink-muted">Lingkup</dt>
-          <dd className="text-ink">{kpsStationView ? `Stasiun ${station} (dicetak KPS)` : single ? ws.scopeLabel : "Semua stasiun (KPS)"}</dd>
+          <dd className="text-ink">
+            {kpsStationView ? `Stasiun ${station} (dicetak KPS)` : single ? ws.scopeLabel : "Semua stasiun (KPS)"}
+          </dd>
           <dt className="text-ink-muted">Posisi tindak lanjut per</dt>
-          <dd className="text-ink">{formatTanggal(today)}</dd>
+          <dd className="text-ink">{formatTanggal(report.asOf)}</dd>
         </dl>
       </PageHeader>
 
       <section aria-labelledby="pilih-minggu" className="flex flex-col gap-2" data-print="hide">
         <h2 id="pilih-minggu" className="section-label">
-          Pilih minggu laporan. Semua bagian di bawah mengikuti minggu yang dipilih; cetak setiap Jumat untuk OCS,
-          OAO dan GM cabang.
+          Pilih minggu laporan. Semua bagian di bawah mengikuti minggu yang dipilih, kecuali tindak lanjut (posisi hari
+          ini).
         </h2>
         {ws.schedule ? (
           <WeekRail
@@ -151,10 +167,10 @@ export function LaporanView({
         ))}
       </nav>
 
-      {programme.phase === "before" ? (
+      {phase === "before" ? (
         <p className="text-sm text-ink" data-print="hide">
-          Program belum mulai: Minggu ke-1 dimulai {formatHariTanggal(programme.startDate)}. Bagian A, C dan D terisi setelah
-          nilai praktik dan cek BMI pertama dicatat; bagian B sudah berisi posisi tindak lanjut hari ini.
+          Program belum mulai: Minggu ke-1 dimulai {formatHariTanggal(s.week1Start)}. Bagian A, A2, C dan D terisi setelah
+          skor coaching dan cek BMI pertama dicatat; bagian B sudah berisi posisi tindak lanjut hari ini.
         </p>
       ) : null}
 
@@ -164,100 +180,99 @@ export function LaporanView({
       >
         <Section
           id="bagian-a"
-          title="A. Performa SDM minggu ini"
-          subtitle="Rata-rata skor praktik aspek A sampai F, skala 1 sampai 5."
-          note={
-            weekNotStarted ? (
-              <>Minggu ke-{week} belum berjalan (mulai {formatHariTanggal(weekStart(week, s))}).</>
-            ) : totalPerf && totalPerf.assessed === 0 ? (
-              <>
-                Belum ada nilai untuk Minggu ke-{week}.{" "}
-                <Link href={links.to("performa", { minggu: week })} className={linkClass} data-print="hide">
-                  Isi nilai Minggu ke-{week}
-                </Link>
-              </>
-            ) : null
-          }
-          footnote={`* Kenaikan vs baseline = rata-rata minggu ini (SDM yang dinilai) dikurangi rata-rata baseline training semua SDM, sesuai rumus workbook. Sesuai = rata-rata ≥ ${formatScore(s.passAvgMin)}; Tidak Sesuai = di bawah ${formatScore(s.improveAvgMin)}.`}
+          title="A. Performa coaching minggu ini"
+          subtitle={`Rata-rata skor 4 aspek, skala 0 sampai 100. Lulus = rata-rata ≥ ${s.passGrade}.`}
+          note={notScoredNote}
+          footnote="* Kenaikan vs baseline = rata-rata minggu ini (SDM yang dinilai) dikurangi rata-rata Final Result training semua SDM, sesuai rumus workbook."
         >
           <TableFrame>
-            <WeeklyPerformanceTable
-              caption={`Performa SDM Minggu ke-${week}`}
-              rows={withoutTotals(report.performance, single)}
+            <WeeklyPerformanceTable caption={`Performa coaching Minggu ke-${week}`} rows={report.performance} />
+          </TableFrame>
+        </Section>
+
+        <Section
+          id="bagian-a2"
+          title="A2. Rata-rata per aspek terhadap target"
+          subtitle={`Target PDF slide 15: Product Knowledge > ${formatPercent(s.targetKnowledge)}, Interactive Communicating > ${formatPercent(s.targetInteractive)} (skor ÷ 100).`}
+          note={noScores && !weekNotStarted ? <>Belum ada skor aspek untuk Minggu ke-{week}.</> : null}
+        >
+          <TableFrame>
+            <AspectTable
+              caption={`Rata-rata aspek Minggu ke-${week}`}
+              rows={report.aspects}
+              targetKnowledge={s.targetKnowledge}
+              targetInteractive={s.targetInteractive}
             />
           </TableFrame>
         </Section>
 
         <Section
           id="bagian-b"
-          title="B. Progres tindak lanjut rekomendasi"
-          subtitle={`Posisi per ${formatTanggal(today)}, tidak bergantung pada minggu yang dipilih.`}
+          title="B. Progres tindak lanjut"
+          subtitle={`15 butir nasional per kelompok, posisi per ${formatTanggal(report.asOf)}; tidak bergantung pada minggu yang dipilih.`}
         >
           <TableFrame>
             <ActionProgressTable
-              caption="Progres tindak lanjut rekomendasi per laporan"
-              rows={withoutTotals(report.actionProgress, single)}
+              caption="Progres tindak lanjut per kelompok"
+              rows={report.actionProgress}
+              hrefFor={(key) => links.to("tindakLanjut", { kelompok: key })}
             />
           </TableFrame>
         </Section>
 
         <Section
           id="bagian-c"
-          title="C. Cek BMI, tinggi dan berat badan, periode terkait"
-          subtitle={`Cek ke-${report.bmiPeriod}, rencana ${formatHariTanggal(report.bmiPlannedDate)}.`}
+          title="C. Cek BMI, slot terkait"
+          subtitle={`Cek ke-${report.bmiPeriod}, rencana ${formatHariTanggal(report.bmiPlannedDate)}. Target overweight + obesitas < ${formatPercent(s.targetOverweightMax)} dalam ${s.targetOverweightMonths} bulan.`}
           note={
             totalBmi && totalBmi.checked === 0 ? (
               <>
-                Belum ada cek BMI periode {report.bmiPeriod} yang tercatat.{" "}
+                Belum ada cek BMI slot {report.bmiPeriod} yang tercatat.{" "}
                 {report.bmiPlannedDate <= today ? (
-                  <Link href={links.to("bmi", { periode: report.bmiPeriod })} className={linkClass} data-print="hide">
-                    Catat cek BMI periode {report.bmiPeriod}
+                  <Link
+                    href={links.to("bmi", { periode: report.bmiPeriod, stasiun: station })}
+                    className={linkClass}
+                    data-print="hide"
+                  >
+                    Catat cek BMI slot {report.bmiPeriod}
                   </Link>
                 ) : null}
               </>
             ) : null
           }
-          footnote="Kolom tinggi tidak memenuhi memakai cek terakhir tiap SDM dan baru terhitung bila L/P serta standar tinggi minimum terisi."
+          footnote="Terlambat cek memakai jadwal tiap SDM: 2 mingguan bila ada catatan BMI, bulanan bila tidak."
         >
           <TableFrame>
-            <BmiPeriodTable caption={`Cek BMI periode ${report.bmiPeriod}`} rows={withoutTotals(report.bmi, single)} />
+            <BmiSlotTable caption={`Cek BMI slot ${report.bmiPeriod}`} rows={report.bmi} />
           </TableFrame>
         </Section>
 
         <Section
           id="bagian-d"
-          title={`D. Rata-rata skor praktik per stasiun, Mg 1 sampai ${s.weeks}`}
-          subtitle="Apakah rata-rata skor tiap stasiun naik dari minggu ke minggu?"
+          title={`D. Tren rata-rata skor coaching, Mg 1 sampai ${s.weeks}`}
+          subtitle="Apakah rata-rata skor tiap program naik dari minggu ke minggu?"
         >
           {trendEmpty ? (
             <EmptyState
-              title="Belum ada nilai mingguan, jadi tren belum bisa digambar"
+              title="Belum ada skor mingguan, jadi tren belum bisa digambar"
               layout="inline"
               className="rounded-control bg-neutral-tint px-3 print:bg-transparent print:px-0"
             >
-              Grafik dan tabel tren muncul setelah nilai praktik Minggu ke-1 diisi di Log Performa
-              {programme.phase === "before" ? ` (mulai ${formatHariTanggal(programme.startDate)})` : ""}.
+              Grafik dan tabel tren muncul setelah skor coaching Minggu ke-1 diisi di Log Performa
+              {phase === "before" ? ` (mulai ${formatHariTanggal(s.week1Start)})` : ""}.
             </EmptyState>
           ) : (
             <>
-              <TrendChart
-                rows={single ? trendRows : stationTrend}
-                reference={single ? null : semua}
-                passAvgMin={s.passAvgMin}
-              />
+              <TrendChart rows={programTrend} reference={semua} passGrade={s.passGrade} />
               <TableFrame>
-                <TrendTable caption="Rata-rata skor praktik per stasiun per minggu" rows={trendRows} selectedWeek={week} />
+                <TrendTable caption="Rata-rata skor coaching per program per minggu" rows={report.trend} selectedWeek={week} />
               </TableFrame>
             </>
           )}
         </Section>
 
         <div className="flex flex-col gap-8 print:break-inside-avoid print:gap-6">
-          <Section
-            id="bagian-e"
-            title="E. Temuan, kendala dan rencana minggu depan"
-            subtitle="Diisi PIC atau Manager JOUMPA."
-          >
+          <Section id="bagian-e" title="E. Temuan, kendala dan rencana minggu depan" subtitle="Diisi PIC stasiun atau KPS.">
             {kpsStationView ? (
               <div className="flex flex-col gap-2">
                 {viewed?.findings ? (
@@ -285,38 +300,39 @@ export function LaporanView({
                 </p>
               </div>
             ) : (
-            <FindingsEditor
-              key={week}
-              action={saveWeeklyFindings.bind(null, access.key, week)}
-              week={week}
-              scopeName={single ? ws.scopeLabel : "KPS"}
-              printLabel={single ? undefined : "Temuan KPS"}
-              initialFindings={own?.findings ?? ""}
-              lastChanged={own ? lastChangedLabel(own, ws) : null}
-            />
+              <FindingsEditor
+                key={week}
+                action={saveWeeklyFindings.bind(null, access.key, week)}
+                week={week}
+                scopeName={single ? ws.scopeLabel : "KPS"}
+                printLabel={single ? undefined : "Temuan KPS"}
+                initialFindings={own?.findings ?? ""}
+                lastChanged={own ? lastChangedLabel(own, ws) : null}
+              />
             )}
             {stationFindings.length > 0 ? (
               <div className="flex flex-col gap-2">
                 <h3 className="text-sm font-semibold text-ink">Temuan stasiun Minggu ke-{week} (hanya baca)</h3>
-                <dl className="flex flex-col divide-y divide-line rounded-control border border-line">
-                  {stationFindings.map(({ code, row }) => (
-                    <div key={code} className="grid gap-1 px-3 py-2 sm:grid-cols-[6rem_minmax(0,1fr)] sm:gap-4">
-                      <dt className="text-sm font-semibold text-ink">{code}</dt>
-                      <dd className="text-sm">
-                        {row?.findings ? (
-                          <>
-                            <p className="whitespace-pre-wrap text-ink">{row.findings}</p>
-                            <p className="mt-1 text-xs text-ink-muted" data-print="hide">
-                              {lastChangedLabel(row, ws)}
-                            </p>
-                          </>
-                        ) : (
-                          <span className="text-ink-muted">Belum diisi lewat tautan {code}.</span>
-                        )}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+                {filledFindings.length > 0 ? (
+                  <dl className="flex flex-col divide-y divide-line rounded-control border border-line">
+                    {filledFindings.map(({ code, row }) => (
+                      <div key={code} className="grid gap-1 px-3 py-2 sm:grid-cols-[6rem_minmax(0,1fr)] sm:gap-4">
+                        <dt className="text-sm font-semibold text-ink">{code}</dt>
+                        <dd className="text-sm">
+                          <p className="whitespace-pre-wrap text-ink">{row!.findings}</p>
+                          <p className="mt-1 text-xs text-ink-muted" data-print="hide">
+                            {lastChangedLabel(row!, ws)}
+                          </p>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+                {emptyFindings.length > 0 ? (
+                  <p className="text-sm text-ink-muted">
+                    Belum mengisi temuan ({emptyFindings.length} stasiun): {emptyFindings.join(", ")}.
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </Section>
@@ -373,12 +389,12 @@ function TableFrame({ children }: { children: ReactNode }) {
   );
 }
 
-/** As in the workbook (rows 68 to 73): two signatures with room to sign. */
+/** Two signatures with room to sign, as in the workbook. */
 function SignatureBlock() {
   return (
     <div className="grid gap-8 pt-2 text-sm text-ink sm:grid-cols-2 print:grid-cols-2 print:break-inside-avoid">
       {[
-        { lead: "Disusun oleh,", role: "Manager / PIC JOUMPA Cabang" },
+        { lead: "Disusun oleh,", role: "PIC People Development Stasiun / KPS" },
         { lead: "Mengetahui,", role: "General Manager Cabang" },
       ].map(({ lead, role }) => (
         <div key={role} className="flex flex-col">

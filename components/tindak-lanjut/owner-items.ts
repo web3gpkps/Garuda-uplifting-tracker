@@ -4,41 +4,43 @@
  * with a mocked client (owner-items.test.ts). The guard lives here too: anything but the
  * owner is refused before the table is touched; the admin RLS policy refuses it again.
  */
-import { REPORT_GROUPS } from "@/lib/rules";
-import { ACTION_KINDS, DUE_RULES } from "./action-view";
+import { ACTION_GROUPS, ASPECTS } from "@/lib/rules";
+import { ACTION_KINDS } from "./action-view";
 
 export type NewItemInput = {
-  reportGroup: string;
+  groupName: string;
+  aspect: string;
   code: string;
-  area: string;
+  rootCause: string;
   action: string;
   target: string;
   kind: string;
   schedule: string;
   dueDate: string;
-  dueRule: string;
   pic: string;
+  source: string;
 };
 
 export type NewItemField = keyof NewItemInput;
 
 export type NewItemRow = {
   code: string;
-  report_group: string;
-  area: string;
+  group_name: string;
+  aspect: string;
+  root_cause: string | null;
   action: string;
   target: string | null;
   kind: string | null;
   schedule: string | null;
   due_date: string | null;
-  due_rule: string | null;
   pic: string | null;
+  source: string | null;
   status: "Belum Mulai";
   progress: 0;
   sort_order: number;
 };
 
-export type ExistingItem = { code: string; reportGroup: string; sortOrder: number | null };
+export type ExistingItem = { code: string; groupName: string; sortOrder: number | null };
 
 /** What the owner actions need from action_items (the cookie client under admin RLS). */
 export type ActionItemsPort = {
@@ -52,8 +54,11 @@ export type OwnerResult =
   | { ok: false; message: string; fieldErrors?: Partial<Record<NewItemField, string>> };
 
 const MAX_TEXT = 4000;
+const MAX_SOURCE = 200;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const CODE = /^(.+-TL)(\d+)$/;
+/** National codes: GA-TL01 … GA-TL15, new ones continue the numbering. */
+export const CODE_PREFIX = "GA-TL";
+const CODE = /^GA-TL(\d+)$/i;
 
 export const OWNER_ONLY_MESSAGE = "Hanya pemilik aplikasi yang bisa menambah atau menghapus butir tindak lanjut.";
 
@@ -68,28 +73,17 @@ function isIsoDate(value: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
 
-/** "CGK & HLP" → "CGKHLP-TL", following the existing codes of that group when there are any. */
-export function codePrefix(group: string, codes: readonly string[]): string {
-  for (const code of codes) {
-    const m = CODE.exec(code);
-    if (m) return m[1];
-  }
-  return `${group.replace(/[^A-Za-z0-9]/g, "").toUpperCase()}-TL`;
-}
-
-/** Next free `<GROUP>-TLnn` for a report group: one more than the highest number in use. */
-export function nextActionCode(group: string, items: readonly Pick<ExistingItem, "code" | "reportGroup">[]): string {
-  const codes = items.filter((i) => i.reportGroup === group).map((i) => i.code);
-  const prefix = codePrefix(group, codes);
+/** Next free GA-TLnn: one more than the highest number in use, padded to two digits. */
+export function nextActionCode(items: readonly Pick<ExistingItem, "code">[]): string {
   const taken = new Set(items.map((i) => i.code.toUpperCase()));
   let n = 0;
-  for (const code of codes) {
+  for (const { code } of items) {
     const m = CODE.exec(code);
-    if (m && m[1] === prefix) n = Math.max(n, Number(m[2]));
+    if (m) n = Math.max(n, Number(m[1]));
   }
   let next = n + 1;
-  while (taken.has(`${prefix}${String(next).padStart(2, "0")}`.toUpperCase())) next += 1;
-  return `${prefix}${String(next).padStart(2, "0")}`;
+  while (taken.has(`${CODE_PREFIX}${String(next).padStart(2, "0")}`)) next += 1;
+  return `${CODE_PREFIX}${String(next).padStart(2, "0")}`;
 }
 
 /** Field checks for "Tambah butir"; the row is null when anything is wrong. */
@@ -98,34 +92,40 @@ export function validateNewItem(
   existing: readonly ExistingItem[],
 ): { fieldErrors: Partial<Record<NewItemField, string>>; row: NewItemRow | null } {
   const fieldErrors: Partial<Record<NewItemField, string>> = {};
-  const group = clean(input.reportGroup);
-  if (!group || !(REPORT_GROUPS as readonly string[]).includes(group)) fieldErrors.reportGroup = "Pilih laporan.";
+  const group = clean(input.groupName);
+  if (!group || !(ACTION_GROUPS as readonly string[]).includes(group)) fieldErrors.groupName = "Pilih kelompok.";
+  const aspect = clean(input.aspect);
+  if (!aspect || !(ASPECTS as readonly string[]).includes(aspect)) fieldErrors.aspect = "Pilih aspek.";
 
   const code = clean(input.code)?.replace(/\s+/g, "") ?? null;
-  if (!code) fieldErrors.code = "Isi ID butir, misalnya SUB-TL14.";
+  if (!code) fieldErrors.code = "Isi ID butir, misalnya GA-TL16.";
   else if (code.length > 40) fieldErrors.code = "Paling panjang 40 karakter.";
   else if (existing.some((i) => i.code.toUpperCase() === code.toUpperCase())) fieldErrors.code = `ID ${code} sudah dipakai.`;
 
-  const area = clean(input.area);
   const action = clean(input.action);
-  if (!area) fieldErrors.area = "Wajib diisi.";
   if (!action) fieldErrors.action = "Wajib diisi.";
-  const texts = { area, action, target: clean(input.target), schedule: clean(input.schedule), pic: clean(input.pic) };
+  const texts = {
+    rootCause: clean(input.rootCause),
+    action,
+    target: clean(input.target),
+    schedule: clean(input.schedule),
+    pic: clean(input.pic),
+  };
   for (const [field, value] of Object.entries(texts) as Array<[NewItemField, string | null]>) {
     if (value && value.length > MAX_TEXT) fieldErrors[field] = `Paling panjang ${MAX_TEXT} karakter.`;
   }
+  const source = clean(input.source);
+  if (source && source.length > MAX_SOURCE) fieldErrors.source = `Paling panjang ${MAX_SOURCE} karakter.`;
 
   const kind = clean(input.kind);
   if (kind && !(ACTION_KINDS as readonly string[]).includes(kind)) fieldErrors.kind = "Pilih Sekali atau Rutin.";
   const dueDate = clean(input.dueDate);
   if (dueDate && !isIsoDate(dueDate)) fieldErrors.dueDate = "Tanggal tidak valid.";
-  const dueRule = clean(input.dueRule);
-  if (dueRule && !(DUE_RULES as readonly string[]).includes(dueRule)) fieldErrors.dueRule = "Pilih aturan batas waktu.";
 
-  if (Object.keys(fieldErrors).length > 0 || !group || !code || !area || !action) return { fieldErrors, row: null };
+  if (Object.keys(fieldErrors).length > 0 || !group || !aspect || !code || !action) return { fieldErrors, row: null };
 
-  // Placed after the last item of its report group (ties sort by ID, so TL14 follows TL13).
-  const inGroup = existing.filter((i) => i.reportGroup === group).map((i) => i.sortOrder ?? 0);
+  // Placed after the last item of its group (ties sort by ID, so a new TL16 follows the group's last item).
+  const inGroup = existing.filter((i) => i.groupName === group).map((i) => i.sortOrder ?? 0);
   const all = existing.map((i) => i.sortOrder ?? 0);
   const sortOrder = inGroup.length > 0 ? Math.max(...inGroup) : (all.length > 0 ? Math.max(...all) : 0) + 1;
 
@@ -133,15 +133,16 @@ export function validateNewItem(
     fieldErrors,
     row: {
       code,
-      report_group: group,
-      area,
+      group_name: group,
+      aspect,
+      root_cause: texts.rootCause,
       action,
       target: texts.target,
       kind,
       schedule: texts.schedule,
       due_date: dueDate,
-      due_rule: dueRule,
       pic: texts.pic,
+      source,
       status: "Belum Mulai",
       progress: 0,
       sort_order: sortOrder,

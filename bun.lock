@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "joumpa",
+      "name": "garuda-people-development-tracker",
       "dependencies": {
         "@supabase/ssr": "^0.12.7",
         "@supabase/supabase-js": "^2.117.3",

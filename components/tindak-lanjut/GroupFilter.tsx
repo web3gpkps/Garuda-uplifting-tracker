@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { cx } from "@/components/ui/cx";
 
-export type ReportGroupOption = { key: string | null; label: string; meta: string; metaLabel: string; href: string };
+export type GroupFilterOption = { key: string | null; label: string; meta: string; metaLabel: string; href: string };
 
 /**
- * KPS / owner filter by training report (SUB, DPS, CGK & HLP, KNO): real links (?laporan=),
- * styled like the station filter on the other sheets. Station links never see it.
+ * Filter by Kelompok (Coaching Frontliner, Timeline Training, Evaluasi IULS & RUST): real
+ * links (?kelompok=), styled like the station filter on the other sheets.
  */
-export function ReportGroupFilter({ options, current }: { options: ReportGroupOption[]; current: string | null }) {
+export function GroupFilter({ options, current }: { options: GroupFilterOption[]; current: string | null }) {
   return (
-    <nav aria-label="Filter laporan" className="flex flex-col gap-1.5" data-print="hide">
-      <p className="section-label">Laporan</p>
+    <nav aria-label="Filter kelompok" className="flex flex-col gap-1.5" data-print="hide">
+      <p className="section-label">Kelompok</p>
       <ul className="flex flex-wrap gap-2">
         {options.map((option) => {
           const active = option.key === current;

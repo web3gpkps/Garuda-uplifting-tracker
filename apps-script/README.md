@@ -1,7 +1,7 @@
-# Apps Script JOUMPA: pemicu sinkronisasi Google Sheet
+# Apps Script Garuda: pemicu sinkronisasi Google Sheet
 
 Project Apps Script **standalone** (dibuat di script.google.com, tidak dibuka dari Google Sheet). Tugasnya
-hanya satu: setiap kali ada yang mengedit Sheet JOUMPA, script mengirim "ping" ke aplikasi supaya
+hanya satu: setiap kali ada yang mengedit Sheet Garuda, script mengirim "ping" ke aplikasi supaya
 sinkronisasi Sheet ↔ database langsung berjalan. Tanpa script ini sinkronisasi tetap berjalan otomatis
 setiap 1 menit dari server; script hanya mempercepatnya.
 
@@ -10,11 +10,11 @@ Script **tidak** membaca atau mengubah isi Sheet dan tidak menyimpan kunci datab
 
 ## Pemasangan (sekali)
 
-Pakai akun Google yang punya akses **edit** ke Sheet JOUMPA. Semua nilai yang perlu disalin ada di file
+Pakai akun Google yang punya akses **edit** ke Sheet Garuda. Semua nilai yang perlu disalin ada di file
 `.env` aplikasi, bagian "Apps Script".
 
 1. Buka [script.google.com](https://script.google.com) → **New project**. Ganti judul "Untitled project"
-   menjadi misalnya **JOUMPA Sync**.
+   menjadi misalnya **Garuda Sync**.
 2. Hapus isi `Code.gs` bawaan, lalu tempel isi [`Code.gs`](Code.gs) dari folder ini. Klik **Save** (ikon disket).
 3. Klik ⚙️ **Project Settings** (kiri):
    - centang **Show "appsscript.json" manifest file in editor**;
@@ -31,9 +31,9 @@ Pakai akun Google yang punya akses **edit** ke Sheet JOUMPA. Semua nilai yang pe
    [`appsscript.json`](appsscript.json). Save.
 5. Di bilah atas editor, pilih fungsi **`cekKonfigurasi`** lalu klik **Run**. Pertama kali, Google meminta
    izin: **Review permissions** → pilih akun → jika muncul "Google hasn't verified this app", klik
-   **Advanced** → **Go to JOUMPA Sync (unsafe)** → **Allow**. (Peringatan itu muncul untuk semua script
+   **Advanced** → **Go to Garuda Sync (unsafe)** → **Allow**. (Peringatan itu muncul untuk semua script
    buatan sendiri; script ini milik Anda.) Execution log harus menampilkan
-   `Konfigurasi lengkap. Sheet: "Tracker Tindak Lanjut Uplifting JOUMPA" …`.
+   `Konfigurasi lengkap. Sheet: "Tracker Tindak Lanjut People Development Garuda" …`.
 6. Pilih fungsi **`pasangTrigger`** → **Run**. Log: `Trigger terpasang.` Cek di menu kiri **Triggers** (ikon
    jam): ada dua trigger, `saatDiedit` (On edit) dan `saatStrukturBerubah` (On change).
 7. Pilih fungsi **`sinkronkanSekarang`** → **Run**. Log: `Sinkronisasi selesai.` Langkah ini menjalankan
@@ -48,29 +48,36 @@ Fungsi lain: **`hapusTrigger`** melepas kedua trigger. Sinkronisasi tetap berjal
 
 ## Aturan pakai Sheet
 
-Sheet ini adalah workbook "Tracker Tindak Lanjut Uplifting JOUMPA" apa adanya. Semua rumus, Dashboard,
-Rekap Performa, dan Laporan Mingguan tetap bekerja. Sinkronisasi hanya membaca dan menulis **sel isian**:
+Sheet ini adalah workbook "Tracker Tindak Lanjut People Development Garuda" apa adanya. Semua rumus,
+Dashboard, Laporan Mingguan, dan Rekap Performa tetap bekerja. Sinkronisasi hanya membaca dan menulis
+**sel isian**:
 
 | Tab | Yang disinkronkan | Catatan |
 |---|---|---|
-| `Master SDM` | Stasiun, Nama, NIPP, L/P, Pre/Post-test, skor A–F, Kesimpulan, Status Penugasan, Catatan | **Nama kosong = data dihapus.** SDM baru: isi baris `TMB-xx` yang masih kosong (minimal Stasiun dan Nama). |
-| `Cek BMI 2 Mingguan` | Tgl Cek, Tinggi, Berat tiap periode (Cek ke-1 s.d. ke-5); kolom AK Catatan / Program Penyesuaian BB | Isi **Tinggi dan Berat** sekaligus. Tanggal saja belum disimpan (sel diberi catatan). Kosongkan Tinggi dan Berat untuk menghapus cek itu. |
-| `Log Performa Mingguan` | skor A–F, Observer / Penilai, Catatan Coaching | Baris kosong yang sudah disiapkan boleh dibiarkan. Mengosongkan semua isian di baris berarti menghapus data minggu itu. |
-| `Tindak Lanjut` | Laporan s.d. PIC, Status, % Progres, Tgl Update, Realisasi / Bukti, Catatan KPS | `% Progres` diisi sebagai persen (mis. 50%). `Batas Waktu` yang berupa rumus (butir bergulir) tidak disinkronkan; yang berupa tanggal biasa disinkronkan. |
-| `Penggantian SDM` | Laporan s.d. Rata-rata Praktik, Dilaporkan, Catatan, `ID SDM` (kolom Q) | Isi penggantian baru di baris bernomor yang masih kosong. Kolom P `ID Sistem` disembunyikan dan diisi sistem: jangan diubah. |
-| `Parameter` | kolom C (Nilai) | Jangan ubah teks label di kolom B. C23 (hari ini) otomatis. |
-| `Temuan Mingguan` | Minggu Ke, Lingkup, Temuan | Tab baru buatan sistem. Satu baris per minggu per lingkup (`SUB`, `DPS`, `CGK`, `HLP`, `KNO`, `KPS`). |
+| `Master SDM` | ID SDM, Program, Provider, Unit, Nama Petugas, Employee Number, L/P, Touch Point, Role Play, Post-Test, Remark di Laporan, Status Penugasan, Evaluation Feedback, Catatan | **Nama kosong = data dihapus** (barisnya dikosongkan, termasuk ID SDM). SDM baru: isi baris kosong pertama (ID SDM dan Nama kosong) minimal dengan ID SDM, Unit, dan Nama. SDM baru dari website juga mengisi baris kosong pertama; baris tidak pernah disisipkan. |
+| `Cek BMI 2 Mingguan` | `Ada Catatan BMI` (Ya/Tidak), Tgl Cek, Tinggi, Berat tiap slot (Cek ke-1 s.d. ke-6), `Catatan Program Kebugaran` | Baris tab ini mengikuti Master SDM (baris Master + 1): jangan diurutkan ulang. Isi **Tinggi dan Berat** sekaligus. Tanggal saja belum disimpan (sel diberi catatan). Kosongkan Tinggi dan Berat untuk menghapus cek itu. |
+| `Log Performa Mingguan` | Touch Point, skor A–D (0–100), Topik Gap Utama, Observer / Coach, Catatan Coaching | Baris yang sudah disiapkan (Minggu Ke + ID SDM) boleh dibiarkan kosong. Mengosongkan semua isian di baris berarti menghapus data minggu itu. |
+| `Tindak Lanjut` | Kelompok s.d. Jadwal, Batas Waktu, PIC, Status, % Progres, Tgl Update, Realisasi / Bukti, Catatan Garuda / KPS, Sumber PDF | `% Progres` diisi sebagai persen (mis. 50%). `Batas Waktu` yang berupa rumus tidak disinkronkan; yang berupa tanggal biasa disinkronkan. Butir baru: baris bernomor yang masih kosong. |
+| `Remedial` | ID SDM, Tindakan Remedial, Tgl Remedial, Role Play Ulang, Post-Test Ulang, Dilaporkan ke Garuda, Catatan | Satu baris per peserta. Peserta baru: baris bernomor yang masih kosong. Kosongkan seluruh baris (termasuk ID SDM) untuk menghapus. |
+| `Penggantian SDM` | Program s.d. Final Result, Dilaporkan ke Garuda, Catatan, `ID SDM` (kolom Q) | Isi penggantian baru di baris bernomor yang masih kosong. Kolom P `ID Sistem` disembunyikan dan diisi sistem: jangan diubah. |
+| `Parameter` | kolom C (Nilai) | Jangan ubah teks label di kolom B. C30 (Tanggal acuan, hari ini) otomatis. |
+| `Temuan Mingguan` | Minggu Ke, Lingkup, Temuan | Tab baru buatan sistem. Satu baris per minggu per lingkup (kode stasiun, mis. `CGK`, atau `KPS`). |
 
 - **Kolom berisi rumus tidak pernah dibaca atau ditulis** oleh sinkronisasi. Jangan menimpa rumus.
-- Tab `Petunjuk`, `Dashboard`, `Rekap Performa`, `Laporan Mingguan` tidak pernah disentuh sistem.
-- **Jangan ubah judul kolom** (baris 4, atau baris 1 di Temuan Mingguan). Jika judul berubah, tab itu
-  berhenti disinkronkan (tidak ada data yang diubah) sampai judulnya dikembalikan.
-- **Jangan sisipkan atau hapus baris** di tab workbook: tab lain merujuk baris berdasarkan posisinya. Untuk
-  menghapus data, kosongkan isiannya saja.
+- Tab `Petunjuk`, `Dashboard`, `Laporan Mingguan`, `Rekap Performa`, `Data Coaching`, `Data Training`
+  tidak pernah disentuh sistem.
+- **Jangan ubah judul kolom** (baris 4, baris 4–5 di Cek BMI, atau baris 1 di Temuan Mingguan). Jika judul
+  berubah, tab itu berhenti disinkronkan (tidak ada data yang diubah) sampai judulnya dikembalikan.
+- **Jangan sisipkan atau hapus baris** di tab workbook: Dashboard, Laporan, Rekap, dan Cek BMI merujuk
+  rentang baris yang tetap (mis. Master SDM baris 5–304). Untuk menghapus data, kosongkan isiannya saja.
+  Jika semua baris kosong sudah terpakai, data baru dari website dicatat di halaman admin ("tidak ada
+  baris untuk data ini") sampai baris ditambahkan di workbook (bersama rumusnya).
+- **Unit** harus kode stasiun yang terdaftar di aplikasi (mis. `CGK`, `DPS`).
 - **Pengaman**: jika satu kali sinkronisasi akan menghapus lebih dari 3 baris atau lebih dari 10 % isi tab,
   penghapusan dibatalkan dan admin diberi tahu.
-- **Nilai tidak valid** (mis. skor 7, tinggi 300, tanggal salah, progres di atas 100%) tidak disimpan. Sel
-  mendapat catatan (segitiga hitam di pojok sel); perbaiki nilainya dan catatan hilang sendiri.
+- **Nilai tidak valid** (mis. skor 120, tinggi 300, tanggal salah, progres di atas 100%, unit tidak
+  dikenal) tidak disimpan. Sel mendapat catatan "Garuda sync: …" (segitiga hitam di pojok sel); perbaiki
+  nilainya dan catatan hilang sendiri.
 - **Tanggal**: ketik `12/10/2026` (hari/bulan/tahun) atau `12 Okt 2026`. Sistem mengatur Sheet ke lokal
   Indonesia dan zona waktu Jakarta agar tanggal dan `TODAY()` benar.
 

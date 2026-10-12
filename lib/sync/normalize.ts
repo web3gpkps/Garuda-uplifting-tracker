@@ -136,6 +136,18 @@ export function normalize(raw: unknown, type: ColumnType): NormResult {
       }
       return ok(v);
     }
+    case "station": {
+      const s = cleanText(String(raw)).toUpperCase();
+      if (s === "KPS") return type.kps ? ok(s) : bad("KPS bukan kode unit. Isi kode stasiun, misalnya CGK.");
+      return /^[A-Z0-9]{2,5}$/.test(s) ? ok(s) : bad("Kode unit tidak valid. Isi kode stasiun, misalnya CGK.");
+    }
+    case "bool": {
+      if (typeof raw === "boolean") return ok(raw ? type.yes : type.no);
+      const s = cleanText(String(raw)).toLowerCase();
+      if (s === type.yes.toLowerCase() || s === "true") return ok(type.yes);
+      if (s === type.no.toLowerCase() || s === "false") return ok(type.no);
+      return bad(`Pilihan tidak valid. Pilihan: ${type.yes}, ${type.no}.`);
+    }
     case "date": {
       if (typeof raw === "number") {
         if (!Number.isFinite(raw) || raw < 1 || raw > 120000) return bad("Tanggal tidak valid.");
@@ -146,6 +158,12 @@ export function normalize(raw: unknown, type: ColumnType): NormResult {
       return iso ? ok(iso) : bad("Tanggal tidak dikenali. Gunakan format 12/10/2026 atau 2026-10-12.");
     }
   }
+}
+
+/** Canonical value -> what the database column takes (booleans for "bool" columns). */
+export function toDbValue(value: Canon, type: ColumnType): unknown {
+  if (type.kind === "bool") return value === type.yes ? true : value === type.no ? false : null;
+  return value;
 }
 
 export function eqCanon(a: Canon | undefined, b: Canon | undefined): boolean {

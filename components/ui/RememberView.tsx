@@ -15,6 +15,8 @@ type RememberViewProps = {
 };
 
 const ALL = "semua";
+/** localStorage namespace for remembered views in this app. */
+const PREFIX = "garuda-pdt.view";
 
 function jakartaDay(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
@@ -51,17 +53,29 @@ function write(key: string, value: string) {
 export function RememberView({ scope, allowed, shown }: RememberViewProps) {
   const router = useRouter();
   const restored = useRef(false);
-  const keyOf = (param: RememberedParam) => `joumpa.view.${scope}.${param}`;
+  const keyOf = (param: RememberedParam) => `${PREFIX}.${scope}.${param}`;
 
-  // "Semua stasiun" has no URL param, so the station chips record each choice on click.
+  // "Semua stasiun" has no URL param, so the station filter records each choice itself:
+  // a link with data-remember-stasiun on click, the StationFilter select on change.
   useEffect(() => {
     if (!allowed.stasiun) return;
+    const key = `${PREFIX}.${scope}.stasiun`;
     const onClick = (event: MouseEvent) => {
       const chip = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-remember-stasiun]");
-      if (chip?.dataset.rememberStasiun) write(`joumpa.view.${scope}.stasiun`, chip.dataset.rememberStasiun);
+      if (chip?.dataset.rememberStasiun) write(key, chip.dataset.rememberStasiun);
+    };
+    const onChange = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (target instanceof HTMLSelectElement && target.hasAttribute("data-remember-stasiun-select")) {
+        write(key, target.value);
+      }
     };
     document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
+    document.addEventListener("change", onChange, true);
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("change", onChange, true);
+    };
   }, [scope, allowed.stasiun]);
 
   const signature = JSON.stringify(shown);

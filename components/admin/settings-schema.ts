@@ -3,6 +3,9 @@
  * "Parameter" (columns B and D), and validation that mirrors the table's CHECK
  * constraints (supabase/migrations/*_stations_settings.sql), so the form says what the
  * database would refuse before it is sent. Pure: used by the form and the Server Action.
+ *
+ * Percent fields (bobot, target) are fractions in the database (0.92) and percentages in
+ * the form ("92"), as the workbook formats them ("0%").
  */
 import { parseDecimal } from "@/components/ui/Field";
 
@@ -11,18 +14,25 @@ export type SettingKey =
   | "weeks"
   | "bmi_first_check"
   | "bmi_interval_days"
+  | "bmi_interval_months"
   | "bmi_periods"
   | "bmi_underweight_below"
   | "bmi_normal_max"
   | "bmi_overweight_max"
-  | "min_height_female"
-  | "min_height_male"
-  | "pass_avg_min"
-  | "improve_avg_min"
-  | "posttest_min"
+  | "pass_grade"
+  | "weight_role_play"
+  | "weight_post_test"
+  | "target_overweight_max"
+  | "target_overweight_months"
+  | "target_knowledge"
+  | "target_interactive"
+  | "target_coverage"
+  | "coverage_done"
+  | "target_pass_rate"
   | "replacement_deadline";
 
-export type SettingKind = "date" | "int" | "decimal" | "optional-decimal";
+/** "percent": 0–100 in the form, 0–1 in the database. */
+export type SettingKind = "date" | "int" | "decimal" | "percent";
 
 export type SettingField = {
   key: SettingKey;
@@ -45,13 +55,13 @@ export const SETTING_SECTIONS: SettingSection[] = [
         key: "week1_start",
         kind: "date",
         label: "Tanggal mulai Minggu ke-1 (Senin)",
-        help: "Minggu pertama setelah laporan training dikirim (1–3 Okt 2026).",
+        help: "Periode pelaksanaan training Oktober sampai Desember (slide 16).",
       },
       {
         key: "weeks",
         kind: "int",
         label: "Jumlah minggu pemantauan",
-        help: "Mg 1 (12 Okt) s.d. Mg 10 (14 Des), mencakup evaluasi ulang KPS minggu ke-2 Des 2026. Rentang 1 sampai 20.",
+        help: "Mencakup role play W4 Nov sampai W2 Des. Rentang 1 sampai 20.",
         unit: "minggu",
       },
     ],
@@ -59,26 +69,35 @@ export const SETTING_SECTIONS: SettingSection[] = [
   {
     id: "cek-bmi",
     title: "Cek BMI",
+    description:
+      "SDM dengan catatan BMI dicek tiap interval hari, SDM tanpa catatan cukup tiap interval bulan. Slot ke-n direncanakan pada tanggal slot 1 + interval hari × (n − 1).",
     fields: [
       {
         key: "bmi_first_check",
         kind: "date",
-        label: "Tanggal cek BMI periode 1",
-        help: "Cek BMI, tinggi & berat badan.",
+        label: "Tanggal cek BMI slot 1",
+        help: "BMI Tracker, GA Health & Vitality Campaign (slide 15).",
       },
       {
         key: "bmi_interval_days",
         kind: "int",
-        label: "Interval cek BMI (hari)",
-        help: "Per 2 minggu sesuai permintaan. Rentang 1 sampai 90 hari.",
+        label: "Interval cek BMI, ada catatan (hari)",
+        help: "Per 2 minggu untuk SDM yang memiliki catatan (slide 15). Rentang 1 sampai 90 hari.",
         unit: "hari",
+      },
+      {
+        key: "bmi_interval_months",
+        kind: "int",
+        label: "Interval cek BMI, tanpa catatan (bulan)",
+        help: "Per bulan untuk SDM tanpa catatan (slide 15). Rentang 1 sampai 12 bulan.",
+        unit: "bulan",
       },
       {
         key: "bmi_periods",
         kind: "int",
-        label: "Jumlah periode cek BMI",
-        help: "12 Okt, 26 Okt, 9 Nov, 23 Nov, 7 Des 2026. Rentang 1 sampai 10.",
-        unit: "kali",
+        label: "Jumlah slot cek di sheet BMI",
+        help: "Sheet Cek BMI menyediakan 6 slot. Rentang 1 sampai 12.",
+        unit: "slot",
       },
     ],
   },
@@ -93,56 +112,94 @@ export const SETTING_SECTIONS: SettingSection[] = [
         label: "BMI kategori Kurus jika <",
         help: "Klasifikasi IMT Kemenkes RI (P2PTM): Kurus <18,5.",
       },
-      { key: "bmi_normal_max", kind: "decimal", label: "BMI Normal s.d.", help: "Normal 18,5–25,0." },
+      { key: "bmi_normal_max", kind: "decimal", label: "BMI Normal s.d.", help: "Normal 18,5 sampai 25,0." },
       {
         key: "bmi_overweight_max",
         kind: "decimal",
         label: "BMI Overweight s.d. (di atasnya Obesitas)",
-        help: "Gemuk/Overweight >25,0–27,0; Obesitas >27,0.",
-      },
-    ],
-  },
-  {
-    id: "tinggi-badan",
-    title: "Syarat tinggi badan",
-    fields: [
-      {
-        key: "min_height_female",
-        kind: "optional-decimal",
-        label: "Tinggi minimal petugas Perempuan (cm)",
-        help: "Isi sesuai ketentuan rekrutmen/spesifikasi JOUMPA. Dibiarkan kosong karena standar belum tercantum di laporan. Rentang 120 sampai 210 cm.",
-        unit: "cm",
-      },
-      {
-        key: "min_height_male",
-        kind: "optional-decimal",
-        label: "Tinggi minimal petugas Laki-laki (cm)",
-        help: "Isi sesuai ketentuan rekrutmen/spesifikasi JOUMPA. Rentang 120 sampai 210 cm.",
-        unit: "cm",
+        help: "Gemuk/Overweight >25,0 sampai 27,0; Obesitas >27,0.",
       },
     ],
   },
   {
     id: "kelulusan",
     title: "Kriteria kelulusan",
+    description: "Final Result = Role Play × bobot Role Play + Post-Test × bobot Post-Test, dibulatkan 1 desimal.",
     fields: [
       {
-        key: "pass_avg_min",
+        key: "pass_grade",
         kind: "decimal",
-        label: "Rata-rata praktik minimal Sesuai",
-        help: "Kriteria kelulusan butir 6.2 laporan. Rentang 1 sampai 5.",
+        label: "Passing grade (skor ≥)",
+        help: "Standar kelulusan ≥85 (slide 4, 6, 17 sampai 20). Rentang 0 sampai 100.",
       },
       {
-        key: "improve_avg_min",
-        kind: "decimal",
-        label: "Rata-rata praktik minimal Perlu Perbaikan",
-        help: "Di bawah ini = Tidak Sesuai Spesifikasi. Rentang 1 sampai 5, tidak boleh di atas batas Sesuai.",
+        key: "weight_role_play",
+        kind: "percent",
+        label: "Bobot Role Play di Final Result",
+        help: "Disimpulkan dari tabel peserta slide 19, 21, 22. Rentang 0 sampai 100 %.",
+        unit: "%",
       },
       {
-        key: "posttest_min",
-        kind: "decimal",
-        label: "Post-test minimal",
-        help: "Kriteria kelulusan butir 6.2 laporan (SUB tidak ada post-test). Rentang 0 sampai 100.",
+        key: "weight_post_test",
+        kind: "percent",
+        label: "Bobot Post-Test di Final Result",
+        help: "Sumber sama dengan bobot Role Play. Rentang 0 sampai 100 %.",
+        unit: "%",
+      },
+    ],
+  },
+  {
+    id: "target",
+    title: "Target KPI (slide 15)",
+    fields: [
+      {
+        key: "target_overweight_max",
+        kind: "percent",
+        label: "Target proporsi BMI overweight (maks.)",
+        help: "Penurunan persentase BMI overweight hingga <20 %.",
+        unit: "%",
+      },
+      {
+        key: "target_overweight_months",
+        kind: "int",
+        label: "Jangka waktu target BMI (bulan)",
+        help: "Dalam 6 bulan. Rentang 1 sampai 36.",
+        unit: "bulan",
+      },
+      {
+        key: "target_knowledge",
+        kind: "percent",
+        label: "Target ketepatan jawaban Product Knowledge",
+        help: "Lebih dari 90 %.",
+        unit: "%",
+      },
+      {
+        key: "target_interactive",
+        kind: "percent",
+        label: "Target skor Interactive Communicating",
+        help: "Lebih dari 92 %.",
+        unit: "%",
+      },
+      {
+        key: "target_coverage",
+        kind: "int",
+        label: "Target cakupan coaching (jumlah frontliner)",
+        help: "Cakupan coaching 100 % dari total 812 frontliner. Lebih dari 0.",
+        unit: "orang",
+      },
+      {
+        key: "coverage_done",
+        kind: "int",
+        label: "Frontliner sudah coaching (update manual)",
+        help: "Posisi PDF: 795 frontliner (slide 2). Perbarui bila ada coaching susulan.",
+        unit: "orang",
+      },
+      {
+        key: "target_pass_rate",
+        kind: "percent",
+        label: "Target kelulusan peserta IULS/RUST setelah remedial",
+        help: "Tidak tertulis di PDF: asumsi seluruh peserta Failed mengikuti remedial hingga lulus (slide 27).",
+        unit: "%",
       },
     ],
   },
@@ -154,7 +211,7 @@ export const SETTING_SECTIONS: SettingSection[] = [
         key: "replacement_deadline",
         kind: "date",
         label: "Batas waktu penggantian SDM",
-        help: "Lembar komitmen di sheet Penggantian SDM: batas 31 Oktober 2026. Dipakai untuk status Ketepatan Waktu.",
+        help: "Tidak ada di PDF: default akhir periode training (W2 Des). Dipakai untuk status Ketepatan Waktu.",
       },
     ],
   },
@@ -162,30 +219,38 @@ export const SETTING_SECTIONS: SettingSection[] = [
 
 export const SETTING_FIELDS: SettingField[] = SETTING_SECTIONS.flatMap((s) => s.fields);
 
+const KIND_BY_KEY = new Map(SETTING_FIELDS.map((f) => [f.key, f.kind]));
+
 export type SettingsValues = Record<SettingKey, string>;
 export type SettingsErrors = Partial<Record<SettingKey, string>>;
 
-export type SettingsUpdate = {
-  week1_start: string;
-  weeks: number;
-  bmi_first_check: string;
-  bmi_interval_days: number;
-  bmi_periods: number;
-  bmi_underweight_below: number;
-  bmi_normal_max: number;
-  bmi_overweight_max: number;
-  min_height_female: number | null;
-  min_height_male: number | null;
-  pass_avg_min: number;
-  improve_avg_min: number;
-  posttest_min: number;
-  replacement_deadline: string;
-};
+type DateKey = "week1_start" | "bmi_first_check" | "replacement_deadline";
 
-/** A DB row value as the form shows it: dates as-is, decimals with a comma ("18,5"). */
-export function toFormValue(value: string | number | null | undefined): string {
+/** The update sent to public.settings: dates as 'YYYY-MM-DD', percentages already as fractions. */
+export type SettingsUpdate = { [K in SettingKey]: K extends DateKey ? string : number };
+
+/** Fractions are stored with up to 6 decimals; the form shows percentages with up to 4. */
+function roundTo(value: number, digits: number): number {
+  const f = 10 ** digits;
+  return Math.round(value * f) / f;
+}
+
+/**
+ * A DB value as the form shows it: dates as-is, decimals with a comma ("18,5"),
+ * percent fields multiplied by 100 ("92").
+ */
+export function toFormValue(value: string | number | null | undefined, kind: SettingKind = "decimal"): string {
   if (value === null || value === undefined) return "";
-  return typeof value === "number" ? String(value).replace(".", ",") : value;
+  if (typeof value === "string") return value;
+  const shown = kind === "percent" ? roundTo(value * 100, 4) : value;
+  return String(shown).replace(".", ",");
+}
+
+/** Form values from a settings row (missing columns become ""). */
+export function settingsToFormValues(row: Partial<Record<SettingKey, string | number | null>>): SettingsValues {
+  return Object.fromEntries(
+    SETTING_FIELDS.map((f) => [f.key, toFormValue(row[f.key], f.kind)]),
+  ) as SettingsValues;
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -201,6 +266,17 @@ export function notMonday(value: string): boolean {
   return isIsoDate(value) && new Date(`${value}T00:00:00Z`).getUTCDay() !== 1;
 }
 
+/**
+ * Sum of both weights in percent when both parse, else null. Not a database rule: the form
+ * only warns when it is not 100, because Final Result then leaves the 0–100 scale.
+ */
+export function weightSum(values: Pick<SettingsValues, "weight_role_play" | "weight_post_test">): number | null {
+  const rp = parseDecimal(values.weight_role_play.trim());
+  const pt = parseDecimal(values.weight_post_test.trim());
+  if (rp === null || pt === null || Number.isNaN(rp) || Number.isNaN(pt)) return null;
+  return roundTo(rp + pt, 4);
+}
+
 function between(value: number, min: number, max: number): boolean {
   return value >= min && value <= max;
 }
@@ -208,7 +284,8 @@ function between(value: number, min: number, max: number): boolean {
 /** Parses and checks every field; `update` is set only when there are no errors. */
 export function validateSettings(values: SettingsValues): { errors: SettingsErrors; update: SettingsUpdate | null } {
   const errors: SettingsErrors = {};
-  const out: Partial<Record<SettingKey, string | number | null>> = {};
+  /** Form-scale numbers (percent fields still 0–100) and dates. */
+  const out: Partial<Record<SettingKey, string | number>> = {};
 
   for (const field of SETTING_FIELDS) {
     const raw = (values[field.key] ?? "").trim();
@@ -220,12 +297,11 @@ export function validateSettings(values: SettingsValues): { errors: SettingsErro
     }
     const n = parseDecimal(raw);
     if (n === null) {
-      if (field.kind === "optional-decimal") out[field.key] = null;
-      else errors[field.key] = "Wajib diisi.";
+      errors[field.key] = "Wajib diisi.";
       continue;
     }
     if (Number.isNaN(n)) {
-      errors[field.key] = "Isi angka, misalnya 18,5.";
+      errors[field.key] = field.kind === "int" ? "Isi bilangan bulat, misalnya 14." : "Isi angka, misalnya 18,5.";
       continue;
     }
     if (field.kind === "int" && !Number.isInteger(n)) {
@@ -242,7 +318,8 @@ export function validateSettings(values: SettingsValues): { errors: SettingsErro
 
   check("weeks", between(num("weeks") ?? 0, 1, 20), "Isi 1 sampai 20 minggu.");
   check("bmi_interval_days", between(num("bmi_interval_days") ?? 0, 1, 90), "Isi 1 sampai 90 hari.");
-  check("bmi_periods", between(num("bmi_periods") ?? 0, 1, 10), "Isi 1 sampai 10 periode.");
+  check("bmi_interval_months", between(num("bmi_interval_months") ?? 0, 1, 12), "Isi 1 sampai 12 bulan.");
+  check("bmi_periods", between(num("bmi_periods") ?? 0, 1, 12), "Isi 1 sampai 12 slot.");
 
   const under = num("bmi_underweight_below");
   const normal = num("bmi_normal_max");
@@ -256,19 +333,21 @@ export function validateSettings(values: SettingsValues): { errors: SettingsErro
   }
   check("bmi_overweight_max", (over ?? 0) <= 100, "Tidak boleh di atas 100.");
 
-  for (const k of ["min_height_female", "min_height_male"] as const) {
-    check(k, between(num(k) ?? 0, 120, 210), "Isi 120 sampai 210 cm, atau kosongkan.");
+  check("pass_grade", between(num("pass_grade") ?? -1, 0, 100), "Isi 0 sampai 100.");
+  for (const field of SETTING_FIELDS) {
+    if (field.kind === "percent") check(field.key, between(num(field.key) ?? -1, 0, 100), "Isi 0 sampai 100 %.");
   }
-
-  const pass = num("pass_avg_min");
-  const improve = num("improve_avg_min");
-  check("pass_avg_min", between(pass ?? 0, 1, 5), "Isi 1 sampai 5.");
-  check("improve_avg_min", between(improve ?? 0, 1, 5), "Isi 1 sampai 5.");
-  if (pass !== null && improve !== null) {
-    check("improve_avg_min", improve <= pass, "Tidak boleh di atas rata-rata minimal Sesuai.");
-  }
-  check("posttest_min", between(num("posttest_min") ?? -1, 0, 100), "Isi 0 sampai 100.");
+  check("target_overweight_months", between(num("target_overweight_months") ?? 0, 1, 36), "Isi 1 sampai 36 bulan.");
+  check("target_coverage", (num("target_coverage") ?? 0) > 0, "Harus lebih dari 0.");
+  check("coverage_done", (num("coverage_done") ?? -1) >= 0, "Tidak boleh negatif.");
 
   if (Object.keys(errors).length > 0) return { errors, update: null };
-  return { errors, update: out as SettingsUpdate };
+
+  const update = Object.fromEntries(
+    Object.entries(out).map(([key, value]) => [
+      key,
+      KIND_BY_KEY.get(key as SettingKey) === "percent" ? roundTo((value as number) / 100, 6) : value,
+    ]),
+  ) as SettingsUpdate;
+  return { errors, update };
 }

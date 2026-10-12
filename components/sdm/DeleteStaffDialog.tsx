@@ -20,7 +20,7 @@ function plural(n: number, noun: string): string {
 
 /**
  * Owner-only "Hapus SDM" confirmation. States what goes with the staff row, counted from
- * the data on screen: weekly scores and BMI checks are deleted (cascade), replacements stay
+ * the data on screen: weekly scores, BMI checks and remedials are deleted (cascade), replacements stay
  * but lose their link. Client component.
  */
 export function DeleteStaffDialog({ row, onClose, accessKey, deleteAction, onDeleted }: DeleteStaffDialogProps) {
@@ -42,10 +42,10 @@ export function DeleteStaffDialog({ row, onClose, accessKey, deleteAction, onDel
       const result = await deleteAction(accessKey, target.code);
       if (result.ok) {
         onDeleted(
-          `${result.code} ${result.name} dihapus, bersama ${plural(result.weeklyScores, "nilai mingguan")} dan ${plural(
+          `${result.code} ${result.name} dihapus, bersama ${plural(result.weeklyScores, "nilai mingguan")}, ${plural(
             result.bmiChecks,
             "cek BMI",
-          )}.`,
+          )} dan ${plural(result.remedials, "baris remedial")}.`,
         );
         onClose();
       } else {
@@ -57,7 +57,12 @@ export function DeleteStaffDialog({ row, onClose, accessKey, deleteAction, onDel
     setBusy(false);
   }
 
-  const lost = target ? [plural(target.weeklyScoreCount, "nilai mingguan"), plural(target.bmiCheckCount, "cek BMI")] : [];
+  const lost = target
+    ? `${plural(target.weeklyScoreCount, "nilai mingguan")}, ${plural(target.bmiCheckCount, "cek BMI")} dan ${plural(
+        target.remedialCount,
+        "baris remedial",
+      )}`
+    : "";
 
   return (
     <Dialog
@@ -82,7 +87,7 @@ export function DeleteStaffDialog({ row, onClose, accessKey, deleteAction, onDel
       {target ? (
         <div className="flex flex-col gap-2">
           <p>
-            Ikut terhapus: <strong className="tabular-nums">{lost.join(" dan ")}</strong> milik SDM ini.
+            Ikut terhapus: <strong className="tabular-nums">{lost}</strong> milik SDM ini.
           </p>
           <p>
             {target.replacementCount > 0

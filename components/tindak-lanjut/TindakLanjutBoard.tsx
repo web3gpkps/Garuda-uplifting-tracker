@@ -4,11 +4,19 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, Select } from "@/components/ui/Field";
 import { EmptyState } from "@/components/ui/States";
-import type { Settings } from "@/lib/rules";
 import { ActionItemDialog } from "./ActionItemDialog";
 import { ActionCards } from "./ActionRows";
 import { DeleteActionItemDialog } from "./DeleteActionItemDialog";
-import { ACTION_STATUSES, byUrgency, byWorkbookOrder, needsAttention, type ActionView } from "./action-view";
+import {
+  ACTION_STATUSES,
+  ASPECTS,
+  FLAG_FILTERS,
+  READ_ONLY_NOTE,
+  byUrgency,
+  byWorkbookOrder,
+  matchesFilters,
+  type ActionView,
+} from "./action-view";
 
 export type GroupSummary = {
   key: string;
@@ -21,33 +29,17 @@ export type GroupSummary = {
 
 type TindakLanjutBoardProps = {
   accessKey: string;
-  isKps: boolean;
+  /** KPS links and the owner; station links read only. */
+  canEdit: boolean;
   /** Owner only: "Hapus butir" on each card. */
   isOwner?: boolean;
   today: string;
-  settings: Settings;
   items: ActionView[];
-  /** One per report group in this link's scope, in station order. */
+  /** From ?aspek=, "" for all aspects. */
+  initialAspect: string;
+  /** One per Kelompok shown, in workbook order. */
   groups: GroupSummary[];
 };
-
-const FLAG_FILTERS = [
-  { value: "", label: "Semua flag" },
-  { value: "perlu", label: "Perlu ditangani (OVERDUE + ≤ 7 hari)" },
-  { value: "OVERDUE", label: "OVERDUE" },
-  { value: "Jatuh tempo ≤ 7 hari", label: "Jatuh tempo ≤ 7 hari" },
-  { value: "Rutin – pantau", label: "Rutin – pantau" },
-  { value: "On Track", label: "On Track" },
-  { value: "Selesai", label: "Selesai" },
-  { value: "tanpa", label: "Tanpa batas waktu" },
-] as const;
-
-function matchesFlag(view: ActionView, filter: string): boolean {
-  if (filter === "") return true;
-  if (filter === "perlu") return needsAttention(view);
-  if (filter === "tanpa") return view.flag === null;
-  return view.flag === filter;
-}
 
 function groupLine(g: GroupSummary): string {
   const parts = [`${g.total} butir`, `${g.selesai} selesai`];
@@ -56,13 +48,26 @@ function groupLine(g: GroupSummary): string {
   return parts.join(" · ");
 }
 
+function slug(key: string): string {
+  return key.replace(/[^A-Za-z]+/g, "-").toLowerCase();
+}
+
 /**
- * The Tindak Lanjut screen body: what is late or due leads (one sentence, one filter),
- * then each report group's items, most urgent first. Filters are local to this view.
+ * The Tindak Lanjut screen on phones: what is late or due leads (one sentence, one filter),
+ * then each Kelompok's items, most urgent first. Filters are local to this view.
  */
-export function TindakLanjutBoard({ accessKey, isKps, isOwner = false, today, settings, items, groups }: TindakLanjutBoardProps) {
+export function TindakLanjutBoard({
+  accessKey,
+  canEdit,
+  isOwner = false,
+  today,
+  items,
+  initialAspect,
+  groups,
+}: TindakLanjutBoardProps) {
   const [statusFilter, setStatusFilter] = useState("");
   const [flagFilter, setFlagFilter] = useState("");
+  const [aspectFilter, setAspectFilter] = useState(initialAspect);
   const [order, setOrder] = useState<"urgency" | "id">("urgency");
   const [editing, setEditing] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Record<string, string>>({});
@@ -71,19 +76,15 @@ export function TindakLanjutBoard({ accessKey, isKps, isOwner = false, today, se
 
   const overdue = items.filter((v) => v.flag === "OVERDUE").length;
   const dueSoon = items.filter((v) => v.flag === "Jatuh tempo ≤ 7 hari").length;
-  const filtersActive = statusFilter !== "" || flagFilter !== "";
+  const filtersActive = statusFilter !== "" || flagFilter !== "" || aspectFilter !== "";
 
   const visible = useMemo(() => {
-    const rows = items.filter(
-      (v) =>
-        (statusFilter === "" || v.status === statusFilter) &&
-        matchesFlag(v, flagFilter),
-    );
+    const rows = items.filter((v) => matchesFilters(v, { status: statusFilter, flag: flagFilter, aspect: aspectFilter }));
     return rows.sort(order === "urgency" ? byUrgency : byWorkbookOrder);
-  }, [items, statusFilter, flagFilter, order]);
+  }, [items, statusFilter, flagFilter, aspectFilter, order]);
 
   // Ringkasan links here as #tl-<code>. The table (desktop) and the cards (phones) both carry
-  // the item, so scroll to whichever is displayed and put focus on its update button.
+  // the item, so scroll to whichever is displayed and put focus on its button.
   useEffect(() => {
     if (!window.location.hash.startsWith("#tl-")) return;
     const code = decodeURIComponent(window.location.hash.slice(4));
@@ -95,13 +96,13 @@ export function TindakLanjutBoard({ accessKey, isKps, isOwner = false, today, se
     target.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
   }, []);
 
-  const shownGroups = groups;
   const deletingItem = deleting ? (items.find((v) => v.code === deleting) ?? null) : null;
   const editingItem = editing ? (items.find((v) => v.code === editing) ?? null) : null;
 
   function clearFilters() {
     setStatusFilter("");
     setFlagFilter("");
+    setAspectFilter("");
   }
 
   return (
@@ -110,6 +111,7 @@ export function TindakLanjutBoard({ accessKey, isKps, isOwner = false, today, se
         <div role="status" aria-live="polite">
           {notice ? <p className="text-sm font-semibold text-good">{notice}</p> : null}
         </div>
+        {!canEdit ? <p className="text-sm text-ink-muted">{READ_ONLY_NOTE} Hanya tampilan baca.</p> : null}
         {overdue + dueSoon > 0 ? (
           <Button variant="secondary" onClick={() => setFlagFilter(flagFilter === "perlu" ? "" : "perlu")}>
             {flagFilter === "perlu" ? "Tampilkan semua butir" : "Hanya yang perlu ditangani"}
@@ -122,7 +124,17 @@ export function TindakLanjutBoard({ accessKey, isKps, isOwner = false, today, se
         onSubmit={(e) => e.preventDefault()}
         className="flex flex-col gap-3 px-4 sm:px-6"
       >
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Aspek">
+            <Select value={aspectFilter} onChange={(e) => setAspectFilter(e.target.value)}>
+              <option value="">Semua aspek</option>
+              {ASPECTS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Status">
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="">Semua status</option>
@@ -161,19 +173,14 @@ export function TindakLanjutBoard({ accessKey, isKps, isOwner = false, today, se
         </div>
       </form>
 
-      {shownGroups.map((g) => {
-        const rows = visible.filter((v) => v.reportGroup === g.key);
-        const caption = `Tindak lanjut laporan ${g.key}`;
+      {groups.map((g) => {
+        const rows = visible.filter((v) => v.groupName === g.key);
+        const id = `kelompok-${slug(g.key)}`;
         return (
-          <section
-            key={g.key}
-            id={`laporan-${g.key.replace(/[^A-Za-z]+/g, "-").toLowerCase()}`}
-            aria-labelledby={`laporan-${g.key.replace(/[^A-Za-z]+/g, "-").toLowerCase()}-judul`}
-            className="border-t border-line"
-          >
+          <section key={g.key} id={id} aria-labelledby={`${id}-judul`} className="border-t border-line">
             <div className="px-4 pt-4 pb-3 sm:px-6">
-              <h3 id={`laporan-${g.key.replace(/[^A-Za-z]+/g, "-").toLowerCase()}-judul`} className="text-base font-semibold text-ink">
-                Laporan {g.key}
+              <h3 id={`${id}-judul`} className="text-base font-semibold text-ink">
+                {g.key}
               </h3>
               <p className="mt-0.5 text-sm text-ink-muted">{groupLine(g)}</p>
             </div>
@@ -190,15 +197,16 @@ export function TindakLanjutBoard({ accessKey, isKps, isOwner = false, today, se
                   }
                 >
                   {g.total === 0
-                    ? "Laporan ini belum punya butir tindak lanjut di database."
-                    : "Semua butir laporan ini tersaring. Ubah atau hapus filter untuk melihatnya lagi."}
+                    ? "Kelompok ini belum punya butir tindak lanjut di database."
+                    : "Semua butir kelompok ini tersaring. Ubah atau hapus filter untuk melihatnya lagi."}
                 </EmptyState>
               </div>
             ) : (
               <div className="border-t border-line">
                 <ActionCards
-                  caption={caption}
+                  caption={`Tindak lanjut ${g.key}`}
                   items={rows}
+                  canEdit={canEdit}
                   savedAt={savedAt}
                   onEdit={setEditing}
                   onDelete={isOwner ? setDeleting : undefined}
@@ -211,9 +219,8 @@ export function TindakLanjutBoard({ accessKey, isKps, isOwner = false, today, se
 
       <ActionItemDialog
         accessKey={accessKey}
-        isKps={isKps}
+        canEdit={canEdit}
         today={today}
-        settings={settings}
         item={editingItem}
         onClose={() => setEditing(null)}
         onSaved={(code, at) => setSavedAt((current) => ({ ...current, [code]: at }))}

@@ -74,7 +74,7 @@ type ShareOpenPayload = {
 /** The settings columns the week rail needs (WeekRail accepts this shape as-is). */
 export type WorkspaceSchedule = Pick<
   Tables<"settings">,
-  "week1_start" | "weeks" | "bmi_first_check" | "bmi_interval_days" | "bmi_periods"
+  "week1_start" | "weeks" | "bmi_first_check" | "bmi_interval_days" | "bmi_interval_months" | "bmi_periods"
 >;
 
 export type WorkspaceStaff = Camelize<Tables<"staff">>;
@@ -140,9 +140,11 @@ export function scopeLabel(scope: WorkspaceScope, owner = false): string {
 
 function toSchedule(settings: Tables<"settings"> | null): WorkspaceSchedule | null {
   if (!settings) return null;
-  const { week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_periods } = settings;
-  if (!week1_start || !weeks || !bmi_first_check || !bmi_interval_days || !bmi_periods) return null;
-  return { week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_periods };
+  const { week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_interval_months, bmi_periods } = settings;
+  if (!week1_start || !weeks || !bmi_first_check || !bmi_interval_days || !bmi_interval_months || !bmi_periods) {
+    return null;
+  }
+  return { week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_interval_months, bmi_periods };
 }
 
 function toWorkspace(raw: ShareOpenPayload, owner: boolean): Workspace {

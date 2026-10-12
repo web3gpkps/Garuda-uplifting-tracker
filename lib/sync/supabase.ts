@@ -6,9 +6,10 @@
  *   sync_release_lease(p_token uuid, p_baseline jsonb, p_error text) -> boolean
  * Writes are ordered: inserts/updates parents first (settings, staff, then children); deletes
  * children first. Each table is applied on its own so one failing table does not block the rest.
+ * `stations` is read (codes only) to validate unit codes typed in the sheet; it is never written.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { SYNC_TABLES, dataColumns, specFor } from "./tables";
+import { SYNC_TABLES, dataColumns, specFor, toDbRow } from "./tables";
 import type { Baseline, CanonRow, ConflictRecord, DbSnapshot, Issue, Plan, SyncTable, TableSpec } from "./types";
 
 const PAGE = 1000;
@@ -119,8 +120,14 @@ export class SupabaseSyncStore implements SyncStore {
 
   async readAll(): Promise<DbSnapshot> {
     const out: DbSnapshot = {};
-    await Promise.all(
-      this.specs.map(async (spec) => {
+    const stations = async () => {
+      const { data, error } = await this.db.from("stations").select("code").order("code");
+      if (error) throw new Error(`read stations ${safeDbError(error)}`);
+      out.stations = (data ?? []) as { code: string }[];
+    };
+    await Promise.all([
+      stations(),
+      ...this.specs.map(async (spec) => {
         if (spec.kv) {
           const { data, error } = await this.db.from("settings").select("*").eq("id", 1);
           if (error) throw new Error(`read settings ${safeDbError(error)}`);
@@ -139,7 +146,7 @@ export class SupabaseSyncStore implements SyncStore {
         }
         out[spec.table] = rows;
       }),
-    );
+    ]);
     return out;
   }
 
@@ -166,15 +173,15 @@ export class SupabaseSyncStore implements SyncStore {
         for (let i = 0; i < tp.db.inserts.length; i += CHUNK) {
           const { error } = await this.db
             .from(table)
-            .upsert(tp.db.inserts.slice(i, i + CHUNK), { onConflict: spec.key.join(","), ignoreDuplicates: false });
+            .upsert(tp.db.inserts.slice(i, i + CHUNK).map((r) => toDbRow(spec, r)), { onConflict: spec.key.join(","), ignoreDuplicates: false });
           if (error) throw error;
         }
         await pool(tp.db.updates, async (u) => {
-          const { error } = await this.db.from(table).update(u.set).match(u.key);
+          const { error } = await this.db.from(table).update(toDbRow(spec, u.set)).match(u.key);
           if (error) throw error;
         });
         for (const p of tp.db.pending) {
-          const { data, error } = await this.db.from(table).insert(p.values).select(spec.key[0]).single();
+          const { data, error } = await this.db.from(table).insert(toDbRow(spec, p.values)).select(spec.key[0]).single();
           if (error) throw error;
           ids.set(p.ref, Number((data as unknown as Record<string, unknown>)[spec.key[0]]));
         }

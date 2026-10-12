@@ -1,5 +1,5 @@
 /**
- * Date-only helpers for the JOUMPA rules.
+ * Date-only helpers for the tracker rules.
  *
  * Every date in the domain is a calendar date, carried as an ISO string `YYYY-MM-DD`
  * (the shape Postgres `date` columns come back as). Arithmetic is done on UTC midnights,

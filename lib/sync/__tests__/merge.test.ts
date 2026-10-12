@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { countPlan, isPlanEmpty, merge, mergeCell } from "../merge";
 import { rowOneSpecs, specFor } from "../tables";
 import { World } from "../testing/fakes";
-import { actionRow, manyStaff, replacementRow, settingsRow, smallDb, staffRow, weeklyRow } from "../testing/fixtures";
+import { actionRow, manyStaff, remedialRow, replacementRow, settingsRow, smallDb, staffRow, weeklyRow } from "../testing/fixtures";
 import type { Plan, SyncTable, TableSpec } from "../types";
 
 // ------------------------------------------------------------------ helpers
@@ -15,6 +15,7 @@ const LOG = "Log Performa Mingguan";
 const BMI = "Cek BMI 2 Mingguan";
 const TL = "Tindak Lanjut";
 const PG = "Penggantian SDM";
+const REM = "Remedial";
 const PAR = "Parameter";
 const TM = "Temuan Mingguan";
 
@@ -104,7 +105,7 @@ describe("first run (empty baseline)", () => {
       expect(t.db).toEqual({ inserts: [], updates: [], deletes: [], pending: [] });
       expect(t.conflicts).toEqual([]);
     }
-    expect(tp(plan, "settings").sheet.appends.length).toBe(13);
+    expect(tp(plan, "settings").sheet.appends.length).toBe(20);
     expect(w.sheet.rows(SDM).map((r) => r["ID SDM"]).sort()).toEqual(["DPS-01", "SUB-01", "SUB-02"]);
     expect(w.sheet.rows(LOG).length).toBe(2);
     expect(w.sheet.rows(PG)[0]["ID Sistem"]).toBe(1);
@@ -113,16 +114,17 @@ describe("first run (empty baseline)", () => {
 
   test("both sides already have data: union, nulls filled, differing cells resolved db-wins and logged, no deletes", () => {
     const w = new World(smallDb());
-    const base = { Stasiun: "SUB", "Pre-test": 60, "Post-test": 80, "A Penampilan": 4, "B Grooming": 4, "C Postur": 3, "D Komunikasi": 3, "E Touch Point": 4, "F B. Inggris & Reservasi": 4, "Kesimpulan di Laporan": "Perlu Perbaikan", "Status Penugasan": "Aktif" };
+    const base = { Program: "IULS", Provider: "Gapura", Unit: "SUB", "Touch Point": "Check-in Counter", "Role Play": 80, "Post-Test": 90, "Remark di Laporan": "Passed", "Status Penugasan": "Aktif" };
+    const failed = { "Role Play": 60, "Remark di Laporan": "Failed", "Status Penugasan": "Remedial" };
     w.sheet.addTab(
       SDM,
       tableValues("staff", [
-        // Same as DB except: NIPP empty (DB fills it), notes set (DB takes it).
+        // Same as DB except: Employee Number empty (DB fills it), notes set (DB takes it).
         { ...base, "ID SDM": "SUB-01", "Nama Petugas": "Petugas SUB-01", Catatan: "dari sheet" },
         // Name differs: conflict.
-        { ...base, "ID SDM": "SUB-02", "Nama Petugas": "Nama Versi Sheet", NIPP: "1002" },
+        { ...base, ...failed, "ID SDM": "SUB-02", "Nama Petugas": "Nama Versi Sheet", "Employee Number": "1002" },
         // Only in the sheet.
-        { "ID SDM": "KNO-01", Stasiun: "KNO", "Nama Petugas": "Petugas KNO-01", "Status Penugasan": "Aktif" },
+        { "ID SDM": "KNO-01", Unit: "KNO", "Nama Petugas": "Petugas KNO-01", "Status Penugasan": "Aktif" },
       ]),
     );
     const plan = w.sync();
@@ -134,7 +136,7 @@ describe("first run (empty baseline)", () => {
       { table: "staff", rowKey: "SUB-02", column: "name", baseline: null, sheet: "Nama Versi Sheet", db: "Petugas SUB-02", resolution: "db-wins" },
     ]);
     expect(w.sheet.cell(SDM, rowOf(w, SDM, "ID SDM", "SUB-02"), "Nama Petugas")).toBe("Petugas SUB-02");
-    expect(w.sheet.cell(SDM, rowOf(w, SDM, "ID SDM", "SUB-01"), "NIPP")).toBe("1001");
+    expect(w.sheet.cell(SDM, rowOf(w, SDM, "ID SDM", "SUB-01"), "Employee Number")).toBe("1001");
     expect(w.sheet.rows(SDM).map((r) => r["ID SDM"]).sort()).toEqual(["DPS-01", "KNO-01", "SUB-01", "SUB-02"]);
     expect(w.db.rows("staff").length).toBe(4);
     expectSteady(w);
@@ -156,20 +158,20 @@ describe("first run (empty baseline)", () => {
 describe("cell changes against the baseline", () => {
   test("only the sheet changed: DB updated", () => {
     const w = seeded();
-    w.sheet.setCell(SDM, rowOf(w, SDM, "ID SDM", "SUB-01"), "A Penampilan", 5);
+    w.sheet.setCell(SDM, rowOf(w, SDM, "ID SDM", "SUB-01"), "Role Play", 95);
     const plan = w.sync();
-    expect(tp(plan, "staff").db.updates).toEqual([{ key: { code: "SUB-01" }, set: { score_a: 5 } }]);
-    expect(staff(w, "SUB-01").score_a).toBe(5);
-    expect(w.baseline!.tables.staff!["SUB-01"].score_a).toBe(5);
+    expect(tp(plan, "staff").db.updates).toEqual([{ key: { code: "SUB-01" }, set: { role_play: 95 } }]);
+    expect(staff(w, "SUB-01").role_play).toBe(95);
+    expect(w.baseline!.tables.staff!["SUB-01"].role_play).toBe(95);
     expectSteady(w);
   });
 
   test("only the DB changed: sheet cell updated", () => {
     const w = seeded();
-    staff(w, "SUB-02").nipp = "9999";
+    staff(w, "SUB-02").employee_no = "9999";
     const plan = w.sync();
     expect(tp(plan, "staff").db.updates).toEqual([]);
-    expect(w.sheet.cell(SDM, rowOf(w, SDM, "ID SDM", "SUB-02"), "NIPP")).toBe("9999");
+    expect(w.sheet.cell(SDM, rowOf(w, SDM, "ID SDM", "SUB-02"), "Employee Number")).toBe("9999");
     expectSteady(w);
   });
 
@@ -185,27 +187,27 @@ describe("cell changes against the baseline", () => {
   test("both changed differently: db-wins by default, DB value written over the sheet, conflict logged", () => {
     const w = seeded();
     const r = rowOf(w, SDM, "ID SDM", "SUB-01");
-    staff(w, "SUB-01").score_a = 5;
-    w.sheet.setCell(SDM, r, "A Penampilan", 2);
+    staff(w, "SUB-01").role_play = 95;
+    w.sheet.setCell(SDM, r, "Role Play", 70);
     const plan = w.sync();
     expect(tp(plan, "staff").conflicts).toEqual([
-      { table: "staff", rowKey: "SUB-01", column: "score_a", baseline: 4, sheet: 2, db: 5, resolution: "db-wins" },
+      { table: "staff", rowKey: "SUB-01", column: "role_play", baseline: 80, sheet: 70, db: 95, resolution: "db-wins" },
     ]);
     expect(tp(plan, "staff").db.updates).toEqual([]);
-    expect(w.sheet.cell(SDM, r, "A Penampilan")).toBe(5);
-    expect(staff(w, "SUB-01").score_a).toBe(5);
+    expect(w.sheet.cell(SDM, r, "Role Play")).toBe(95);
+    expect(staff(w, "SUB-01").role_play).toBe(95);
     expectSteady(w);
   });
 
   test("both changed differently with sheet-wins: sheet value written to DB, conflict logged", () => {
     const w = seeded();
     const r = rowOf(w, SDM, "ID SDM", "SUB-01");
-    staff(w, "SUB-01").score_a = 5;
-    w.sheet.setCell(SDM, r, "A Penampilan", 2);
+    staff(w, "SUB-01").role_play = 95;
+    w.sheet.setCell(SDM, r, "Role Play", 70);
     const plan = w.sync({ conflictPolicy: "sheet-wins" });
-    expect(tp(plan, "staff").conflicts[0]).toMatchObject({ column: "score_a", sheet: 2, db: 5, resolution: "sheet-wins" });
-    expect(staff(w, "SUB-01").score_a).toBe(2);
-    expect(w.sheet.cell(SDM, r, "A Penampilan")).toBe(2);
+    expect(tp(plan, "staff").conflicts[0]).toMatchObject({ column: "role_play", sheet: 70, db: 95, resolution: "sheet-wins" });
+    expect(staff(w, "SUB-01").role_play).toBe(70);
+    expect(w.sheet.cell(SDM, r, "Role Play")).toBe(70);
     expectSteady(w);
   });
 
@@ -216,7 +218,7 @@ describe("cell changes against the baseline", () => {
     staff(w, "SUB-01").bmi_note = "dari web";
     w.sync();
     expect(staff(w, "SUB-01").notes).toBe("dari sheet");
-    expect(w.sheet.cell(SDM, r, "Catatan / Program Penyesuaian BB")).toBe("dari web");
+    expect(w.sheet.cell(SDM, r, "Catatan Program Kebugaran")).toBe("dari web");
     expectSteady(w);
   });
 });
@@ -228,7 +230,7 @@ describe("row inserts and deletes", () => {
     const w = seeded();
     const n = w.sheet.rows(SDM).length + 2;
     w.sheet.setCell(SDM, n, "ID SDM", "TMB-01");
-    w.sheet.setCell(SDM, n, "Stasiun", "SUB");
+    w.sheet.setCell(SDM, n, "Unit", "SUB");
     w.sheet.setCell(SDM, n, "Nama Petugas", "Petugas Tambahan");
     const plan = w.sync();
     expect(tp(plan, "staff").db.inserts).toHaveLength(1);
@@ -239,10 +241,10 @@ describe("row inserts and deletes", () => {
 
   test("new DB row is appended to the sheet", () => {
     const w = seeded();
-    w.db.rows("action_items").push(actionRow("DPS-TL01", 3));
+    w.db.rows("action_items").push(actionRow("GA-TL03", 3));
     const plan = w.sync();
     expect(tp(plan, "action_items").sheet.appends).toHaveLength(1);
-    expect(w.sheet.rows(TL).map((r) => r.ID)).toEqual(["SUB-TL01", "SUB-TL02", "DPS-TL01"]);
+    expect(w.sheet.rows(TL).map((r) => r.ID)).toEqual(["GA-TL01", "GA-TL02", "GA-TL03"]);
     expectSteady(w);
   });
 
@@ -270,36 +272,36 @@ describe("row inserts and deletes", () => {
 
   test("row deleted in the DB clears that record's input cells in the sheet (key kept)", () => {
     const w = seeded();
-    const r = rowOf(w, TL, "ID", "SUB-TL01");
-    w.db.tables.set("action_items", w.db.rows("action_items").filter((x) => x.code !== "SUB-TL01"));
+    const r = rowOf(w, TL, "ID", "GA-TL01");
+    w.db.tables.set("action_items", w.db.rows("action_items").filter((x) => x.code !== "GA-TL01"));
     const plan = w.sync();
     expect(tp(plan, "action_items").sheet.deleteRows).toEqual([]);
-    expect(w.sheet.cell(TL, r, "ID")).toBe("SUB-TL01");
+    expect(w.sheet.cell(TL, r, "ID")).toBe("GA-TL01");
     expect(w.sheet.cell(TL, r, "Status")).toBe("");
     expectSteady(w);
   });
 
   test("deleted on both sides: dropped from the baseline, nothing written", () => {
     const w = seeded();
-    w.db.tables.set("action_items", w.db.rows("action_items").filter((r) => r.code !== "SUB-TL02"));
-    w.sheet.tabs.get(TL)!.values.splice(rowOf(w, TL, "ID", "SUB-TL02") - 1, 1);
+    w.db.tables.set("action_items", w.db.rows("action_items").filter((r) => r.code !== "GA-TL02"));
+    w.sheet.tabs.get(TL)!.values.splice(rowOf(w, TL, "ID", "GA-TL02") - 1, 1);
     const plan = w.sync();
     expect(pending(plan)).toEqual([]);
-    expect(w.baseline!.tables.action_items!["SUB-TL02"]).toBeUndefined();
+    expect(w.baseline!.tables.action_items!["GA-TL02"]).toBeUndefined();
   });
 });
 
 describe("delete vs edit races (whole-row conflicts)", () => {
   function sheetDeletedDbEdited(policy?: "db-wins" | "sheet-wins") {
     const w = seeded();
-    w.sheet.tabs.get(TL)!.values.splice(rowOf(w, TL, "ID", "SUB-TL01") - 1, 1);
-    w.db.find("action_items", { code: "SUB-TL01" })!.status = "On Progress";
+    w.sheet.tabs.get(TL)!.values.splice(rowOf(w, TL, "ID", "GA-TL01") - 1, 1);
+    w.db.find("action_items", { code: "GA-TL01" })!.status = "On Progress";
     return { w, plan: w.sync({ conflictPolicy: policy }) };
   }
   function dbDeletedSheetEdited(policy?: "db-wins" | "sheet-wins") {
     const w = seeded();
-    w.sheet.setCell(TL, rowOf(w, TL, "ID", "SUB-TL01"), "Status", "Selesai");
-    w.db.tables.set("action_items", w.db.rows("action_items").filter((r) => r.code !== "SUB-TL01"));
+    w.sheet.setCell(TL, rowOf(w, TL, "ID", "GA-TL01"), "Status", "Selesai");
+    w.db.tables.set("action_items", w.db.rows("action_items").filter((r) => r.code !== "GA-TL01"));
     return { w, plan: w.sync({ conflictPolicy: policy }) };
   }
 
@@ -307,30 +309,30 @@ describe("delete vs edit races (whole-row conflicts)", () => {
     const { w, plan } = sheetDeletedDbEdited();
     const c = tp(plan, "action_items").conflicts;
     expect(c).toHaveLength(1);
-    expect(c[0]).toMatchObject({ rowKey: "SUB-TL01", column: null, sheet: null, resolution: "db-wins" });
+    expect(c[0]).toMatchObject({ rowKey: "GA-TL01", column: null, sheet: null, resolution: "db-wins" });
     expect(tp(plan, "action_items").db.deletes).toEqual([]);
-    expect(w.sheet.rows(TL).find((r) => r.ID === "SUB-TL01")!.Status).toBe("On Progress");
+    expect(w.sheet.rows(TL).find((r) => r.ID === "GA-TL01")!.Status).toBe("On Progress");
     expectSteady(w);
   });
 
   test("sheet deleted, DB edited, sheet-wins: DB row deleted", () => {
     const { w, plan } = sheetDeletedDbEdited("sheet-wins");
     expect(tp(plan, "action_items").conflicts[0]).toMatchObject({ column: null, resolution: "sheet-wins" });
-    expect(w.db.find("action_items", { code: "SUB-TL01" })).toBeUndefined();
+    expect(w.db.find("action_items", { code: "GA-TL01" })).toBeUndefined();
     expectSteady(w);
   });
 
   test("DB deleted, sheet edited, db-wins: the sheet record is cleared", () => {
     const { w, plan } = dbDeletedSheetEdited();
     expect(tp(plan, "action_items").conflicts[0]).toMatchObject({ column: null, db: null, resolution: "db-wins" });
-    expect(w.sheet.rows(TL).find((r) => r.ID === "SUB-TL01")!.Status).toBe("");
+    expect(w.sheet.rows(TL).find((r) => r.ID === "GA-TL01")!.Status).toBe("");
     expectSteady(w);
   });
 
   test("DB deleted, sheet edited, sheet-wins: row re-inserted into the DB", () => {
     const { w, plan } = dbDeletedSheetEdited("sheet-wins");
     expect(tp(plan, "action_items").conflicts[0]).toMatchObject({ column: null, resolution: "sheet-wins" });
-    expect(w.db.find("action_items", { code: "SUB-TL01" })!.status).toBe("Selesai");
+    expect(w.db.find("action_items", { code: "GA-TL01" })!.status).toBe("Selesai");
     expectSteady(w);
   });
 });
@@ -396,24 +398,25 @@ describe("deletion guard: max(3 rows, 10%)", () => {
 // ------------------------------------------------------------------ validation
 
 describe("invalid sheet values", () => {
-  test("score 7: not written, noted, baseline unchanged; fixed value syncs and note clears", () => {
+  test("role play 150: not written, noted, baseline unchanged; fixed value syncs and note clears", () => {
     const w = seeded();
     const r = rowOf(w, SDM, "ID SDM", "SUB-01");
-    w.sheet.setCell(SDM, r, "A Penampilan", 7);
+    w.sheet.setCell(SDM, r, "Role Play", 150);
     const plan = w.sync();
     const s = tp(plan, "staff");
     expect(s.db.updates).toEqual([]);
     expect(s.issues).toHaveLength(1);
-    expect(s.issues[0]).toMatchObject({ kind: "invalid_value", rowKey: "SUB-01", column: "score_a", sheetValue: 7, isNew: true });
-    expect(w.sheet.note(SDM, r, "A Penampilan")).toContain("Di luar rentang 1–5");
-    expect(staff(w, "SUB-01").score_a).toBe(4);
-    expect(w.baseline!.tables.staff!["SUB-01"].score_a).toBe(4);
+    expect(s.issues[0]).toMatchObject({ kind: "invalid_value", rowKey: "SUB-01", column: "role_play", sheetValue: 150, isNew: true });
+    expect(w.sheet.note(SDM, r, "Role Play")).toContain("Di luar rentang 0–100");
+    expect(w.sheet.note(SDM, r, "Role Play")).toStartWith("Garuda sync:");
+    expect(staff(w, "SUB-01").role_play).toBe(80);
+    expect(w.baseline!.tables.staff!["SUB-01"].role_play).toBe(80);
     expectSteady(w);
 
-    w.sheet.setCell(SDM, r, "A Penampilan", 5);
+    w.sheet.setCell(SDM, r, "Role Play", 95);
     w.sync();
-    expect(staff(w, "SUB-01").score_a).toBe(5);
-    expect(w.sheet.note(SDM, r, "A Penampilan")).toBeUndefined();
+    expect(staff(w, "SUB-01").role_play).toBe(95);
+    expect(w.sheet.note(SDM, r, "Role Play")).toBeUndefined();
     expectSteady(w);
   });
 
@@ -432,24 +435,24 @@ describe("invalid sheet values", () => {
   test("an invalid sheet value never wins: if the DB changed meanwhile its value replaces the cell", () => {
     const w = seeded();
     const r = rowOf(w, SDM, "ID SDM", "SUB-01");
-    w.sheet.setCell(SDM, r, "A Penampilan", 7);
+    w.sheet.setCell(SDM, r, "Role Play", 150);
     w.sync();
-    staff(w, "SUB-01").score_a = 2;
+    staff(w, "SUB-01").role_play = 70;
     const plan = w.sync({ conflictPolicy: "sheet-wins" });
     expect(tp(plan, "staff").conflicts).toEqual([]);
-    expect(w.sheet.cell(SDM, r, "A Penampilan")).toBe(2);
-    expect(w.sheet.note(SDM, r, "A Penampilan")).toBeUndefined();
+    expect(w.sheet.cell(SDM, r, "Role Play")).toBe(70);
+    expect(w.sheet.note(SDM, r, "Role Play")).toBeUndefined();
     expectSteady(w);
   });
 
   test("clearing a required cell keeps the DB value and notes the cell", () => {
     const w = seeded();
     const r = rowOf(w, SDM, "ID SDM", "SUB-02");
-    w.sheet.setCell(SDM, r, "Stasiun", "");
+    w.sheet.setCell(SDM, r, "Unit", "");
     const plan = w.sync();
     expect(tp(plan, "staff").db.updates).toEqual([]);
     expect(tp(plan, "staff").issues[0]).toMatchObject({ kind: "required_missing", column: "station" });
-    expect(w.sheet.note(SDM, r, "Stasiun")).toContain("wajib diisi");
+    expect(w.sheet.note(SDM, r, "Unit")).toContain("wajib diisi");
     expectSteady(w);
   });
 
@@ -488,11 +491,11 @@ describe("invalid sheet values", () => {
 
   test("enum values match case-insensitively; unknown values are rejected", () => {
     const w = seeded();
-    const r = rowOf(w, TL, "ID", "SUB-TL01");
+    const r = rowOf(w, TL, "ID", "GA-TL01");
     w.sheet.setCell(TL, r, "Status", "selesai");
     w.sheet.setCell(TL, r, "Jenis", "Kadang");
     const plan = w.sync();
-    expect(tp(plan, "action_items").db.updates).toEqual([{ key: { code: "SUB-TL01" }, set: { status: "Selesai" } }]);
+    expect(tp(plan, "action_items").db.updates).toEqual([{ key: { code: "GA-TL01" }, set: { status: "Selesai" } }]);
     expect(tp(plan, "action_items").issues.map((i) => i.column)).toEqual(["kind"]);
   });
 
@@ -501,7 +504,7 @@ describe("invalid sheet values", () => {
     const n = w.sheet.rows(LOG).length + 2;
     w.sheet.setCell(LOG, n, "ID SDM", "XXX-99");
     w.sheet.setCell(LOG, n, "Minggu Ke", 2);
-    w.sheet.setCell(LOG, n, "A Penampilan", 4);
+    w.sheet.setCell(LOG, n, "A Grooming & Appearance", 70);
     const plan = w.sync();
     expect(tp(plan, "weekly_scores").db.inserts).toEqual([]);
     expect(tp(plan, "weekly_scores").issues[0]).toMatchObject({ kind: "unknown_parent", column: "staff_code" });
@@ -511,7 +514,7 @@ describe("invalid sheet values", () => {
   test("a row whose key cell is empty is reported, not synced", () => {
     const w = seeded();
     const n = w.sheet.rows(TL).length + 2;
-    w.sheet.setCell(TL, n, "Area", "Tanpa ID");
+    w.sheet.setCell(TL, n, "Tindakan / Inisiatif", "Tanpa ID");
     const plan = w.sync();
     expect(tp(plan, "action_items").db.inserts).toEqual([]);
     expect(tp(plan, "action_items").issues[0]).toMatchObject({ kind: "missing_key", column: "code" });
@@ -523,25 +526,25 @@ describe("invalid sheet values", () => {
 describe("layout rules in the engine", () => {
   test("a locked (formula) cell is never read as input nor written; the DB value stands", () => {
     const w = seeded();
-    const r = rowOf(w, TL, "ID", "SUB-TL01");
+    const r = rowOf(w, TL, "ID", "GA-TL01");
     w.sheet.lock(TL, r, "Batas Waktu");
     w.sheet.setCell(TL, r, "Batas Waktu", 46400); // a recalculated formula value
-    w.db.find("action_items", { code: "SUB-TL01" })!.due_date = "2026-11-30";
+    w.db.find("action_items", { code: "GA-TL01" })!.due_date = "2026-11-30";
     const plan = w.sync();
     expect(tp(plan, "action_items").db.updates).toEqual([]);
     expect(tp(plan, "action_items").sheet.updates).toEqual([]);
-    expect(w.baseline!.tables.action_items!["SUB-TL01"].due_date).toBe("2026-11-30");
+    expect(w.baseline!.tables.action_items!["GA-TL01"].due_date).toBe("2026-11-30");
     expectSteady(w);
   });
 
   test("appendMode none: a DB row without a sheet row is reported once, never placed or deleted", () => {
     const w = seeded();
-    w.specs = withSpec("staff", { appendMode: "none", noRowMessage: "Kapasitas baris TMB penuh" });
+    w.specs = withSpec("staff", { appendMode: "none", noRowMessage: "Master SDM penuh" });
     w.db.rows("staff").push(staffRow("TMB-09", 9));
     let plan = w.sync();
     const s = tp(plan, "staff");
     expect(s.sheet.appends).toEqual([]);
-    expect(s.issues[0]).toMatchObject({ kind: "no_sheet_row", rowKey: "TMB-09", isNew: true, message: "Kapasitas baris TMB penuh" });
+    expect(s.issues[0]).toMatchObject({ kind: "no_sheet_row", rowKey: "TMB-09", isNew: true, message: "Master SDM penuh" });
     expect(w.baseline!.tables.staff!["TMB-09"]).toBeUndefined();
     plan = w.sync();
     expect(tp(plan, "staff").issues[0].isNew).toBe(false);
@@ -572,7 +575,7 @@ describe("header and tab problems", () => {
     const col = w.sheet.tabs.get(SDM)!.values[0].indexOf("Nama Petugas");
     w.sheet.tabs.get(SDM)!.values[0][col] = "Nama";
     staff(w, "SUB-01").notes = "dari web";
-    w.sheet.setCell(TL, rowOf(w, TL, "ID", "SUB-TL01"), "PIC", "PIC Baru");
+    w.sheet.setCell(TL, rowOf(w, TL, "ID", "GA-TL01"), "PIC", "PIC Baru");
     const before = JSON.stringify(w.sheet.tabs.get(SDM)!.values);
     const plan = w.sync();
     const s = tp(plan, "staff");
@@ -580,7 +583,7 @@ describe("header and tab problems", () => {
     expect(s.db).toEqual({ inserts: [], updates: [], deletes: [], pending: [] });
     expect(s.sheet.updates).toEqual([]);
     expect(JSON.stringify(w.sheet.tabs.get(SDM)!.values)).toBe(before);
-    expect(w.db.find("action_items", { code: "SUB-TL01" })!.pic).toBe("PIC Baru");
+    expect(w.db.find("action_items", { code: "GA-TL01" })!.pic).toBe("PIC Baru");
     expect(tp(plan, "weekly_scores").error).toBeNull();
 
     w.sheet.tabs.get(SDM)!.values[0][col] = "Nama Petugas";
@@ -591,8 +594,8 @@ describe("header and tab problems", () => {
 
   test("missing column and duplicate column are hard errors", () => {
     const w = seeded();
-    for (const row of w.sheet.tabs.get(TL)!.values) row.splice(3, 1); // drop "Tindakan"
-    expect(tp(w.plan(), "action_items").error).toContain('"Tindakan"');
+    for (const row of w.sheet.tabs.get(TL)!.values) row.splice(3, 1); // drop "Akar Masalah / Temuan"
+    expect(tp(w.plan(), "action_items").error).toContain('"Akar Masalah / Temuan"');
 
     const w2 = seeded();
     w2.sheet.tabs.get(TM)!.values[0].push("Minggu Ke");
@@ -651,7 +654,7 @@ describe("duplicate keys and empty rows", () => {
     const r = rowOf(w, LOG, "ID SDM", "SUB-01");
     const t = w.sheet.tabs.get(LOG)!;
     const copy = [...t.values[r - 1]];
-    copy[specFor("weekly_scores").columns.findIndex((c) => c.header === "A Penampilan")] = 1;
+    copy[specFor("weekly_scores").columns.findIndex((c) => c.header === "A Grooming & Appearance")] = 10;
     t.values.push(copy);
     w.db.find("weekly_scores", { staff_code: "SUB-01", week: 1 })!.observer = "dari web";
     const plan = w.sync();
@@ -659,12 +662,12 @@ describe("duplicate keys and empty rows", () => {
     expect(ws.issues.filter((i) => i.kind === "duplicate_key")).toHaveLength(2);
     expect(ws.db.updates).toEqual([]);
     expect(ws.sheet.updates).toEqual([]);
-    expect(w.db.find("weekly_scores", { staff_code: "SUB-01", week: 1 })!.score_a).toBe(4);
+    expect(w.db.find("weekly_scores", { staff_code: "SUB-01", week: 1 })!.score_grooming).toBe(80);
     expectSteady(w);
 
     t.values.pop();
     w.sync();
-    expect(w.sheet.cell(LOG, r, "Observer / Penilai")).toBe("dari web");
+    expect(w.sheet.cell(LOG, r, "Observer / Coach")).toBe("dari web");
     expectSteady(w);
   });
 
@@ -679,13 +682,13 @@ describe("duplicate keys and empty rows", () => {
     expect(tp(plan, "weekly_scores").db.inserts).toEqual([]);
     expectSteady(w);
 
-    w.sheet.setCell(LOG, n, "A Penampilan", 5);
+    w.sheet.setCell(LOG, n, "A Grooming & Appearance", 90);
     plan = w.sync();
     expect(tp(plan, "weekly_scores").db.inserts).toHaveLength(1);
-    expect(w.db.find("weekly_scores", { staff_code: "SUB-01", week: 2 })!.score_a).toBe(5);
+    expect(w.db.find("weekly_scores", { staff_code: "SUB-01", week: 2 })!.score_grooming).toBe(90);
     expectSteady(w);
 
-    w.sheet.setCell(LOG, n, "A Penampilan", "");
+    w.sheet.setCell(LOG, n, "A Grooming & Appearance", "");
     plan = w.sync();
     expect(tp(plan, "weekly_scores").db.deletes).toEqual([{ staff_code: "SUB-01", week: 2 }]);
     expect(w.sheet.cell(LOG, n, "ID SDM")).toBe("SUB-01");
@@ -698,10 +701,10 @@ describe("duplicate keys and empty rows", () => {
     w.sheet.setCell(LOG, n, "Minggu Ke", 3);
     w.sheet.setCell(LOG, n, "ID SDM", "SUB-02");
     w.sync();
-    w.db.rows("weekly_scores").push(weeklyRow(9, "SUB-02", 3, { score_a: 2 }));
+    w.db.rows("weekly_scores").push(weeklyRow(9, "SUB-02", 3, { score_grooming: 60 }));
     const plan = w.sync();
     expect(tp(plan, "weekly_scores").sheet.appends).toEqual([]);
-    expect(w.sheet.cell(LOG, n, "A Penampilan")).toBe(2);
+    expect(w.sheet.cell(LOG, n, "A Grooming & Appearance")).toBe(60);
     expectSteady(w);
   });
 
@@ -711,7 +714,7 @@ describe("duplicate keys and empty rows", () => {
     w.db.tables.set("weekly_scores", w.db.rows("weekly_scores").filter((x) => x.staff_code !== "SUB-02"));
     const plan = w.sync();
     expect(tp(plan, "weekly_scores").sheet.deleteRows).toEqual([]);
-    expect(w.sheet.cell(LOG, r, "A Penampilan")).toBe("");
+    expect(w.sheet.cell(LOG, r, "A Grooming & Appearance")).toBe("");
     expect(w.sheet.cell(LOG, r, "ID SDM")).toBe("SUB-02");
     expectSteady(w);
   });
@@ -729,14 +732,15 @@ describe("equivalent representations cause no phantom diffs", () => {
   test('"4" vs 4.0, date text vs serial, padded text', () => {
     const w = seeded();
     const sdm = rowOf(w, SDM, "ID SDM", "SUB-01");
-    w.sheet.setCell(SDM, sdm, "A Penampilan", "4");
-    w.sheet.setCell(SDM, sdm, "Pre-test", "60,0");
+    w.sheet.setCell(SDM, sdm, "Role Play", "80");
+    w.sheet.setCell(SDM, sdm, "Post-Test", "90,0");
+    w.sheet.setCell(SDM, sdm, "Unit", " sub ");
     w.sheet.setCell(SDM, sdm, "Nama Petugas", "  Petugas SUB-01 ");
     const bmi = rowOf(w, BMI, "ID SDM", "SUB-01");
     w.sheet.setCell(BMI, bmi, "Tgl Cek", "12/10/2026");
     w.sheet.setCell(BMI, bmi, "Berat (kg)", "65.50");
-    const tl = rowOf(w, TL, "ID", "SUB-TL01");
-    w.sheet.setCell(TL, tl, "Batas Waktu", "10 Okt 2026");
+    const tl = rowOf(w, TL, "ID", "GA-TL01");
+    w.sheet.setCell(TL, tl, "Batas Waktu", "30 Okt 2026");
     expect(pending(w.plan())).toEqual([]);
   });
 
@@ -756,7 +760,7 @@ describe("Penggantian SDM: ID Sistem written back after insert", () => {
   test("new sheet row without id gets the DB id written back", () => {
     const w = seeded();
     const n = w.sheet.rows(PG).length + 2;
-    w.sheet.setCell(PG, n, "Stasiun", "KNO");
+    w.sheet.setCell(PG, n, "Unit", "KNO");
     w.sheet.setCell(PG, n, "Nama SDM Diganti", "Orang Baru");
     const plan = w.sync();
     expect(tp(plan, "replacements").db.pending).toHaveLength(1);
@@ -767,12 +771,12 @@ describe("Penggantian SDM: ID Sistem written back after insert", () => {
   });
 
   test("first run: id-less sheet rows are matched to existing DB rows by station + name", () => {
-    const w = new World({ ...smallDb(), replacements: [replacementRow(7), replacementRow(8, { station: "KNO", report_group: "KNO" })] });
+    const w = new World({ ...smallDb(), replacements: [replacementRow(7), replacementRow(8, { station: "KNO" })] });
     w.sheet.addTab(
       PG,
       tableValues("replacements", [
-        { Stasiun: "SUB", "Nama SDM Diganti": "Diganti 7", Laporan: "SUB", "Dilaporkan ke OAO/Direksi": "Ya" },
-        { Stasiun: "KNO", "Nama SDM Diganti": " diganti  8" },
+        { Unit: "SUB", "Nama SDM Diganti": "Diganti 7", Program: "IULS", "Dilaporkan ke Garuda": "Ya" },
+        { Unit: "kno", "Nama SDM Diganti": " diganti  8" },
       ]),
     );
     const plan = w.sync();
@@ -814,6 +818,32 @@ describe("Penggantian SDM: ID Sistem written back after insert", () => {
   });
 });
 
+// ------------------------------------------------------------------ Remedial (keyed by ID SDM)
+
+describe("Remedial keyed by ID SDM (one row per participant)", () => {
+  test("a row is a record as long as ID SDM is filled; edits and new rows sync", () => {
+    const w = seeded();
+    const r = rowOf(w, REM, "ID SDM", "SUB-02");
+    w.sheet.setCell(REM, r, "Tindakan Remedial", "individual coaching");
+    const n = w.sheet.rows(REM).length + 2;
+    w.sheet.setCell(REM, n, "ID SDM", "DPS-01");
+    const plan = w.sync();
+    const t = tp(plan, "remedials");
+    expect(t.db.updates).toEqual([{ key: { staff_code: "SUB-02" }, set: { action: "Individual Coaching" } }]);
+    expect(t.db.inserts).toEqual([{ staff_code: "DPS-01", action: null, remedial_on: null, role_play: null, post_test: null, reported: null, notes: null }]);
+    expectSteady(w);
+  });
+
+  test("deleting the staff member cascades to the remedial row", () => {
+    const w = seeded();
+    w.sheet.tabs.get(SDM)!.values.splice(rowOf(w, SDM, "ID SDM", "SUB-02") - 1, 1);
+    const plan = w.sync();
+    expect(tp(plan, "remedials").sheet.deleteRows).toEqual([2]);
+    expect(w.db.rows("remedials")).toEqual([]);
+    expectSteady(w);
+  });
+});
+
 // ------------------------------------------------------------------ Temuan Mingguan (week + scope)
 
 describe("Temuan Mingguan keyed by (Minggu Ke, Lingkup)", () => {
@@ -850,7 +880,8 @@ describe("attribution columns are not synced", () => {
     for (const r of w.db.rows("weekly_reports")) r.updated_by_link = "00000000-0000-0000-0000-0000000000ff";
     for (const r of w.db.rows("weekly_scores")) r.updated_by = "00000000-0000-0000-0000-0000000000aa";
     for (const r of w.db.rows("bmi_checks")) Object.assign(r, { updated_by_user: "x", updated_by_link: "y", updated_at: "2027-01-01T00:00:00Z" });
-    for (const r of w.db.rows("action_items")) Object.assign(r, { due_rule: "jumat-berikutnya", sort_order: 99 });
+    for (const r of w.db.rows("action_items")) Object.assign(r, { sort_order: 99, updated_by_link: "z" });
+    for (const r of w.db.rows("remedials")) Object.assign(r, { id: 77, sort_order: 5, updated_at: "2027-01-01T00:00:00Z" });
     expectSteady(w);
   });
 });
@@ -882,10 +913,10 @@ describe("Parameter (settings as key/value rows)", () => {
 
   test("a deleted parameter row is restored, never deleted in the DB", () => {
     const w = seeded();
-    w.sheet.tabs.get(PAR)!.values.splice(rowOfKey(w, "posttest_min") - 1, 1);
+    w.sheet.tabs.get(PAR)!.values.splice(rowOfKey(w, "pass_grade") - 1, 1);
     w.sync();
-    expect(w.db.rows("settings")[0].posttest_min).toBe(80);
-    expect(w.sheet.rows(PAR).find((r) => r.Parameter === "posttest_min")!.Nilai).toBe(80);
+    expect(w.db.rows("settings")[0].pass_grade).toBe(85);
+    expect(w.sheet.rows(PAR).find((r) => r.Parameter === "pass_grade")!.Nilai).toBe(85);
     expectSteady(w);
   });
 
@@ -900,16 +931,16 @@ describe("Parameter (settings as key/value rows)", () => {
     expect(w.db.rows("settings")[0].weeks).toBe(10);
   });
 
-  test("optional value can be cleared and set; replacement_deadline is DB-only", () => {
+  test("clearing a value is rejected (every parameter is required); replacement_deadline syncs", () => {
     const w = seeded();
-    w.sheet.setCell(PAR, rowOfKey(w, "min_height_female"), "Nilai", 155);
+    w.sheet.setCell(PAR, rowOfKey(w, "target_coverage"), "Nilai", "");
+    const plan = w.sync();
+    expect(tp(plan, "settings").issues[0]).toMatchObject({ kind: "required_missing", rowKey: "target_coverage" });
+    expect(w.db.rows("settings")[0].target_coverage).toBe(812);
+    w.sheet.setCell(PAR, rowOfKey(w, "target_coverage"), "Nilai", 812);
+    w.sheet.setCell(PAR, rowOfKey(w, "replacement_deadline"), "Nilai", "31/12/2026");
     w.sync();
-    expect(w.db.rows("settings")[0].min_height_female).toBe(155);
-    w.sheet.setCell(PAR, rowOfKey(w, "min_height_female"), "Nilai", "");
-    w.sync();
-    expect(w.db.rows("settings")[0].min_height_female).toBeNull();
-    expect(w.sheet.rows(PAR).some((r) => r.Parameter === "replacement_deadline")).toBe(false);
-    w.db.rows("settings")[0].replacement_deadline = "2026-11-15";
+    expect(w.db.rows("settings")[0].replacement_deadline).toBe("2026-12-31");
     expectSteady(w);
   });
 
@@ -926,15 +957,18 @@ describe("idempotency", () => {
     const w = seeded();
     const steps: ((w: World) => void)[] = [
       (w) => w.sheet.setCell(SDM, rowOf(w, SDM, "ID SDM", "SUB-01"), "Catatan", "a"),
-      (w) => (staff(w, "SUB-02").score_b = 1),
+      (w) => (staff(w, "SUB-02").post_test = 70),
       (w) => w.db.rows("staff").push(staffRow("KNO-01", 4, { station: "KNO" })),
       (w) => w.sheet.setCell(LOG, 2, "Catatan Coaching", "fokus grooming"),
       (w) => w.db.rows("weekly_scores").push(weeklyRow(10, "KNO-01", 2)),
       (w) => w.sheet.setCell(BMI, 2, "Berat (kg)", 64),
-      (w) => (w.db.find("action_items", { code: "SUB-TL02" })!.progress = 50),
+      (w) => (w.db.find("action_items", { code: "GA-TL02" })!.progress = 50),
       (w) => w.sheet.setCell(TM, 2, "Temuan", "baru"),
-      (w) => w.db.rows("replacements").push(replacementRow(5, { station: "DPS", report_group: "DPS" })),
-      (w) => w.sheet.setCell(PG, 2, "Post-test", 85),
+      (w) => w.db.rows("replacements").push(replacementRow(5, { station: "DPS" })),
+      (w) => w.sheet.setCell(PG, 2, "Post-Test", 85),
+      (w) => w.sheet.setCell(REM, 2, "Role Play Ulang", 88),
+      (w) => w.db.rows("remedials").push(remedialRow(3, "KNO-01")),
+      (w) => (staff(w, "DPS-01").bmi_has_note = true),
       (w) => {
         staff(w, "SUB-01").name = "Nama Web";
         w.sheet.setCell(SDM, rowOf(w, SDM, "ID SDM", "SUB-01"), "Nama Petugas", "Nama Sheet");

@@ -4,12 +4,13 @@ import type {
   ActionStatus,
   AssignmentStatus,
   BmiCategory,
+  BmiScheduleStatus,
+  CoachingStatus,
   Consistency,
-  CriteriaStatus,
-  HeightRequirement,
+  RemedialStatus,
+  Remark,
   ReplacementPass,
   ReplacementTimeliness,
-  ReportConclusion,
   Reported,
   Trend,
 } from "@/lib/rules";
@@ -19,44 +20,52 @@ export type StatusTone = "good" | "warning" | "critical" | "progress" | "neutral
 
 /** Every status label lib/rules.ts can produce (the workbook's own wording). */
 export type RuleStatusLabel =
-  | ReportConclusion
-  | CriteriaStatus
+  | Remark
   | Consistency
+  | CoachingStatus
+  | Trend
   | BmiCategory
-  | HeightRequirement
+  | BmiScheduleStatus
   | ActionStatus
   | ActionKind
   | ActionFlag
+  | RemedialStatus
   | ReplacementPass
   | ReplacementTimeliness
   | Reported
-  | AssignmentStatus
-  | Trend;
+  | AssignmentStatus;
 
 /*
  * Tone per label, following the workbook's colour code (Petunjuk: hijau / oranye /
- * merah) as transcribed in DESIGN.md. `satisfies` makes this exhaustive: if
- * lib/rules.ts adds or renames a label, the build fails here until it gets a tone.
- * "Lewat <tanggal>" (late replacement) is matched by prefix below.
+ * merah) as transcribed in DESIGN.md, plus violet for work that is under way. `satisfies`
+ * makes this exhaustive: if lib/rules.ts adds or renames a label, the build fails here
+ * until it gets a tone. "Lewat <tanggal>" (late replacement) is matched by prefix below.
  */
 const RULE_TONES = {
-  // Kesimpulan laporan, status kriteria 6.2, status mingguan
-  Sesuai: "good",
-  "Sesuai dengan Catatan": "good",
-  "Perlu Perbaikan": "warning",
-  "Tidak Sesuai": "critical",
-  // Konsistensi kesimpulan vs kriteria
-  OK: "good",
+  // Remark laporan training, status kelulusan, konsistensi remark vs status
+  Passed: "good",
+  Failed: "critical",
+  Sama: "good",
   "Beda – verifikasi": "warning",
+  // Status coaching mingguan, remedial, penggantian (shared labels)
+  Lulus: "good",
+  "Belum Lulus": "critical",
+  "Menunggu hasil": "warning",
+  "Belum dijadwalkan": "warning",
+  "Belum training/dinilai": "neutral",
+  // Tren nilai
+  "▲ Naik": "good",
+  "▼ Turun": "warning",
+  "= Tetap": "neutral",
   // Kategori BMI
   Kurus: "warning",
   Normal: "good",
   Overweight: "warning",
   Obesitas: "critical",
-  // Syarat tinggi badan
-  Memenuhi: "good",
-  "Tidak Memenuhi": "critical",
-  "Isi standar di Parameter": "neutral",
+  // Jadwal cek BMI
+  Terjadwal: "good",
+  "Cek ≤ 7 hari": "warning",
+  "Terlambat cek": "critical",
   // Status dan jenis tindak lanjut
   "Belum Mulai": "neutral",
   "On Progress": "progress",
@@ -69,27 +78,26 @@ const RULE_TONES = {
   "Jatuh tempo ≤ 7 hari": "warning",
   "Rutin – pantau": "progress",
   "On Track": "good",
-  // Penggantian SDM
-  "Lulus – boleh bertugas": "good",
-  "Belum lulus": "critical",
-  "Belum training/dinilai": "neutral",
+  "Batas waktu belum ditetapkan": "warning",
+  // Ketepatan waktu penggantian, dilaporkan
   "Tepat waktu": "good",
   Menunggu: "warning",
   Ya: "good",
   Belum: "warning",
   // Status penugasan (the default "Aktif" stays quiet so exceptions stand out)
   Aktif: "neutral",
-  "Coaching 30 Hari": "progress",
-  Diganti: "neutral",
-  Ditarik: "critical",
-  // Tren nilai
-  "▲ Naik": "good",
-  "▼ Turun": "warning",
-  "= Tetap": "neutral",
+  Remedial: "progress",
+  "Individual Coaching": "progress",
+  "Ditarik dari layanan": "critical",
 } satisfies Record<Exclude<RuleStatusLabel, `Lewat ${string}`>, StatusTone>;
 
+/** Workbook pick-list values that lib/rules does not type as a status (Parameter "Ya/Tidak"). */
+const LIST_TONES: Record<string, StatusTone> = {
+  Tidak: "neutral",
+};
+
 const TONE_BY_LABEL = new Map<string, StatusTone>(
-  Object.entries(RULE_TONES).map(([label, tone]) => [normalise(label), tone]),
+  Object.entries({ ...LIST_TONES, ...RULE_TONES }).map(([label, tone]) => [normalise(label), tone]),
 );
 
 function normalise(label: string): string {
@@ -108,8 +116,8 @@ const toneClasses: Record<StatusTone, string> = {
   good: "bg-good-tint text-good", // 5.7:1
   warning: "bg-warning-tint text-warning", // 6.1:1
   critical: "bg-critical-tint text-critical", // 6.3:1
-  progress: "bg-progress-tint text-progress", // 5.6:1
-  neutral: "bg-neutral-tint text-neutral", // 5.8:1
+  progress: "bg-progress-tint text-progress", // 6.3:1
+  neutral: "bg-neutral-tint text-neutral", // 5.9:1
 };
 
 type StatusChipProps = {

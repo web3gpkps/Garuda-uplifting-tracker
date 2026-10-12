@@ -6,7 +6,7 @@ import { DataTable, DataTableEmpty, Td, Th, Tr } from "@/components/ui/DataTable
 import { SaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { markConflictResolved } from "@/app/admin/sinkronisasi/actions";
 import { formatWaktu } from "./format";
-import { RESOLUTION_LABEL, TABLE_LABEL, jsonText } from "./sync-labels";
+import { RESOLUTION_LABEL, TABLE_LABEL, columnLabel, jsonText } from "./sync-labels";
 
 export type ConflictRow = {
   id: number;
@@ -101,7 +101,14 @@ export function ConflictTable({ caption, rows, mode, emptyTitle, emptyText }: Co
                   ) : null}
                 </Th>
                 <Td className="align-top">
-                  {r.columnName ?? <span className="text-ink-muted">seluruh baris</span>}
+                  {r.columnName === null ? (
+                    <span className="text-ink-muted">seluruh baris</span>
+                  ) : (
+                    <>
+                      <span className="block">{columnLabel(r.tableName, r.columnName, r.rowKey)}</span>
+                      <code className="text-xs text-ink-muted">{r.columnName}</code>
+                    </>
+                  )}
                 </Td>
                 <Td className="max-w-72 min-w-48 align-top">
                   <Value value={r.sheetValue} />

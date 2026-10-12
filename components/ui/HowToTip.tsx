@@ -5,7 +5,7 @@ import { useSyncExternalStore, type ReactNode } from "react";
 const listeners = new Set<() => void>();
 
 function storageKey(id: string): string {
-  return `joumpa.tip.${id}`;
+  return `garuda-pdt.tip.${id}`;
 }
 
 function isDismissed(id: string): boolean {

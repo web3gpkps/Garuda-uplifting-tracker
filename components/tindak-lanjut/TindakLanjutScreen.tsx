@@ -5,55 +5,37 @@ import { EmptyState } from "@/components/ui/States";
 import { todayInJakarta } from "@/components/shell/programme-calendar";
 import { ActionGrid } from "@/components/tindak-lanjut/ActionGrid";
 import { AddActionItemButton } from "@/components/tindak-lanjut/AddActionItemButton";
-import { ReportGroupFilter } from "@/components/tindak-lanjut/ReportGroupFilter";
+import { GroupFilter } from "@/components/tindak-lanjut/GroupFilter";
 import { TindakLanjutBoard, type GroupSummary } from "@/components/tindak-lanjut/TindakLanjutBoard";
-import { asDueRule, toActionView } from "@/components/tindak-lanjut/action-view";
-import { actionProgress, reportGroups, TOTAL } from "@/lib/aggregate";
-import { firstParam, hrefs, ruleSettings, settingsComplete, type ScreenProps } from "@/lib/workspace";
+import { READ_ONLY_NOTE, parseAspect, parseGroup, toActionView } from "@/components/tindak-lanjut/action-view";
+import { actionByGroup, TOTAL } from "@/lib/aggregate";
+import { firstParam, hrefs, type ScreenProps } from "@/lib/workspace";
 
 export function TindakLanjutLoading() {
   return <PageLoading title="Tindak Lanjut" label="Memuat tindak lanjut" />;
 }
 
 /**
- * Workbook sheet "Tindak Lanjut": a spreadsheet from 900 px (progress cells for every link,
- * KPS fields for KPS and the owner), cards with an update dialog on phones. The owner can
- * also add and delete items.
+ * Workbook sheet "Tindak Lanjut": 15 national action items (PDF slides 15, 16, 27). A
+ * spreadsheet from 900 px, cards with a details dialog on phones. KPS links and the owner
+ * update progress and definitions; station links read only. The owner can also add and
+ * delete items.
  */
 export function TindakLanjutScreen({ access, ws, searchParams }: ScreenProps) {
   const today = todayInJakarta();
-  const settings = ruleSettings(ws.settings);
-  const complete = settingsComplete(ws.settings);
+  const canEdit = ws.isKps;
   const isOwner = access.kind === "owner" && ws.isOwner;
   const links = hrefs(access);
 
-  const all = ws.actionItems.map((item) => toActionView(item, settings, today, ws));
+  const all = ws.actionItems.map((item) => toActionView(item, today, ws));
 
-  // Report groups of this workspace (CGK and HLP share "CGK & HLP"); fall back to the items' own groups.
-  const fromStations = ws.stations.length > 0 ? reportGroups(ws.stations) : [];
-  const groupKeys = fromStations.length > 0 ? fromStations : [...new Set(all.map((v) => v.reportGroup))];
+  // ?kelompok= and ?aspek= (every link: the items are national).
+  const groupFilter = parseGroup(firstParam(searchParams.kelompok));
+  const aspect = parseAspect(firstParam(searchParams.aspek));
+  const items = groupFilter ? all.filter((v) => v.groupName === groupFilter) : all;
 
-  // ?laporan= for KPS and the owner; a station link always works on its own group.
-  const requested = firstParam(searchParams.laporan) ?? null;
-  const groupFilter = ws.isKps && requested && groupKeys.includes(requested) ? requested : null;
-  const items = groupFilter ? all.filter((v) => v.reportGroup === groupFilter) : all;
-
-  // Dashboard section 1 formula (lib/aggregate), so the counts agree with Dashboard and Laporan.
-  const progressRows = actionProgress(
-    ws.actionItems.map((a) => ({
-      code: a.code,
-      reportGroup: a.reportGroup,
-      kind: a.kind,
-      schedule: a.schedule,
-      dueDate: a.dueDate,
-      dueRule: asDueRule(a.dueRule),
-      status: a.status,
-      progress: a.progress,
-    })),
-    settings,
-    today,
-    groupKeys,
-  );
+  // Dashboard formula (lib/aggregate), so the counts agree with Dashboard and Laporan.
+  const progressRows = actionByGroup(ws.actionItems, today);
   const groups: GroupSummary[] = progressRows
     .filter((r) => r.key !== TOTAL)
     .map((r) => ({
@@ -65,23 +47,19 @@ export function TindakLanjutScreen({ access, ws, searchParams }: ScreenProps) {
       avgProgress: r.avgProgress,
     }));
   const shownGroups = groupFilter ? groups.filter((g) => g.key === groupFilter) : groups;
-  const totals = progressRows.find((r) => r.key === TOTAL);
-  const shown = groupFilter ? shownGroups[0] : totals;
+  const shown = groupFilter ? shownGroups[0] : progressRows.find((r) => r.key === TOTAL);
 
-  const sharedGroup = ws.scope === "CGK" || ws.scope === "HLP";
-  const scopeName = groupFilter ? `laporan ${groupFilter}` : ws.isKps ? "semua laporan" : `laporan ${groupKeys[0] ?? ws.scope}`;
-  const filterOptions = ws.isKps
-    ? [null, ...groupKeys].map((key) => {
-        const row = progressRows.find((r) => r.key === (key ?? TOTAL));
-        return {
-          key,
-          label: key ?? "Semua laporan",
-          meta: row ? `${row.selesai}/${row.total}` : "",
-          metaLabel: row ? `${row.selesai} dari ${row.total} butir selesai` : "",
-          href: links.to("tindakLanjut", { laporan: key }),
-        };
-      })
-    : null;
+  const scopeName = groupFilter ? `kelompok ${groupFilter}` : "nasional";
+  const filterOptions = [null, ...groups.map((g) => g.key)].map((key) => {
+    const row = progressRows.find((r) => r.key === (key ?? TOTAL));
+    return {
+      key,
+      label: key ?? "Semua kelompok",
+      meta: row ? `${row.selesai}/${row.total}` : "",
+      metaLabel: row ? `${row.selesai} dari ${row.total} butir selesai` : "",
+      href: links.to("tindakLanjut", { kelompok: key, aspek: aspect || null }),
+    };
+  });
 
   const overdue = shown?.overdue ?? 0;
   const dueSoon = shown?.dueSoon ?? 0;
@@ -93,23 +71,24 @@ export function TindakLanjutScreen({ access, ws, searchParams }: ScreenProps) {
         title="Tindak Lanjut"
         description={
           <>
-            Butir 1 sampai 11 dari tabel 7.2 laporan training, butir 12 dan 13 tambahan (cek BMI dan laporan
-            performa mingguan). Perbarui Status, % Progres, Tgl update, dan Realisasi / Bukti setiap minggu.
-            {ws.isKps ? " KPS dan pemilik juga mengisi Catatan KPS dan definisi butir." : null}
-            {sharedGroup ? ` Tautan ${ws.scope} mengerjakan butir laporan gabungan CGK & HLP.` : null}
+            {all.length} butir tindak lanjut nasional dari People Development Overview (slide 15, 16, dan 27), dalam
+            tiga kelompok: Coaching Frontliner, Timeline Training, dan Evaluasi IULS & RUST.
+            {canEdit
+              ? " Perbarui Status, % Progres, Tgl update, dan Realisasi / Bukti setiap minggu; Catatan Garuda / KPS dan definisi butir juga diisi di sini."
+              : ` ${READ_ONLY_NOTE} Tautan stasiun bisa melihat progres, tetapi tidak mengubahnya.`}
           </>
         }
         actions={
           isOwner ? (
             <AddActionItemButton
               accessKey={access.key}
-              existing={all.map((v) => ({ code: v.code, reportGroup: v.reportGroup }))}
+              existing={all.map((v) => ({ code: v.code, groupName: v.groupName }))}
               defaultGroup={groupFilter}
             />
           ) : undefined
         }
       >
-        {filterOptions ? <ReportGroupFilter options={filterOptions} current={groupFilter} /> : null}
+        <GroupFilter options={filterOptions} current={groupFilter} />
         <p className="text-base text-ink">
           {overdue + dueSoon === 0 ? (
             <>Tidak ada butir {scopeName} yang OVERDUE atau jatuh tempo dalam 7 hari.</>
@@ -122,17 +101,10 @@ export function TindakLanjutScreen({ access, ws, searchParams }: ScreenProps) {
         </p>
       </PageHeader>
 
-      {!complete ? (
-        <p className="text-sm text-warning">
-          Parameter program tidak lengkap, jadi batas waktu bergulir memakai nilai bawaan workbook. Pemilik aplikasi
-          bisa memeriksanya di halaman Parameter.
-        </p>
-      ) : null}
-
       {items.length === 0 ? (
         <Panel>
-          <EmptyState title={`Belum ada tindak lanjut untuk ${scopeName}`}>
-            Butir tindak lanjut dibuat dari laporan training (13 butir per laporan).
+          <EmptyState title={`Belum ada tindak lanjut ${scopeName}`}>
+            Butir tindak lanjut nasional berasal dari People Development Overview (15 butir).
             {isOwner
               ? " Tambahkan butir dengan tombol Tambah butir."
               : " Jika daftar ini seharusnya terisi, minta pemilik aplikasi memeriksa data Tindak Lanjut."}
@@ -142,29 +114,39 @@ export function TindakLanjutScreen({ access, ws, searchParams }: ScreenProps) {
         <Panel
           padding="flush"
           title={`Tindak Lanjut ${scopeName}`}
-          description={<HowToTip id="tindak-lanjut">pilih Status, ketik % Progres (0 sampai 100) dan bukti yang bisa dicek. Saat progres diubah, Tgl update terisi tanggal hari ini kecuali Anda mengetiknya sendiri. Batas waktu, Sisa hari, dan Flag dihitung otomatis.</HowToTip>}
+          description={
+            canEdit ? (
+              <HowToTip id="tindak-lanjut">
+                pilih Status, ketik % Progres (0 sampai 100) dan bukti yang bisa dicek. Saat progres diubah, Tgl update
+                terisi tanggal hari ini kecuali Anda mengetiknya sendiri. Sisa hari dan Flag dihitung otomatis dari Batas
+                waktu; butir tanpa batas waktu ditandai &quot;Batas waktu belum ditetapkan&quot;.
+              </HowToTip>
+            ) : (
+              <span className="text-sm text-ink-muted">{READ_ONLY_NOTE} Hanya tampilan baca.</span>
+            )
+          }
         >
           <div className="px-4 pb-4 sm:px-6 sm:pb-6">
             <ActionGrid
-              // A new report-group filter starts a fresh order (most urgent first).
+              // A new group filter starts a fresh order (most urgent first).
               key={groupFilter ?? "semua"}
               accessKey={access.key}
-              isKps={ws.isKps}
+              canEdit={canEdit}
               isOwner={isOwner}
               today={today}
-              settings={settings}
               items={items}
-              showGroup={ws.isKps && !groupFilter}
+              initialAspect={aspect}
+              showGroup={!groupFilter}
               caption={`Tindak Lanjut ${scopeName}`}
               phone={
                 <div className="-mx-4 sm:-mx-6">
                   <TindakLanjutBoard
                     accessKey={access.key}
-                    isKps={ws.isKps}
+                    canEdit={canEdit}
                     isOwner={isOwner}
                     today={today}
-                    settings={settings}
                     items={items}
+                    initialAspect={aspect}
                     groups={shownGroups}
                   />
                 </div>

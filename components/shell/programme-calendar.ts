@@ -1,6 +1,7 @@
 /*
- * The 10-week rail's view of the schedule. Date math comes from lib/dates and lib/rules,
- * so the rail always agrees with Laporan and the entry screens.
+ * The programme rail's view of the schedule: the monitoring weeks and the BMI check slots,
+ * both from Parameter (public.settings). Date math comes from lib/dates and lib/rules, so
+ * the rail always agrees with Laporan and the entry screens.
  */
 import { diffDays, formatHariTanggal, formatTanggal, formatTanggalPendek, toIsoDate, type IsoDate } from "@/lib/dates";
 import { DEFAULT_SETTINGS, bmiCheckDate, weekEnd, weekStart, type Settings } from "@/lib/rules";
@@ -11,6 +12,8 @@ export type ProgrammeSettingsRow = {
   weeks: number;
   bmi_first_check: string;
   bmi_interval_days: number;
+  /** Interval for staff without a BMI note; only used for the wording. Default from lib/rules. */
+  bmi_interval_months?: number;
   bmi_periods: number;
 };
 
@@ -26,6 +29,7 @@ function asRuleSettings(settings: ProgrammeSettings): Settings {
     weeks: settings.weeks,
     bmiFirstCheck: settings.bmi_first_check,
     bmiIntervalDays: settings.bmi_interval_days,
+    bmiIntervalMonths: settings.bmi_interval_months ?? DEFAULT_SETTINGS.bmiIntervalMonths,
     bmiPeriods: settings.bmi_periods,
   };
 }
@@ -43,7 +47,7 @@ export type RailWeek = {
   week: number;
   start: IsoDate;
   end: IsoDate;
-  /** BMI period whose check date falls in this week, if any. */
+  /** BMI slot whose planned check date falls in this week, if any. */
   bmiPeriod: number | null;
   bmiDate: IsoDate | null;
   phase: "past" | "current" | "future";
@@ -82,7 +86,7 @@ export function programmeStatus(settings: ProgrammeSettings, today: IsoDate): Pr
   return { phase: "during", week, start: weekStart(week, s), end: weekEnd(week, s) };
 }
 
-/** The first BMI check on or after today, or null when the last one has passed. */
+/** The first BMI slot on or after today, or null when the last one has passed. */
 export function nextBmiCheck(
   settings: ProgrammeSettings,
   today: IsoDate,
@@ -113,16 +117,41 @@ export function programmeSummary(settings: ProgrammeSettings, today: IsoDate): s
 
   let second = "";
   if (next && next.date === today) {
-    second = ` Cek BMI periode ${next.period} dijadwalkan hari ini.`;
+    second = ` Cek BMI ke-${next.period} dijadwalkan hari ini.`;
   } else if (next) {
-    second = ` Cek BMI berikutnya: periode ${next.period}, ${formatHariTanggal(next.date)}.`;
+    second = ` Cek BMI berikutnya: ke-${next.period} dari ${s.bmiPeriods}, ${formatHariTanggal(next.date)}.`;
   } else if (status.phase !== "before") {
-    second = ` Jadwal cek BMI terakhir (periode ${s.bmiPeriods}) sudah lewat.`;
+    second = ` Cek BMI terakhir (ke-${s.bmiPeriods}) sudah lewat.`;
   }
   return first + second;
 }
 
-/** Readable week label for screen readers: "Minggu ke-3, mulai Senin, 26 Okt 2026". */
+/** "tiap 14 hari" / "tiap 2 minggu", for the BMI cadence note. */
+function everyDays(days: number): string {
+  return days % 7 === 0 ? `tiap ${days / 7 === 1 ? "minggu" : `${days / 7} minggu`}` : `tiap ${days} hari`;
+}
+
+/**
+ * The BMI cadence in one line (slide 15): staff with a BMI note are checked every
+ * interval of days, the rest every interval of months.
+ * "Cek tiap 2 minggu bagi SDM dengan catatan BMI, bulanan bagi yang lain."
+ */
+export function bmiCadenceNote(settings: ProgrammeSettings): string {
+  const s = asRuleSettings(settings);
+  const months = s.bmiIntervalMonths === 1 ? "bulanan" : `tiap ${s.bmiIntervalMonths} bulan`;
+  return `Cek ${everyDays(s.bmiIntervalDays)} bagi SDM dengan catatan BMI, ${months} bagi yang lain.`;
+}
+
+/** BMI slots planned after the last monitoring week (not on the rail), e.g. slot 6 on 21 Des. */
+export function slotsAfterRail(settings: ProgrammeSettings): Array<{ period: number; date: IsoDate }> {
+  const s = asRuleSettings(settings);
+  const end = weekEnd(s.weeks, s);
+  return Array.from({ length: s.bmiPeriods }, (_, i) => ({ period: i + 1, date: bmiCheckDate(i + 1, s) })).filter(
+    (slot) => slot.date > end,
+  );
+}
+
+/** Readable week start for screen readers: "Senin, 19 Okt 2026". */
 export function describeWeekStart(start: IsoDate): string {
   return formatHariTanggal(start);
 }

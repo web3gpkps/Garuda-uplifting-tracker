@@ -1,6 +1,5 @@
-import { bmiPeriodByStation, TOTAL, type BmiPeriodRow } from "@/lib/aggregate";
-import { diffDays, formatHariTanggal } from "@/lib/dates";
-import { bmiCheckDate, bmiSummary, type BmiCheckRow, type Settings } from "@/lib/rules";
+import { diffDays, formatHariTanggal, formatTanggal } from "@/lib/dates";
+import { bmiCheckDate, bmiSummary, type BmiCheckRow, type BmiSummary } from "@/lib/rules";
 import {
   firstParam,
   hrefs,
@@ -23,30 +22,29 @@ import { StationFilter } from "@/components/ui/StationFilter";
 import { HowToTip } from "@/components/ui/HowToTip";
 import { RememberView } from "@/components/ui/RememberView";
 import { oneTo, rememberScope } from "@/components/ui/remember";
-import { StatusChip, toneForStatus } from "@/components/ui/StatusChip";
+import { StatusChip, type StatusTone } from "@/components/ui/StatusChip";
 import { todayInJakarta } from "@/components/shell/programme-calendar";
 import { BmiStaffRow } from "./BmiStaffRow";
 import { BmiGrid, type BmiGridRow } from "./BmiGrid";
 import { formatRatio } from "@/lib/format";
 import { PeriodRail, type RailPeriod } from "./PeriodRail";
+import { defaultPeriod, scheduleTone, slotCounts, type BmiSlotCounts } from "./summary";
 
 const TITLE = "Cek BMI 2 mingguan";
 const DESCRIPTION =
-  "Ukur tinggi dan berat tiap SDM pada tanggal cek, lalu simpan per baris. BMI dan kategori dihitung otomatis.";
+  "Ukur tinggi dan berat tiap SDM pada tanggal cek, lalu simpan per baris. BMI, kategori, dan jadwal cek berikutnya dihitung otomatis: SDM dengan catatan BMI dicek tiap 2 minggu, tanpa catatan tiap bulan.";
+
+const CATEGORY_TONES: Record<string, StatusTone> = {
+  Normal: "good",
+  Kurus: "warning",
+  Overweight: "warning",
+  Obesitas: "critical",
+};
 
 /** "tautan ini, 8 Okt 07.55" (the grid column header already says "Terakhir diubah lewat"). */
 function changedWhen(row: { updatedByLink?: string | null; updatedAt?: string | null }, ws: Workspace): string {
   const when = shortDateTime(row.updatedAt);
   return `${changedVia(row, ws)}${when ? `, ${when}` : ""}`;
-}
-
-/** The period whose planned date is the latest on or before today; period 1 before the first check. */
-function defaultPeriod(s: Settings, today: string): number {
-  let chosen = 1;
-  for (let p = 1; p <= s.bmiPeriods; p++) {
-    if (bmiCheckDate(p, s) <= today) chosen = p;
-  }
-  return chosen;
 }
 
 function relativeDay(date: string, today: string): string {
@@ -66,7 +64,7 @@ export function BmiLoading() {
 export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
   const links = hrefs(access);
   const today = todayInJakarta();
-  // Without the schedule the BMI periods cannot be placed on dates.
+  // Without the schedule the BMI slots cannot be placed on dates.
   const settings = ws.schedule ? ruleSettings(ws.settings) : null;
 
   if (!settings) {
@@ -85,6 +83,7 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
   }
 
   const stationFilter = parseStation(ws, query.stasiun);
+  const stations = stationCodes(ws);
 
   const requestedPeriod = Number(firstParam(query.periode));
   const period =
@@ -97,33 +96,6 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
 
   const href = (p: number, station: string | null) => links.to("bmi", { periode: p, stasiun: station });
 
-  const data = {
-    settings,
-    staff: ws.staff,
-    weeklyScores: [],
-    bmiChecks: ws.bmiChecks as BmiCheckRow[],
-    actionItems: [],
-    replacements: [],
-    stations: ws.stations,
-  };
-  // The row that matches what is on screen: one station, or TOTAL for KPS "Semua stasiun".
-  const viewKey = stationFilter ?? (ws.isKps ? TOTAL : ws.scope);
-  const periodRows = plannedDates.map((_, i) => bmiPeriodByStation(data, i + 1));
-  const rowFor = (rows: BmiPeriodRow[]) => rows.find((r) => r.key === viewKey) ?? rows[rows.length - 1];
-  const view = rowFor(periodRows[period - 1]);
-
-  const railPeriods: RailPeriod[] = plannedDates.map((date, i) => {
-    const row = rowFor(periodRows[i]);
-    return {
-      period: i + 1,
-      date,
-      checked: row.checked,
-      staffCount: row.staffCount,
-      phase: currentPeriod === i + 1 ? "current" : date < today ? "past" : "future",
-    };
-  });
-
-  const staffInView = sortedStaff(ws).filter((st) => !stationFilter || st.station === stationFilter);
   const checksByStaff = new Map<string, Workspace["bmiChecks"]>();
   for (const c of ws.bmiChecks) {
     const list = checksByStaff.get(c.staffCode);
@@ -131,9 +103,32 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
     else checksByStaff.set(c.staffCode, [c]);
   }
 
-  const summaries = new Map(
-    staffInView.map((st) => [st.code, bmiSummary((checksByStaff.get(st.code) ?? []) as BmiCheckRow[], st.gender, settings)]),
+  // Every staff member's summary once; station views and the per-station table reuse it.
+  const allStaff = sortedStaff(ws);
+  const summaries = new Map<string, BmiSummary>(
+    allStaff.map((st) => [
+      st.code,
+      bmiSummary((checksByStaff.get(st.code) ?? []) as BmiCheckRow[], st.bmiHasNote, settings, today),
+    ]),
   );
+  const summariesOf = (station: string | null) =>
+    allStaff.filter((st) => !station || st.station === station).map((st) => summaries.get(st.code)!);
+
+  const staffInView = allStaff.filter((st) => !stationFilter || st.station === stationFilter);
+  const inView = summariesOf(stationFilter);
+  const view = slotCounts(inView, period);
+
+  const railPeriods: RailPeriod[] = plannedDates.map((date, i) => {
+    const counts = slotCounts(inView, i + 1);
+    return {
+      period: i + 1,
+      date,
+      checked: counts.checked,
+      staffCount: counts.staffCount,
+      phase: currentPeriod === i + 1 ? "current" : date < today ? "past" : "future",
+    };
+  });
+
   const gridRows: BmiGridRow[] = staffInView.map((st) => {
     const checks = checksByStaff.get(st.code) ?? [];
     const summary = summaries.get(st.code)!;
@@ -146,6 +141,7 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
       name: st.name ?? st.code,
       station: st.station,
       gender: st.gender,
+      bmiHasNote: st.bmiHasNote ?? null,
       bmiNote: st.bmiNote,
       checks: summary.periods.map((p) =>
         p && p.heightCm !== null && p.weightKg !== null
@@ -154,34 +150,35 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
       ),
       weightDelta: summary.weightDelta,
       weighings: summary.periods.filter((p) => p?.weightKg !== null && p?.weightKg !== undefined).length,
-      heightRequirement: summary.heightRequirement,
+      nextCheck: summary.nextCheck,
+      scheduleStatus: summary.scheduleStatus,
       changed: latest ? changedWhen(latest, ws) : null,
     };
   });
 
-  const missingGender = staffInView.filter((st) => st.gender !== "L" && st.gender !== "P").length;
-  const standardMissing =
-    settings.minHeightFemale === null && settings.minHeightMale === null
-      ? "Standar tinggi belum diisi di Parameter, jadi syarat tinggi badan belum bisa dinilai."
-      : settings.minHeightFemale === null
-        ? "Standar tinggi untuk perempuan (P) belum diisi di Parameter."
-        : settings.minHeightMale === null
-          ? "Standar tinggi untuk laki-laki (L) belum diisi di Parameter."
-          : null;
+  const missingHasNote = staffInView.filter((st) => st.bmiHasNote === null || st.bmiHasNote === undefined).length;
+  const overweightTarget = settings.targetOverweightMax;
 
   const scopeName = stationFilter ? `Stasiun ${stationFilter}` : ws.isKps ? "semua stasiun" : ws.scopeLabel;
   const stationOptions = ws.isKps
-    ? [null, ...stationCodes(ws)].map((code) => {
-        const row = periodRows[period - 1].find((r) => r.key === (code ?? TOTAL));
+    ? [null, ...stations].map((code) => {
+        const counts = slotCounts(summariesOf(code), period);
         return {
           code,
           label: code ?? "Semua stasiun",
-          meta: row ? `${row.checked}/${row.staffCount}` : undefined,
-          metaLabel: row ? `${row.checked} dari ${row.staffCount} SDM sudah dicek` : undefined,
+          meta: `${counts.checked}/${counts.staffCount}`,
+          metaLabel: `${counts.checked} dari ${counts.staffCount} SDM sudah dicek`,
           href: href(period, code),
         };
       })
     : null;
+
+  const stationRows: Array<{ key: string; counts: BmiSlotCounts }> = ws.isKps && !stationFilter
+    ? [
+        ...stations.map((code) => ({ key: code, counts: slotCounts(summariesOf(code), period) })),
+        { key: "Total", counts: view },
+      ]
+    : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -189,24 +186,32 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
         {stationOptions ? <StationFilter options={stationOptions} current={stationFilter} /> : null}
         <RememberView
           scope={rememberScope(access, ws)}
-          allowed={{ periode: oneTo(settings.bmiPeriods), ...(ws.isKps ? { stasiun: stationCodes(ws) } : {}) }}
+          allowed={{ periode: oneTo(settings.bmiPeriods), ...(ws.isKps ? { stasiun: stations } : {}) }}
           shown={{ periode: String(period), stasiun: stationFilter }}
         />
         <div className="flex flex-col gap-3">
           <PeriodRail periods={railPeriods} selected={period} hrefForPeriod={(p) => href(p, stationFilter)} />
           <div className="flex flex-col gap-1">
             <p className="text-sm text-ink">
-              <span className="font-semibold">Periode {period}</span>, dijadwalkan{" "}
+              <span className="font-semibold">Cek ke-{period}</span>, dijadwalkan{" "}
               <time dateTime={plannedDate}>{formatHariTanggal(plannedDate)}</time> ({relativeDay(plannedDate, today)}).
             </p>
             <p className="text-sm text-ink">
               <span className="font-semibold tabular-nums">
                 {view.checked} dari {view.staffCount} SDM
               </span>{" "}
-              sudah dicek pada periode ini{ws.isKps ? ` (${scopeName})` : ""}.
+              sudah dicek pada cek ke-{period}{ws.isKps ? ` (${scopeName})` : ""}.
+              {view.pctOverweight !== null ? (
+                <>
+                  {" "}
+                  Overweight + obesitas{" "}
+                  <span className="font-semibold tabular-nums">{formatRatio(view.pctOverweight)}</span> (target di
+                  bawah {formatRatio(overweightTarget)}).
+                </>
+              ) : null}
             </p>
             {view.checked > 0 ? (
-              <ul aria-label={`Kategori BMI periode ${period}`} className="mt-1 flex flex-wrap gap-2">
+              <ul aria-label={`Kategori BMI cek ke-${period}`} className="mt-1 flex flex-wrap gap-2">
                 {(
                   [
                     ["Normal", view.normal],
@@ -216,7 +221,22 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
                   ] as const
                 ).map(([label, n]) => (
                   <li key={label}>
-                    <StatusChip label={`${label}: ${n}`} tone={toneForStatus(label)} />
+                    <StatusChip label={`${label}: ${n}`} tone={CATEGORY_TONES[label]} />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {view.staffCount > 0 ? (
+              <ul aria-label="Status jadwal cek per SDM" className="mt-1 flex flex-wrap gap-2">
+                {(
+                  [
+                    ["Terlambat cek", view.late],
+                    ["Cek ≤ 7 hari", view.dueSoon],
+                    ["Terjadwal", view.scheduled],
+                  ] as const
+                ).map(([label, n]) => (
+                  <li key={label}>
+                    <StatusChip label={`${label}: ${n}`} tone={n === 0 ? "neutral" : scheduleTone(label)} />
                   </li>
                 ))}
               </ul>
@@ -228,7 +248,13 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
       <Panel
         padding="flush"
         title={`Cek BMI ${scopeName}`}
-        description={<HowToTip id="bmi">isi TB dan BB (desimal pakai koma, 165,5). Tanggal kosong memakai tanggal cek terjadwal. Kosongkan TB dan BB suatu periode untuk menghapus cek itu.</HowToTip>}
+        description={
+          <HowToTip id="bmi">
+            isi TB dan BB (desimal pakai koma, 165,5). Tanggal kosong memakai tanggal cek terjadwal. Isi &ldquo;Ada
+            catatan BMI&rdquo; Ya atau Tidak untuk menentukan jadwal cek. Kosongkan TB dan BB suatu cek untuk
+            menghapusnya.
+          </HowToTip>
+        }
       >
         {staffInView.length === 0 ? (
           <div className="px-4 sm:px-6">
@@ -253,7 +279,7 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
               period={period}
               periodNote={period === currentPeriod ? "periode berjalan" : "periode yang dipilih"}
               showStation={ws.isKps && !stationFilter}
-              summary={`${staffInView.length} SDM · ${view.checked} sudah dicek periode ${period}`}
+              summary={`${staffInView.length} SDM · ${view.checked} sudah dicek pada cek ke-${period} · ${view.late} terlambat cek`}
               emptyState={<p className="text-sm text-ink-muted">Tidak ada SDM yang cocok dengan pencarian.</p>}
               phone={
                 <ol className="-mx-4 flex flex-col divide-y divide-line border-t border-line sm:-mx-6">
@@ -274,6 +300,7 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
                           name: st.name ?? st.code,
                           station: st.station,
                           gender: st.gender,
+                          bmiHasNote: st.bmiHasNote ?? null,
                           bmiNote: st.bmiNote,
                           assignmentStatus: st.assignmentStatus,
                         }}
@@ -298,70 +325,86 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
         )}
       </Panel>
 
-      {standardMissing || missingGender > 0 ? (
+      {missingHasNote > 0 ? (
         <section
-          aria-label="Catatan syarat tinggi badan"
+          aria-label="Catatan jadwal cek BMI"
           className="rounded-panel border border-line bg-surface px-4 py-3 text-sm sm:px-6"
         >
-          <p className="font-semibold text-ink">Syarat tinggi badan</p>
-          <ul className="mt-1 flex flex-col gap-0.5 text-ink">
-            {standardMissing ? <li>{standardMissing}</li> : null}
-            {missingGender > 0 ? (
-              <li>
-                L/P belum diisi untuk {missingGender} dari {staffInView.length} SDM. Isi kolom L/P (di HP: bagian
-                &ldquo;Profil, catatan, dan riwayat&rdquo; tiap SDM).
-              </li>
-            ) : null}
-          </ul>
+          <p className="font-semibold text-ink">Ada catatan BMI belum diisi</p>
+          <p className="mt-1 text-ink">
+            {missingHasNote} dari {staffInView.length} SDM belum punya isian &ldquo;Ada catatan BMI&rdquo;. Sampai
+            diisi, jadwalnya dihitung tiap {settings.bmiIntervalDays} hari. Isi Ya atau Tidak di kolom itu (di HP:
+            bagian &ldquo;Profil, catatan, dan riwayat&rdquo; tiap SDM).
+          </p>
         </section>
       ) : null}
 
-      {ws.isKps && !stationFilter ? (
+      {stationRows.length > 0 ? (
         <Panel
           padding="flush"
-          title={`Kategori BMI periode ${period} per stasiun`}
-          description="Dihitung dari hasil cek periode ini, seperti bagian C Laporan Mingguan."
+          title={`Kategori BMI cek ke-${period} per stasiun`}
+          description={`Dihitung dari hasil cek ke-${period}, seperti bagian C Laporan Mingguan. Target overweight + obesitas di bawah ${formatRatio(overweightTarget)} dalam ${settings.targetOverweightMonths} bulan.`}
         >
-          {view.checked === 0 ? (
-            <div className="px-4 sm:px-6">
-              <EmptyState title={`Belum ada hasil cek untuk periode ${period}`} layout="inline">
-                Jumlah per kategori muncul setelah stasiun menyimpan cek BMI periode ini.
-              </EmptyState>
-            </div>
-          ) : (
-            <DataTable caption={`Kategori BMI periode ${period} per stasiun`} hideCaption stickyHeader={false} minWidth="44rem">
-              <thead>
-                <tr>
-                  <Th>Stasiun</Th>
-                  <Th numeric>Jumlah SDM</Th>
-                  <Th numeric>Sudah dicek</Th>
-                  <Th numeric>Belum dicek</Th>
-                  <Th numeric>Normal</Th>
-                  <Th numeric>Kurus</Th>
-                  <Th numeric>Overweight</Th>
-                  <Th numeric>Obesitas</Th>
-                  <Th numeric>% Normal</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {periodRows[period - 1].map((row) => (
-                  <Tr key={row.key}>
-                    <Th scope="row" className={row.key === TOTAL ? "font-semibold" : "font-normal"}>
-                      {row.key === TOTAL ? "Total" : row.key}
+          <DataTable
+            caption={`Kategori BMI cek ke-${period} per stasiun`}
+            hideCaption
+            minWidth="52rem"
+            maxHeight="min(70dvh, 720px)"
+          >
+            <thead>
+              <tr>
+                <Th>Stasiun</Th>
+                <Th numeric>Jumlah SDM</Th>
+                <Th numeric>Sudah dicek</Th>
+                <Th numeric>Belum dicek</Th>
+                <Th numeric>Normal</Th>
+                <Th numeric>Kurus</Th>
+                <Th numeric>Overweight</Th>
+                <Th numeric>Obesitas</Th>
+                <Th numeric>% Overweight + obesitas</Th>
+                <Th numeric>Terlambat cek</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {stationRows.map(({ key, counts }) => {
+                const isTotal = key === "Total";
+                const over = counts.pctOverweight !== null && counts.pctOverweight >= overweightTarget;
+                return (
+                  <Tr key={key}>
+                    <Th scope="row" className={isTotal ? "font-semibold" : "font-normal"}>
+                      {isTotal ? "Total" : key}
                     </Th>
-                    <Td numeric>{row.staffCount}</Td>
-                    <Td numeric>{row.checked}</Td>
-                    <Td numeric>{row.notChecked}</Td>
-                    <Td numeric>{row.normal}</Td>
-                    <Td numeric>{row.kurus}</Td>
-                    <Td numeric>{row.overweight}</Td>
-                    <Td numeric>{row.obesitas}</Td>
-                    <Td numeric>{formatRatio(row.pctNormal)}</Td>
+                    <Td numeric>{counts.staffCount}</Td>
+                    <Td numeric>{counts.checked}</Td>
+                    <Td numeric>{counts.staffCount - counts.checked}</Td>
+                    <Td numeric>{counts.normal}</Td>
+                    <Td numeric>{counts.kurus}</Td>
+                    <Td numeric>{counts.overweight}</Td>
+                    <Td numeric>{counts.obesitas}</Td>
+                    <Td numeric>
+                      {counts.pctOverweight === null ? (
+                        <span className="text-ink-muted">Belum ada data</span>
+                      ) : (
+                        <span className={over ? "font-semibold text-critical" : undefined}>
+                          {formatRatio(counts.pctOverweight)}
+                          {over ? <span className="sr-only">, di atas target</span> : null}
+                        </span>
+                      )}
+                    </Td>
+                    <Td numeric>
+                      <span className={counts.late > 0 ? "font-semibold text-critical" : undefined}>{counts.late}</span>
+                    </Td>
                   </Tr>
-                ))}
-              </tbody>
-            </DataTable>
-          )}
+                );
+              })}
+            </tbody>
+          </DataTable>
+          {view.checked === 0 ? (
+            <p className="px-4 py-3 text-sm text-ink-muted sm:px-6">
+              Belum ada hasil cek ke-{period}. Jumlah per kategori muncul setelah stasiun menyimpan cek BMI. Cek ke-1
+              dijadwalkan {formatTanggal(plannedDates[0])}.
+            </p>
+          ) : null}
         </Panel>
       ) : null}
     </div>

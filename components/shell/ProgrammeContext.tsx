@@ -15,7 +15,7 @@ function isComplete(row: Partial<ProgrammeSettingsRow> | null): row is Programme
 }
 
 /**
- * Header context line: where the 10-week programme stands today, as the compact
+ * Header context line: where the monitoring programme stands today, as the compact
  * WeekRail. Reads public.settings (id = 1) as the signed-in admin. Render inside
  * <Suspense>; it reads cookies and the clock at request time.
  */
@@ -23,7 +23,7 @@ export async function ProgrammeContext() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("settings")
-    .select("week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_periods")
+    .select("week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_interval_months, bmi_periods")
     .eq("id", 1)
     .maybeSingle();
 
@@ -37,9 +37,9 @@ export async function ProgrammeContext() {
   if (!isComplete(data)) {
     return (
       <p className="text-xs text-ink-muted">
-        Jadwal program belum lengkap. Isi tanggal mulai Minggu ke-1 dan jadwal cek BMI di{" "}
+        Jadwal program belum lengkap. Isi tanggal mulai Minggu ke-1 dan slot cek BMI di{" "}
         <Link href="/admin/pengaturan" className="font-semibold text-brand underline underline-offset-2">
-          Pengaturan
+          Parameter
         </Link>
         .
       </p>

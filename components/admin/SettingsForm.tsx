@@ -12,6 +12,7 @@ import {
   SETTING_SECTIONS,
   notMonday,
   validateSettings,
+  weightSum,
   type SettingField,
   type SettingKey,
   type SettingsErrors,
@@ -20,24 +21,25 @@ import {
 
 type SettingsFormProps = {
   initial: SettingsValues;
-  /** Staff without L/P, for the height-requirement note; null when it could not be counted. */
-  genderMissing: { missing: number; total: number } | null;
 };
 
 function scheduleOf(values: SettingsValues): Settings | null {
   const weeks = Number(values.weeks);
   const interval = Number(values.bmi_interval_days);
+  const months = Number(values.bmi_interval_months);
   const periods = Number(values.bmi_periods);
   if (!isValidIsoDate(values.week1_start) || !isValidIsoDate(values.bmi_first_check)) return null;
   if (!Number.isInteger(weeks) || weeks < 1 || weeks > 20) return null;
   if (!Number.isInteger(interval) || interval < 1 || interval > 90) return null;
-  if (!Number.isInteger(periods) || periods < 1 || periods > 10) return null;
+  if (!Number.isInteger(months) || months < 1 || months > 12) return null;
+  if (!Number.isInteger(periods) || periods < 1 || periods > 12) return null;
   return {
     ...DEFAULT_SETTINGS,
     week1Start: values.week1_start,
     weeks,
     bmiFirstCheck: values.bmi_first_check,
     bmiIntervalDays: interval,
+    bmiIntervalMonths: months,
     bmiPeriods: periods,
   };
 }
@@ -46,7 +48,7 @@ function scheduleOf(values: SettingsValues): Settings | null {
  * Parameter form: every settings column with the workbook's labels and help, checked
  * like the database checks it, saved in one update. Typed values survive a failed save.
  */
-export function SettingsForm({ initial, genderMissing }: SettingsFormProps) {
+export function SettingsForm({ initial }: SettingsFormProps) {
   const [saved, setSaved] = useState(initial);
   const [values, setValues] = useState(initial);
   const [errors, setErrors] = useState<SettingsErrors>({});
@@ -55,7 +57,7 @@ export function SettingsForm({ initial, genderMissing }: SettingsFormProps) {
 
   const dirty = (Object.keys(values) as SettingKey[]).some((k) => values[k] !== saved[k]);
   const schedule = scheduleOf(values);
-  const heightsMissing = values.min_height_female.trim() === "" || values.min_height_male.trim() === "";
+  const weights = weightSum(values);
 
   const set = (key: SettingKey, value: string) => setValues((current) => ({ ...current, [key]: value }));
 
@@ -112,18 +114,6 @@ export function SettingsForm({ initial, genderMissing }: SettingsFormProps) {
       {SETTING_SECTIONS.map((section) => (
         <Panel key={section.id} id={`param-${section.id}`} title={section.title} description={section.description}>
           <div className="flex flex-col gap-4">
-            {section.id === "tinggi-badan" && heightsMissing ? (
-              <div role="note" className="rounded-control border border-warning bg-warning-tint p-3 text-sm text-ink">
-                <p className="font-semibold text-warning">Standar tinggi minimal belum lengkap</p>
-                <p className="mt-1">
-                  Selama tinggi minimal Perempuan dan Laki-laki belum diisi, kolom Syarat Tinggi Badan di Cek BMI
-                  menampilkan &ldquo;Isi standar di Parameter&rdquo; dan tidak menilai Memenuhi atau Tidak Memenuhi.
-                  {genderMissing && genderMissing.missing > 0
-                    ? ` Syarat ini juga butuh L/P setiap SDM: ${genderMissing.missing} dari ${genderMissing.total} SDM belum punya L/P.`
-                    : ""}
-                </p>
-              </div>
-            ) : null}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {section.fields.map((field) => (
                 <div key={field.key} className="flex flex-col gap-1.5">
@@ -131,7 +121,7 @@ export function SettingsForm({ initial, genderMissing }: SettingsFormProps) {
                     label={field.label}
                     help={field.help}
                     error={errors[field.key]}
-                    required={field.kind !== "optional-decimal"}
+                    required
                   >
                     {control(field)}
                   </Field>
@@ -147,11 +137,18 @@ export function SettingsForm({ initial, genderMissing }: SettingsFormProps) {
             ) : null}
             {section.id === "cek-bmi" && schedule ? (
               <p className="text-sm text-ink-muted">
-                Jadwal cek dengan nilai ini:{" "}
+                Slot cek dengan nilai ini:{" "}
                 {Array.from({ length: schedule.bmiPeriods }, (_, i) => bmiCheckDate(i + 1, schedule))
                   .map((d, i, all) => (i === all.length - 1 ? formatTanggal(d) : formatTanggalPendek(d)))
                   .join(", ")}
-                .
+                . SDM dengan catatan BMI dicek tiap {schedule.bmiIntervalDays} hari, SDM tanpa catatan tiap{" "}
+                {schedule.bmiIntervalMonths} bulan.
+              </p>
+            ) : null}
+            {section.id === "kelulusan" && weights !== null && weights !== 100 ? (
+              <p role="note" className="rounded-control border border-warning bg-warning-tint p-3 text-sm text-ink">
+                <span className="font-semibold text-warning">Jumlah bobot {String(weights).replace(".", ",")} %.</span>{" "}
+                Workbook memakai 40 % + 60 % = 100 %. Selain 100 %, Final Result keluar dari skala 0 sampai 100.
               </p>
             ) : null}
           </div>

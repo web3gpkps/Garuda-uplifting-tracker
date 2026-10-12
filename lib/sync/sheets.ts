@@ -5,10 +5,11 @@
  * serials, and FORMULA so formula cells can be told apart from inputs).
  * Write (RealOps from lib/sync/layouts.ts), in this order:
  *   1. spreadsheets:batchUpdate  setup: locale/time zone, engine-owned tab (Temuan Mingguan),
- *                                 extra header cells (Penggantian SDM: ID Sistem, ID SDM), grid growth
+ *                                 extra header cells (Penggantian SDM: ID Sistem, ID SDM)
  *   2. values:batchUpdate RAW    cell writes (dates as serial numbers into pre-formatted cells)
- *   3. spreadsheets:batchUpdate  formula copies for new rows (PASTE_FORMULA), notes, engine-tab row deletes
+ *   3. spreadsheets:batchUpdate  notes, engine-tab row deletes
  *   4. values:append             new rows on the engine-owned tab (INSERT_ROWS)
+ * Workbook tabs never get rows inserted, deleted or grown: new records fill free pre-made rows.
  * Text is always written RAW, so "=SUM(...)" or "1234" stays literal text.
  */
 import { JWT } from "google-auth-library";
@@ -188,6 +189,15 @@ export class GoogleSheets implements SheetsPort {
       }
       setup.push(...engineTabLayout(t.spec, t.header, sheetId));
     }
+    // Engine columns right of the workbook's last column (Penggantian SDM P/Q) may lie beyond the grid.
+    const widths = new Map<string, number>();
+    for (const h of keep(ops.headerCells)) widths.set(h.tab, Math.max(widths.get(h.tab) ?? 0, h.col + 1));
+    for (const [tab, width] of widths) {
+      const m = this.meta.get(tab);
+      if (m && width > m.columnCount) {
+        setup.push({ updateSheetProperties: { properties: { sheetId: m.sheetId, gridProperties: { columnCount: width } }, fields: "gridProperties.columnCount" } });
+      }
+    }
     for (const h of keep(ops.headerCells)) {
       const sheetId = sheetIdOf.get(h.tab)!;
       if (h.col > 0) {
@@ -217,12 +227,6 @@ export class GoogleSheets implements SheetsPort {
         });
       }
     }
-    for (const g of keep(ops.grow)) {
-      const m = this.meta.get(g.tab);
-      if (m && g.rowCount > m.rowCount) {
-        setup.push({ updateSheetProperties: { properties: { sheetId: m.sheetId, gridProperties: { rowCount: g.rowCount } }, fields: "gridProperties.rowCount" } });
-      }
-    }
     if (setup.length) {
       try {
         await this.call("POST", ":batchUpdate", { requests: setup });
@@ -250,20 +254,8 @@ export class GoogleSheets implements SheetsPort {
       await this.call("POST", "/values:batchUpdate", { valueInputOption: "RAW", data: data.slice(i, i + 1000) });
     }
 
-    // 3. formula copies, notes, then engine-tab row deletes bottom-up
+    // 3. notes, then engine-tab row deletes bottom-up
     const structural: unknown[] = [];
-    for (const f of keep(ops.formulaCopies)) {
-      const sheetId = sheetIdOf.get(f.tab)!;
-      for (const c of f.cols) {
-        structural.push({
-          copyPaste: {
-            source: { sheetId, startRowIndex: f.fromRow - 1, endRowIndex: f.fromRow, startColumnIndex: c, endColumnIndex: c + 1 },
-            destination: { sheetId, startRowIndex: f.toRow - 1, endRowIndex: f.toRow, startColumnIndex: c, endColumnIndex: c + 1 },
-            pasteType: "PASTE_FORMULA",
-          },
-        });
-      }
-    }
     for (const n of keep(ops.notes)) {
       const sheetId = sheetIdOf.get(n.tab)!;
       structural.push({
@@ -315,7 +307,7 @@ function engineTabLayout(spec: TableSpec, header: string[], sheetId: number): un
     { updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 1 } }, fields: "gridProperties.frozenRowCount" } },
     {
       addProtectedRange: {
-        protectedRange: { range: { sheetId, startRowIndex: 0, endRowIndex: 1 }, description: "JOUMPA sync: header. Jangan ubah nama kolom.", warningOnly: true },
+        protectedRange: { range: { sheetId, startRowIndex: 0, endRowIndex: 1 }, description: "Garuda sync: header. Jangan ubah nama kolom.", warningOnly: true },
       },
     },
   ];

@@ -12,23 +12,24 @@ import {
 } from "./owner-items";
 
 const EXISTING: ExistingItem[] = [
-  { code: "SUB-TL12", reportGroup: "SUB", sortOrder: 12 },
-  { code: "SUB-TL13", reportGroup: "SUB", sortOrder: 13 },
-  { code: "CGKHLP-TL13", reportGroup: "CGK & HLP", sortOrder: 39 },
-  { code: "KNO-TL13", reportGroup: "KNO", sortOrder: 52 },
+  { code: "GA-TL01", groupName: "Coaching Frontliner", sortOrder: 1 },
+  { code: "GA-TL05", groupName: "Coaching Frontliner", sortOrder: 5 },
+  { code: "GA-TL09", groupName: "Timeline Training", sortOrder: 9 },
+  { code: "GA-TL15", groupName: "Evaluasi IULS & RUST", sortOrder: 15 },
 ];
 
 const INPUT: NewItemInput = {
-  reportGroup: "CGK & HLP",
-  code: "CGKHLP-TL14",
-  area: " Evaluasi tambahan ",
-  action: "Kunjungan KPS kedua",
+  groupName: "Timeline Training",
+  aspect: "Product Knowledge",
+  code: "GA-TL16",
+  rootCause: " Materi belum merata ",
+  action: "Refresher product knowledge",
   target: "",
   kind: "Sekali",
   schedule: "",
   dueDate: "2026-12-18",
-  dueRule: "",
-  pic: "OAO",
+  pic: "Dummy A",
+  source: "Slide 27",
 };
 
 function mockPort(overrides: Partial<ActionItemsPort> = {}) {
@@ -52,12 +53,13 @@ function mockPort(overrides: Partial<ActionItemsPort> = {}) {
 }
 
 describe("nextActionCode", () => {
-  test("follows the group's own prefix and pads to two digits", () => {
-    expect(nextActionCode("CGK & HLP", EXISTING)).toBe("CGKHLP-TL14");
-    expect(nextActionCode("SUB", EXISTING)).toBe("SUB-TL14");
+  test("continues the national GA-TL numbering, padded to two digits", () => {
+    expect(nextActionCode(EXISTING)).toBe("GA-TL16");
+    expect(nextActionCode([{ code: "GA-TL03" }])).toBe("GA-TL04");
   });
-  test("a group without items starts at 01 with a prefix from its name", () => {
-    expect(nextActionCode("DPS", EXISTING)).toBe("DPS-TL01");
+  test("an empty list starts at GA-TL01; foreign codes are ignored", () => {
+    expect(nextActionCode([])).toBe("GA-TL01");
+    expect(nextActionCode([{ code: "SUB-TL13" }])).toBe("GA-TL01");
   });
 });
 
@@ -66,28 +68,33 @@ describe("validateNewItem", () => {
     const { row, fieldErrors } = validateNewItem(INPUT, EXISTING);
     expect(fieldErrors).toEqual({});
     expect(row).toEqual({
-      code: "CGKHLP-TL14",
-      report_group: "CGK & HLP",
-      area: "Evaluasi tambahan",
-      action: "Kunjungan KPS kedua",
+      code: "GA-TL16",
+      group_name: "Timeline Training",
+      aspect: "Product Knowledge",
+      root_cause: "Materi belum merata",
+      action: "Refresher product knowledge",
       target: null,
       kind: "Sekali",
       schedule: null,
       due_date: "2026-12-18",
-      due_rule: null,
-      pic: "OAO",
+      pic: "Dummy A",
+      source: "Slide 27",
       status: "Belum Mulai",
       progress: 0,
-      sort_order: 39,
+      sort_order: 9,
     });
   });
-  test("requires group, code, area and tindakan; refuses a taken code and bad enums", () => {
+  test("a missing due date is allowed (flag: Batas waktu belum ditetapkan)", () => {
+    const { row } = validateNewItem({ ...INPUT, dueDate: "" }, EXISTING);
+    expect(row?.due_date).toBeNull();
+  });
+  test("requires kelompok, aspek, code and tindakan; refuses a taken code and bad enums", () => {
     const { row, fieldErrors } = validateNewItem(
-      { ...INPUT, reportGroup: "CGK", code: "sub-tl13", area: " ", action: "", kind: "Kadang", dueDate: "2026-13-01", dueRule: "x" },
+      { ...INPUT, groupName: "SUB", aspect: "Lainnya", code: "ga-tl05", action: "", kind: "Kadang", dueDate: "2026-13-01" },
       EXISTING,
     );
     expect(row).toBeNull();
-    expect(Object.keys(fieldErrors).sort()).toEqual(["action", "area", "code", "dueDate", "dueRule", "kind", "reportGroup"]);
+    expect(Object.keys(fieldErrors).sort()).toEqual(["action", "aspect", "code", "dueDate", "groupName", "kind"]);
   });
 });
 
@@ -101,13 +108,13 @@ describe("addActionItem", () => {
   });
   test("owner: inserts the validated row", async () => {
     const { port, calls } = mockPort();
-    expect(await addActionItem(true, port, INPUT)).toEqual({ ok: true, code: "CGKHLP-TL14" });
+    expect(await addActionItem(true, port, INPUT)).toEqual({ ok: true, code: "GA-TL16" });
     expect(calls.inserted).toHaveLength(1);
-    expect(calls.inserted[0].report_group).toBe("CGK & HLP");
+    expect(calls.inserted[0].group_name).toBe("Timeline Training");
   });
   test("owner: invalid input never reaches insert", async () => {
     const { port, calls } = mockPort();
-    const result = await addActionItem(true, port, { ...INPUT, area: "" });
+    const result = await addActionItem(true, port, { ...INPUT, action: "" });
     expect(result.ok).toBe(false);
     expect(calls.inserted).toHaveLength(0);
   });
@@ -122,15 +129,15 @@ describe("addActionItem", () => {
 describe("removeActionItem", () => {
   test("refuses anyone but the owner", async () => {
     const { port, calls } = mockPort();
-    expect(await removeActionItem(false, port, "SUB-TL13")).toEqual({ ok: false, message: OWNER_ONLY_MESSAGE });
+    expect(await removeActionItem(false, port, "GA-TL15")).toEqual({ ok: false, message: OWNER_ONLY_MESSAGE });
     expect(calls.removed).toHaveLength(0);
   });
   test("owner: deletes by code, reports a missing row", async () => {
     const { port, calls } = mockPort();
-    expect(await removeActionItem(true, port, " SUB-TL13 ")).toEqual({ ok: true, code: "SUB-TL13" });
-    expect(calls.removed).toEqual(["SUB-TL13"]);
+    expect(await removeActionItem(true, port, " GA-TL15 ")).toEqual({ ok: true, code: "GA-TL15" });
+    expect(calls.removed).toEqual(["GA-TL15"]);
     const gone = mockPort({ remove: async () => ({ deleted: 0, error: null }) });
-    const result = await removeActionItem(true, gone.port, "SUB-TL99");
+    const result = await removeActionItem(true, gone.port, "GA-TL99");
     expect(result.ok).toBe(false);
   });
 });

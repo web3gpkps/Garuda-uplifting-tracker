@@ -1,26 +1,26 @@
 /*
- * Laporan section D as small multiples on one shared 1 to 5 scale: the station mean in --brand,
- * the all-station mean (KPS) as a dashed ink line. The table under it carries every number.
+ * Laporan section D as small multiples, one panel per program on one shared scale: the
+ * program mean in --brand, the all-staff mean (SEMUA) as a dashed ink line, the passing
+ * grade as a darker rule. The table under it carries every number.
  */
 import type { TrendRow } from "@/lib/aggregate";
 import { formatScore } from "@/lib/format";
+import { trendScale, type TrendScale } from "./trend-scale";
 
 const W = 300;
 const H = 168;
-const M = { top: 14, right: 34, bottom: 26, left: 22 };
-const Y_MIN = 1;
-const Y_MAX = 5;
+const M = { top: 14, right: 40, bottom: 26, left: 28 };
 
 function x(week: number, weeks: number): number {
   return M.left + ((week - 1) / Math.max(1, weeks - 1)) * (W - M.left - M.right);
 }
 
-function y(value: number): number {
-  return M.top + ((Y_MAX - value) / (Y_MAX - Y_MIN)) * (H - M.top - M.bottom);
+function yOf(scale: TrendScale) {
+  return (value: number) => M.top + ((scale.max - value) / (scale.max - scale.min)) * (H - M.top - M.bottom);
 }
 
 /** Polyline segments, broken where a week has no score. */
-function segments(values: Array<number | null>, weeks: number): string[] {
+function segments(values: Array<number | null>, weeks: number, y: (v: number) => number): string[] {
   const out: string[] = [];
   let current: string[] = [];
   values.forEach((v, i) => {
@@ -36,38 +36,37 @@ function segments(values: Array<number | null>, weeks: number): string[] {
 }
 
 function describe(row: TrendRow): string {
-  const points = row.weeks
-    .map((v, i) => (v === null ? null : `Mg ${i + 1} ${formatScore(v)}`))
-    .filter(Boolean);
+  const points = row.weeks.map((v, i) => (v === null ? null : `Mg ${i + 1} ${formatScore(v)}`)).filter(Boolean);
   return points.length === 0
-    ? `${row.key}: belum ada nilai.`
-    : `${row.key}, rata-rata skor praktik: ${points.join("; ")}.`;
+    ? `${row.key}: belum ada skor.`
+    : `${row.key}, rata-rata skor coaching: ${points.join("; ")}.`;
 }
 
 export function TrendChart({
   rows,
   reference,
-  passAvgMin,
+  passGrade,
 }: {
-  /** Station rows to draw, one panel each. */
+  /** Program rows to draw, one panel each. */
   rows: TrendRow[];
-  /** SEMUA row, drawn dashed in every panel (KPS only). */
+  /** SEMUA row, drawn dashed in every panel. */
   reference: TrendRow | null;
-  passAvgMin: number;
+  passGrade: number;
 }) {
+  const scale = trendScale([...rows, ...(reference ? [reference] : [])].flatMap((r) => r.weeks), passGrade);
   return (
     <div className="flex flex-col gap-3">
       <ul
         className={
           rows.length === 1
             ? "grid max-w-xl print:max-w-[50%]"
-            : "grid gap-4 sm:grid-cols-2 lg:grid-cols-3 print:grid-cols-3 print:gap-3"
+            : "grid gap-4 sm:grid-cols-2 print:grid-cols-2 print:gap-3"
         }
-        aria-label="Grafik per stasiun"
+        aria-label="Grafik tren per program"
       >
         {rows.map((row) => (
           <li key={row.key} className="min-w-0 break-inside-avoid">
-            <Panel row={row} reference={reference} passAvgMin={passAvgMin} />
+            <Panel row={row} reference={reference} passGrade={passGrade} scale={scale} />
           </li>
         ))}
       </ul>
@@ -76,63 +75,63 @@ export function TrendChart({
           <svg aria-hidden="true" width="24" height="8" className="shrink-0">
             <line x1="1" y1="4" x2="23" y2="4" className="stroke-brand" strokeWidth="2" strokeLinecap="round" />
           </svg>
-          Rata-rata stasiun
+          Rata-rata program
         </span>
         {reference ? (
           <span className="inline-flex items-center gap-2">
             <svg aria-hidden="true" width="24" height="8" className="shrink-0">
               <line x1="1" y1="4" x2="23" y2="4" className="stroke-ink-muted" strokeWidth="1.5" strokeDasharray="4 3" />
             </svg>
-            Rata-rata semua stasiun (SEMUA)
+            Rata-rata semua SDM (SEMUA)
           </span>
         ) : null}
-        <span>Garis lebih gelap di {formatScore(passAvgMin)}: batas Sesuai. Minggu tanpa nilai dilewati.</span>
+        <span>
+          Garis lebih gelap di {passGrade}: passing grade. Sumbu mulai dari {scale.min}. Minggu tanpa skor dilewati.
+        </span>
       </p>
     </div>
   );
 }
 
-function Panel({ row, reference, passAvgMin }: { row: TrendRow; reference: TrendRow | null; passAvgMin: number }) {
+function Panel({
+  row,
+  reference,
+  passGrade,
+  scale,
+}: {
+  row: TrendRow;
+  reference: TrendRow | null;
+  passGrade: number;
+  scale: TrendScale;
+}) {
   const weeks = row.weeks.length;
+  const y = yOf(scale);
   const last = row.weeks.reduce<number | null>((acc, v, i) => (v === null ? acc : i), null);
-  const label = describe(row);
+  const showPass = passGrade > scale.min && passGrade < scale.max;
 
   return (
     <figure className="rounded-control border border-line bg-surface p-2">
       <figcaption className="px-1 text-sm font-semibold text-ink">{row.key}</figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} className="block h-auto w-full">
-        {[1, 2, 3, 4, 5].map((t) => (
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={describe(row)} className="block h-auto w-full">
+        {scale.ticks.map((t) => (
           <g key={t}>
-            <line
-              x1={M.left}
-              x2={W - M.right}
-              y1={y(t)}
-              y2={y(t)}
-              className={t === passAvgMin ? "stroke-line-strong" : "stroke-line"}
-              strokeWidth="1"
-            />
+            <line x1={M.left} x2={W - M.right} y1={y(t)} y2={y(t)} className="stroke-line" strokeWidth="1" />
             <text x={M.left - 6} y={y(t)} dy="0.32em" textAnchor="end" className="fill-ink-muted text-[10px] tabular-nums">
               {t}
             </text>
           </g>
         ))}
-        {passAvgMin > Y_MIN && passAvgMin < Y_MAX && !Number.isInteger(passAvgMin) ? (
-          <line x1={M.left} x2={W - M.right} y1={y(passAvgMin)} y2={y(passAvgMin)} className="stroke-line-strong" strokeWidth="1" />
+        {showPass ? (
+          <line x1={M.left} x2={W - M.right} y1={y(passGrade)} y2={y(passGrade)} className="stroke-line-strong" strokeWidth="1.25" />
         ) : null}
         {Array.from({ length: weeks }, (_, i) => (
-          <text
-            key={i}
-            x={x(i + 1, weeks)}
-            y={H - 8}
-            textAnchor="middle"
-            className="fill-ink-muted text-[10px] tabular-nums"
-          >
+          <text key={i} x={x(i + 1, weeks)} y={H - 8} textAnchor="middle" className="fill-ink-muted text-[10px] tabular-nums">
             {i + 1}
           </text>
         ))}
 
         {reference
-          ? segments(reference.weeks, weeks).map((points, i) => (
+          ? segments(reference.weeks, weeks, y).map((points, i) => (
               <polyline
                 key={`ref-${i}`}
                 points={points}
@@ -147,13 +146,11 @@ function Panel({ row, reference, passAvgMin }: { row: TrendRow; reference: Trend
           : null}
         {reference
           ? reference.weeks.map((v, i) =>
-              v === null ? null : (
-                <circle key={`ref-dot-${i}`} cx={x(i + 1, weeks)} cy={y(v)} r="2" className="fill-ink-muted" />
-              ),
+              v === null ? null : <circle key={`ref-dot-${i}`} cx={x(i + 1, weeks)} cy={y(v)} r="2" className="fill-ink-muted" />,
             )
           : null}
 
-        {segments(row.weeks, weeks).map((points, i) => (
+        {segments(row.weeks, weeks, y).map((points, i) => (
           <polyline
             key={i}
             points={points}

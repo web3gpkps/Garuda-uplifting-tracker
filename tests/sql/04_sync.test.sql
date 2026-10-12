@@ -4,7 +4,7 @@ create extension if not exists pgtap with schema extensions;
 select * from no_plan();
 
 select has_trigger('public', t, t || '_sync_ping', format('%s has the change-ping trigger', t))
-  from unnest(array['staff', 'weekly_scores', 'bmi_checks', 'action_items', 'replacements',
+  from unnest(array['staff', 'weekly_scores', 'bmi_checks', 'action_items', 'remedials', 'replacements',
                     'settings', 'weekly_reports']) as t;
 select is(
   (select count(*) from pg_catalog.pg_trigger tg
@@ -69,7 +69,7 @@ reset role;
 -- ------------------------------------------------------------- change-ping
 insert into auth.users (id, email) values ('11111111-1111-4111-8111-111111111111', 'tst-admin@example.invalid');
 insert into public.admins (user_id, email) values ('11111111-1111-4111-8111-111111111111', 'tst-admin@example.invalid');
-insert into public.staff (code, station, name) values ('TST-SUB', 'SUB', 'Uji Sub');
+insert into public.staff (code, station, name) values ('TST-SUB', 'SUB', 'Dummy A');
 update public.sync_state set last_ping_at = null;
 
 -- Dynamic SQL: net.* may not exist on this database.
@@ -82,7 +82,7 @@ begin
   end if;
   execute $q$
     select count(*) from net.http_request_queue
-     where url = 'http://127.0.0.1:9/joumpa-test'
+     where url = 'http://127.0.0.1:9/garuda-test'
        and ($1 is null or headers ->> 'Authorization' = $1)
   $q$ into v using p_bearer;
   return v;
@@ -111,9 +111,9 @@ begin
   end if;
   execute 'select id from vault.decrypted_secrets where name = $1' into v_id using 'sync_run_url';
   if v_id is null then
-    perform vault.create_secret('http://127.0.0.1:9/joumpa-test', 'sync_run_url');
+    perform vault.create_secret('http://127.0.0.1:9/garuda-test', 'sync_run_url');
   else
-    perform vault.update_secret(v_id, 'http://127.0.0.1:9/joumpa-test');
+    perform vault.update_secret(v_id, 'http://127.0.0.1:9/garuda-test');
   end if;
   v_id := null;
   execute 'select id from vault.decrypted_secrets where name = $1' into v_id using 'sync_secret';

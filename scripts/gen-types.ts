@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- introspection rows from PGlite are untyped */
 // Regenerates lib/database.types.ts from supabase/migrations without Docker (PGlite = Postgres in WASM):
 //   bun scripts/gen-types.ts supabase/migrations lib/database.types.ts
 import { PGlite } from "@electric-sql/pglite";

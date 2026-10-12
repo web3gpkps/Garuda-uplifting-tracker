@@ -1,7 +1,7 @@
 /**
  * Owner-only "Hapus SDM" (docs/SPEC.md access model; phase-2 brief): deletes one staff row
  * with the owner's cookie client under the admin RLS policy. The database cascades the
- * row's weekly_scores and bmi_checks and sets replacements.staff_code to NULL.
+ * row's weekly_scores, bmi_checks and remedials and sets replacements.staff_code to NULL.
  *
  * Pure logic, separate from the Server Action so it can be unit-tested with a fake client
  * (delete-staff.test.ts). The guard is here too: anything but owner access is refused
@@ -13,8 +13,10 @@ type DbError = { message: string; code?: string };
 type DbResult = { data?: unknown; error: DbError | null; count?: number | null };
 
 /** The slice of the supabase-js client this module uses (the real client satisfies it at runtime). */
+type DependentTable = "weekly_scores" | "bmi_checks" | "remedials" | "replacements";
+
 export type StaffDeleteClient = {
-  from(table: "staff" | "weekly_scores" | "bmi_checks" | "replacements"): {
+  from(table: "staff" | DependentTable): {
     select(columns: string, options?: { count: "exact"; head: true }): {
       eq(column: string, value: string): PromiseLike<DbResult>;
     };
@@ -32,6 +34,7 @@ export type DeleteStaffResult =
       /** Rows removed with the staff member (cascade) and replacement rows left unlinked. */
       weeklyScores: number;
       bmiChecks: number;
+      remedials: number;
       replacements: number;
     }
   | { ok: false; error: LinkError };
@@ -62,10 +65,15 @@ export async function deleteStaffAs(
     return { ok: false, error: { code: "unknown", message: `SDM ${code} tidak ditemukan; mungkin sudah dihapus. Muat ulang halaman.` } };
   }
 
-  const count = (table: "weekly_scores" | "bmi_checks" | "replacements") =>
+  const count = (table: DependentTable) =>
     client.from(table).select("id", { count: "exact", head: true }).eq("staff_code", code);
-  const [scores, checks, replacements] = await Promise.all([count("weekly_scores"), count("bmi_checks"), count("replacements")]);
-  for (const r of [scores, checks, replacements]) if (r.error) return failed(r.error);
+  const [scores, checks, remedials, replacements] = await Promise.all([
+    count("weekly_scores"),
+    count("bmi_checks"),
+    count("remedials"),
+    count("replacements"),
+  ]);
+  for (const r of [scores, checks, remedials, replacements]) if (r.error) return failed(r.error);
 
   const removed = await client.from("staff").delete({ count: "exact" }).eq("code", code);
   if (removed.error) return failed(removed.error);
@@ -78,6 +86,7 @@ export async function deleteStaffAs(
     name: row.name,
     weeklyScores: scores.count ?? 0,
     bmiChecks: checks.count ?? 0,
+    remedials: remedials.count ?? 0,
     replacements: replacements.count ?? 0,
   };
 }

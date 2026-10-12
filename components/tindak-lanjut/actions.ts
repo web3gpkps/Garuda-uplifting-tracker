@@ -2,11 +2,7 @@
 
 import { refresh } from "next/cache";
 import { resolveAccess, toLinkError } from "@/lib/workspace";
-import {
-  ACTION_KINDS,
-  ACTION_STATUSES,
-  DUE_RULES,
-} from "@/components/tindak-lanjut/action-view";
+import { ACTION_GROUPS, ACTION_KINDS, ACTION_STATUSES, ASPECTS } from "@/components/tindak-lanjut/action-view";
 import {
   FIELD_LABEL,
   type ActionSaveResult,
@@ -25,6 +21,7 @@ import {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_TEXT = 4000;
+const MAX_SOURCE = 200;
 
 /** DB argument names (error `details`) → form fields. */
 const PROGRESS_FIELD: Record<string, ProgressField> = {
@@ -35,15 +32,17 @@ const PROGRESS_FIELD: Record<string, ProgressField> = {
 };
 
 const DEFINITION_FIELD: Record<string, DefinitionField> = {
-  area: "area",
+  group_name: "groupName",
+  aspect: "aspect",
+  root_cause: "rootCause",
   action: "action",
   target: "target",
   kind: "kind",
   schedule: "schedule",
   due_date: "dueDate",
-  due_rule: "dueRule",
   pic: "pic",
   kps_notes: "kpsNotes",
+  source: "source",
 };
 
 function isIsoDate(value: string): boolean {
@@ -58,9 +57,9 @@ function clean(value: string | null | undefined): string | null {
 }
 
 /**
- * Status, % progres, Tgl update, Realisasi / Bukti: any link whose report group holds the
- * item, and the owner. accessKey is access.key (a link token, or "owner"); the report
- * group is enforced in SQL (out_of_scope).
+ * Status, % progres, Tgl update, Realisasi / Bukti: KPS links and the owner only (the items
+ * are national). accessKey is access.key (a link token, or "owner"); a station link gets
+ * forbidden_field from the database.
  */
 export async function saveActionProgress(
   accessKey: string,
@@ -97,6 +96,9 @@ export async function saveActionProgress(
   });
   if (error) {
     const linkError = toLinkError(error);
+    if (linkError.code === "forbidden_field") {
+      return { ok: false, message: "Tindak lanjut nasional dikelola KPS: tautan stasiun hanya bisa melihat." };
+    }
     const field = linkError.field ? PROGRESS_FIELD[linkError.field] : undefined;
     if (!field) return { ok: false, message: linkError.message };
     const message = `${FIELD_LABEL[field]} ditolak database. Periksa lagi isinya.`;
@@ -108,9 +110,9 @@ export async function saveActionProgress(
 }
 
 /**
- * KPS links and the owner: Catatan KPS and the item's definition (area, tindakan, target,
- * jenis, jadwal, batas waktu, PIC). A station link gets forbidden_field from the database
- * ("Kolom ini hanya bisa diubah lewat tautan KPS.").
+ * KPS links and the owner: Catatan Garuda / KPS and the item's definition (kelompok, aspek,
+ * akar masalah, tindakan, target, jenis, jadwal, batas waktu, PIC, sumber). A station link
+ * gets forbidden_field from the database.
  */
 export async function saveActionDefinition(
   accessKey: string,
@@ -121,7 +123,7 @@ export async function saveActionDefinition(
 
   const fieldErrors: Partial<Record<DefinitionField, string>> = {};
   const texts = {
-    area: clean(input.area),
+    rootCause: clean(input.rootCause),
     action: clean(input.action),
     target: clean(input.target),
     schedule: clean(input.schedule),
@@ -133,6 +135,18 @@ export async function saveActionDefinition(
       fieldErrors[field] = `Maksimal ${MAX_TEXT} karakter (sekarang ${value.length}).`;
     }
   }
+  const source = clean(input.source);
+  if (source !== null && source.length > MAX_SOURCE) {
+    fieldErrors.source = `Maksimal ${MAX_SOURCE} karakter (sekarang ${source.length}).`;
+  }
+  const groupName = clean(input.groupName);
+  if (groupName !== null && !(ACTION_GROUPS as readonly string[]).includes(groupName)) {
+    fieldErrors.groupName = "Pilih salah satu kelompok.";
+  }
+  const aspect = clean(input.aspect);
+  if (aspect !== null && !(ASPECTS as readonly string[]).includes(aspect)) {
+    fieldErrors.aspect = "Pilih salah satu aspek.";
+  }
   const kind = clean(input.kind);
   if (kind !== null && !(ACTION_KINDS as readonly string[]).includes(kind)) {
     fieldErrors.kind = "Pilih Sekali atau Rutin.";
@@ -141,29 +155,31 @@ export async function saveActionDefinition(
   if (dueDate !== null && !isIsoDate(dueDate)) {
     fieldErrors.dueDate = "Tanggal tidak valid.";
   }
-  const dueRule = clean(input.dueRule);
-  if (dueRule !== null && !(DUE_RULES as readonly string[]).includes(dueRule)) {
-    fieldErrors.dueRule = "Pilih salah satu aturan batas waktu.";
-  }
   if (Object.keys(fieldErrors).length > 0) {
     return { ok: false, message: "Periksa isian yang ditandai.", fieldErrors };
   }
 
   // Generated RPC types are non-nullable; NULL clears a field (docs/SPEC.md, RPC contract).
+  // A NULL kelompok keeps the stored one (group_name is NOT NULL).
   const { error } = await resolved.rpc("share_kps_update_action_item", {
     p_code: input.code,
-    p_area: texts.area as string,
+    p_group_name: groupName as string,
+    p_aspect: aspect as string,
+    p_root_cause: texts.rootCause as string,
     p_action: texts.action as string,
     p_target: texts.target as string,
     p_kind: kind as string,
     p_schedule: texts.schedule as string,
     p_due_date: dueDate as string,
-    p_due_rule: dueRule as string,
     p_pic: texts.pic as string,
     p_kps_notes: texts.kpsNotes as string,
+    p_source: source as string,
   });
   if (error) {
     const linkError = toLinkError(error);
+    if (linkError.code === "forbidden_field") {
+      return { ok: false, message: "Tindak lanjut nasional dikelola KPS: tautan stasiun hanya bisa melihat." };
+    }
     const field = linkError.field ? DEFINITION_FIELD[linkError.field] : undefined;
     if (!field) return { ok: false, message: linkError.message };
     const message = `${FIELD_LABEL[field]} ditolak database. Periksa lagi isinya.`;
@@ -183,9 +199,9 @@ type OwnerClient = NonNullable<Extract<Awaited<ReturnType<typeof resolveAccess>>
 function itemsPort(client: OwnerClient): ActionItemsPort {
   return {
     async list() {
-      const { data, error } = await client.from("action_items").select("code, report_group, sort_order");
+      const { data, error } = await client.from("action_items").select("code, group_name, sort_order");
       return {
-        data: (data ?? []).map((r) => ({ code: r.code, reportGroup: r.report_group, sortOrder: r.sort_order })),
+        data: (data ?? []).map((r) => ({ code: r.code, groupName: r.group_name, sortOrder: r.sort_order })),
         error,
       };
     },

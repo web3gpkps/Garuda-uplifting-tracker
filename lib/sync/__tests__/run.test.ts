@@ -115,27 +115,27 @@ describe("runSync", () => {
     const { store, book, db, deps } = setup();
     await runSync(deps);
     const r = book.findRow(MS, "B", "SUB-01");
-    db.find("staff", { code: "SUB-01" })!.score_a = 5;
-    book.set(MS, `J${r}`, 2);
+    db.find("staff", { code: "SUB-01" })!.role_play = 95;
+    book.set(MS, `J${r}`, 70);
     await runSync(deps);
     expect(store.logs).toEqual([
-      { table_name: "staff", row_key: "SUB-01", column_name: "score_a", baseline: 4, sheet_value: 2, db_value: 5, resolution: "db-wins" },
+      { table_name: "staff", row_key: "SUB-01", column_name: "role_play", baseline: 80, sheet_value: 70, db_value: 95, resolution: "db-wins" },
     ]);
-    expect(book.get(MS, `J${r}`)).toBe(5);
-    db.find("staff", { code: "SUB-01" })!.score_b = 1;
-    book.set(MS, `K${r}`, 2);
+    expect(book.get(MS, `J${r}`)).toBe(95);
+    db.find("staff", { code: "SUB-01" })!.post_test = 70;
+    book.set(MS, `K${r}`, 75);
     await runSync(deps, { conflictPolicy: "sheet-wins" });
-    expect(store.logs[1]).toMatchObject({ column_name: "score_b", resolution: "sheet-wins", sheet_value: 2, db_value: 1 });
+    expect(store.logs[1]).toMatchObject({ column_name: "post_test", resolution: "sheet-wins", sheet_value: 75, db_value: 70 });
   });
 
   test("validation problems are logged once with a rejected:<kind> resolution", async () => {
     const { store, book, deps } = setup();
     await runSync(deps);
-    book.set(MS, `J${book.findRow(MS, "B", "SUB-01")}`, 7);
+    book.set(MS, `J${book.findRow(MS, "B", "SUB-01")}`, 150);
     await runSync(deps);
     await runSync(deps);
     expect(store.logs).toEqual([
-      { table_name: "staff", row_key: "SUB-01", column_name: "score_a", baseline: null, sheet_value: 7, db_value: 4, resolution: "rejected:invalid_value" },
+      { table_name: "staff", row_key: "SUB-01", column_name: "role_play", baseline: null, sheet_value: 150, db_value: 80, resolution: "rejected:invalid_value" },
     ]);
   });
 
@@ -145,7 +145,7 @@ describe("runSync", () => {
     const baseline = JSON.stringify(store.baseline);
     const r = book.findRow(MS, "B", "SUB-02");
     db.find("staff", { code: "SUB-02" })!.notes = "web";
-    book.set(MS, `U${r}`, "sheet");
+    book.set(MS, `S${r}`, "sheet");
     sheets.failApply = true;
     const s = await runSync(deps, { conflictPolicy: "sheet-wins" });
     expect(s.status).toBe("error");
@@ -165,23 +165,23 @@ describe("runSync", () => {
   test("one table's DB failure: that table is skipped (sheet + baseline), others sync, status partial", async () => {
     const { store, book, db, deps, steady } = setup();
     await runSync(deps);
-    const tl = book.findRow("Tindak Lanjut", "B", "SUB-TL01");
-    book.set("Tindak Lanjut", `J${tl}`, "Baru");
-    book.set(MS, `U${book.findRow(MS, "B", "SUB-01")}`, "ok");
-    db.find("action_items", { code: "SUB-TL01" })!.evidence = "bukti";
+    const tl = book.findRow("Tindak Lanjut", "B", "GA-TL01");
+    book.set("Tindak Lanjut", `K${tl}`, "Baru");
+    book.set(MS, `S${book.findRow(MS, "B", "SUB-01")}`, "ok");
+    db.find("action_items", { code: "GA-TL01" })!.evidence = "bukti";
     store.failTables.add("action_items");
     const s = await runSync(deps);
     expect(s.status).toBe("partial");
     expect(s.tables!.action_items.dbFailed).toBe(true);
     expect(store.lastError).toContain("DB action_items: 23514");
     expect(db.find("staff", { code: "SUB-01" })!.notes).toBe("ok");
-    expect(book.get("Tindak Lanjut", `N${tl}`)).toBe("");
-    expect(store.baseline!.tables.action_items!["SUB-TL01"].pic).toBe("PIC");
+    expect(book.get("Tindak Lanjut", `O${tl}`)).toBe("");
+    expect(store.baseline!.tables.action_items!["GA-TL01"].pic).toBe("PIC");
 
     store.failTables.clear();
     expect((await runSync(deps)).status).toBe("ok");
-    expect(db.find("action_items", { code: "SUB-TL01" })!.pic).toBe("Baru");
-    expect(book.get("Tindak Lanjut", `N${tl}`)).toBe("bukti");
+    expect(db.find("action_items", { code: "GA-TL01" })!.pic).toBe("Baru");
+    expect(book.get("Tindak Lanjut", `O${tl}`)).toBe("bukti");
     expect(steady()).toBe(true);
   });
 

@@ -11,6 +11,8 @@ import { describeDaysLeft, type ActionView } from "./action-view";
 type RowsProps = {
   caption: string;
   items: ActionView[];
+  /** KPS and the owner: "Perbarui"; station links: "Lihat detail". */
+  canEdit: boolean;
   /** code → ISO time of the last save made on this screen. */
   savedAt: Record<string, string>;
   onEdit: (code: string) => void;
@@ -25,9 +27,7 @@ function Muted({ children }: { children: ReactNode }) {
 function DaysLeft({ view }: { view: ActionView }) {
   const text = describeDaysLeft(view.daysLeft);
   if (view.daysLeft === null) return <Muted>{text}</Muted>;
-  return (
-    <span className={cx("tabular-nums", view.daysLeft < 0 && "font-semibold text-critical")}>{text}</span>
-  );
+  return <span className={cx("tabular-nums", view.daysLeft < 0 && "font-semibold text-critical")}>{text}</span>;
 }
 
 function Progress({ value }: { value: number }) {
@@ -65,7 +65,7 @@ function Item({ label, children, wide }: { label: string; children: ReactNode; w
 }
 
 /** Under 900 px: one card per item, long texts wrap at full width. */
-export function ActionCards({ caption, items, savedAt, onEdit, onDelete }: RowsProps) {
+export function ActionCards({ caption, items, canEdit, savedAt, onEdit, onDelete }: RowsProps) {
   return (
     <ul aria-label={caption} className="divide-y divide-line">
       {items.map((view) => (
@@ -74,14 +74,14 @@ export function ActionCards({ caption, items, savedAt, onEdit, onDelete }: RowsP
             <div className="flex flex-wrap items-start justify-between gap-2">
               <h4 id={`tl-kartu-${view.code}`} className="min-w-0 text-sm text-ink">
                 <span className="block font-semibold">{view.code}</span>
-                <span className="block">{view.area ?? "Area belum diisi"}</span>
+                <span className="block">{view.aspect ?? "Aspek belum diisi"}</span>
               </h4>
-              <StatusChip label={view.flag} emptyLabel="Tanpa batas waktu" />
+              <StatusChip label={view.flag} />
             </div>
 
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
               <Item label="Batas waktu">
-                <span className="tabular-nums">{view.dueLabel ?? "Belum ditentukan"}</span>
+                <span className="tabular-nums">{view.dueLabel ?? "Belum ditetapkan"}</span>
               </Item>
               <Item label="Sisa hari">
                 <DaysLeft view={view} />
@@ -94,6 +94,15 @@ export function ActionCards({ caption, items, savedAt, onEdit, onDelete }: RowsP
                   <Progress value={view.progress} />
                 </span>
               </Item>
+              <Item label="Tindakan" wide>
+                <LongText value={view.action} empty="Belum diisi" />
+              </Item>
+              <Item label="Akar masalah" wide>
+                <LongText value={view.rootCause} empty="Belum diisi" />
+              </Item>
+              <Item label="Target (KPI)" wide>
+                <LongText value={view.target} empty="Belum diisi" />
+              </Item>
               <Item label="Realisasi / Bukti" wide>
                 <LongText value={view.evidence} empty="Belum ada bukti" />
               </Item>
@@ -101,36 +110,31 @@ export function ActionCards({ caption, items, savedAt, onEdit, onDelete }: RowsP
                 {view.updatedOn ? formatTanggal(view.updatedOn) : <Muted>Belum diperbarui</Muted>}
                 {showChangedBy(view) ? <span className="text-ink-muted">, lewat {view.lastChangedBy}</span> : null}
               </Item>
-              <Item label="Tindakan" wide>
-                <LongText value={view.action} empty="Belum diisi" />
-              </Item>
-              <Item label="Target / Indikator" wide>
-                <LongText value={view.target} empty="Belum diisi" />
-              </Item>
               <Item label="PIC" wide>
                 <LongText value={view.pic} empty="Belum diisi" />
               </Item>
               {view.kpsNotes ? (
-                <Item label="Catatan KPS" wide>
+                <Item label="Catatan Garuda / KPS" wide>
                   <LongText value={view.kpsNotes} empty="" />
                 </Item>
               ) : null}
               <Item label="Jenis">{view.kind ?? <Muted>Belum diisi</Muted>}</Item>
-              <Item label="Jadwal">
+              <Item label="Sumber">{view.source ?? <Muted>Belum diisi</Muted>}</Item>
+              <Item label="Jadwal" wide>
                 <LongText value={view.schedule} empty="Tidak ada jadwal khusus" />
               </Item>
             </dl>
 
             <div className="flex flex-col gap-1">
               <Button variant="secondary" fullWidth onClick={() => onEdit(view.code)}>
-                Perbarui {view.code}
+                {canEdit ? `Perbarui ${view.code}` : `Lihat detail ${view.code}`}
               </Button>
               {onDelete ? (
                 <Button variant="secondary" fullWidth onClick={() => onDelete(view.code)}>
                   Hapus butir {view.code}
                 </Button>
               ) : null}
-              <SaveStatus state={saveState(savedAt, view.code)} />
+              {canEdit ? <SaveStatus state={saveState(savedAt, view.code)} /> : null}
             </div>
           </article>
         </li>

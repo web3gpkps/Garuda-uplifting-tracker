@@ -5,7 +5,7 @@
  */
 import { finalizeBaseline, merge, type MergeInput } from "../merge";
 import { isoToSerial } from "../normalize";
-import { SYNC_TABLES, rowOneSpecs, specFor } from "../tables";
+import { SYNC_TABLES, rowOneSpecs, specFor, toDbRow } from "../tables";
 import type { Baseline, Canon, CellFormat, DbSnapshot, Plan, SheetSnapshot, SyncTable, TableSpec } from "../types";
 
 export function encodeCell(value: Canon, fmt: CellFormat): unknown {
@@ -135,15 +135,20 @@ function trimValues(values: unknown[][]): unknown[][] {
 
 export class FakeDb {
   tables = new Map<SyncTable, Record<string, unknown>[]>();
+  /** Valid unit codes (public.stations); read-only for the sync. */
+  stations?: { code: string }[];
   private nextIds = new Map<SyncTable, number>();
 
   constructor(init: DbSnapshot = {}) {
-    for (const [t, rows] of Object.entries(init)) this.tables.set(t as SyncTable, (rows ?? []).map((r) => ({ ...r })));
+    const { stations, ...tables } = init;
+    this.stations = stations?.map((s) => ({ ...s }));
+    for (const [t, rows] of Object.entries(tables)) this.tables.set(t as SyncTable, (rows ?? []).map((r) => ({ ...r })));
   }
 
   snapshot(): DbSnapshot {
     const out: DbSnapshot = {};
     for (const [t, rows] of this.tables) out[t] = rows.map((r) => ({ ...r }));
+    if (this.stations) out.stations = this.stations.map((s) => ({ ...s }));
     return out;
   }
 
@@ -174,18 +179,18 @@ export class FakeDb {
         spec.key.every((k) => r[k] === key[k]);
       for (const ins of tp.db.inserts) {
         const i = rows.findIndex((r) => match(r, ins));
-        if (i >= 0) rows[i] = { ...rows[i], ...ins };
-        else rows.push({ ...ins });
+        if (i >= 0) rows[i] = { ...rows[i], ...toDbRow(spec, ins) };
+        else rows.push(toDbRow(spec, ins));
       }
       for (const u of tp.db.updates) {
         const r = rows.find((x) => match(x, u.key));
         if (!r) throw new Error(`update of missing row ${JSON.stringify(u.key)}`);
-        Object.assign(r, u.set);
+        Object.assign(r, toDbRow(spec, u.set));
       }
       for (const p of tp.db.pending) {
         const next = this.nextIds.get(table) ?? Math.max(0, ...rows.map((r) => Number(r.id) || 0)) + 1;
         this.nextIds.set(table, next + 1);
-        rows.push({ ...p.values, id: next });
+        rows.push({ ...toDbRow(spec, p.values), id: next });
         ids.set(p.ref, next);
       }
     }
@@ -199,7 +204,7 @@ export class FakeDb {
         if (i >= 0) rows.splice(i, 1);
         if (table === "staff") {
           // FK actions: children cascade, replacements.staff_code is set null.
-          for (const child of ["weekly_scores", "bmi_checks"] as SyncTable[]) {
+          for (const child of ["weekly_scores", "bmi_checks", "remedials"] as SyncTable[]) {
             this.tables.set(
               child,
               (this.tables.get(child) ?? []).filter((r) => r.staff_code !== del.code),

@@ -1,29 +1,29 @@
--- JOUMPA Uplifting Action Tracker: one-time PRODUCTION setup. NOT a migration; `supabase db push` ignores it.
+-- Garuda People Development Tracker: one-time PRODUCTION setup. NOT a migration; `supabase db push` ignores it.
 --
 -- Run in the production project's SQL editor (as postgres), after:
 --   1. `supabase db push` has applied every file in supabase/migrations/
 --   2. the app is deployed on Vercel and /api/sync/run answers
 --
 -- Replace the two placeholders below first. Never commit the real values:
---   <APP_URL>      e.g. https://joumpa-uplift.vercel.app   (no trailing slash)
+--   <APP_URL>      e.g. https://garuda-tracker.vercel.app   (no trailing slash)
 --   <SYNC_SECRET>  the same value as the SYNC_SECRET env var on Vercel
 --
--- What this wires up (docs/SPEC.md, "When it runs"):
+-- What this wires up (docs/SYNC.md, "Environment"):
 --   * pg_cron every minute -> pg_net POST <APP_URL>/api/sync/run   (the backstop)
---   * the debounced AFTER STATEMENT change-ping (migration 20261007100700) starts working as soon
---     as pg_net and both Vault secrets exist; until then it is a silent no-op.
+--   * the debounced AFTER STATEMENT change-ping (migration 20261012100600_sync_lease_and_ping) starts
+--     working as soon as pg_net and both Vault secrets exist; until then it is a silent no-op.
 
 -- 1. Extensions (also possible from Dashboard > Database > Extensions).
 create extension if not exists pg_net;
 create extension if not exists pg_cron;
 
 -- 2. Vault secrets read by private.sync_ping() and by the cron job below.
-select vault.create_secret('<APP_URL>/api/sync/run', 'sync_run_url', 'JOUMPA: Sheets sync endpoint');
-select vault.create_secret('<SYNC_SECRET>', 'sync_secret', 'JOUMPA: bearer for /api/sync/run');
+select vault.create_secret('<APP_URL>/api/sync/run', 'sync_run_url', 'Garuda: Sheets sync endpoint');
+select vault.create_secret('<SYNC_SECRET>', 'sync_secret', 'Garuda: bearer for /api/sync/run');
 
 -- 3. Every-minute sync run. The lease in sync_state makes overlapping runs harmless.
 select cron.schedule(
-  'joumpa-sync-every-minute',
+  'garuda-sync-every-minute',
   '* * * * *',
   $job$
     select net.http_post(
@@ -41,7 +41,7 @@ select cron.schedule(
 
 -- 4. Housekeeping: pg_cron logs every run (1,440 rows/day). Keep 7 days.
 select cron.schedule(
-  'joumpa-cron-log-cleanup',
+  'garuda-cron-log-cleanup',
   '17 3 * * *',
   $job$ delete from cron.job_run_details where end_time < now() - interval '7 days' $job$
 );
@@ -58,8 +58,8 @@ select cron.schedule(
 -- Change the URL:
 --   select vault.update_secret((select id from vault.secrets where name = 'sync_run_url'), '<APP_URL>/api/sync/run');
 -- Pause / remove:
---   select cron.unschedule('joumpa-sync-every-minute');
---   select cron.unschedule('joumpa-cron-log-cleanup');
+--   select cron.unschedule('garuda-sync-every-minute');
+--   select cron.unschedule('garuda-cron-log-cleanup');
 --
 -- First admin (after creating the user in Dashboard > Authentication > Users; sign-up is disabled):
 --   insert into public.admins (user_id, email)

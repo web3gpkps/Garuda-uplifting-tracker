@@ -1,30 +1,31 @@
 "use client";
 
-import { useState } from "react";
-import { formatDecimal, formatScore } from "@/lib/format";
+import type { Settings } from "@/lib/rules";
+import { formatDecimal } from "@/lib/format";
 import { Button } from "@/components/ui/Button";
-import { Select } from "@/components/ui/Field";
-import { SaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { StatusChip } from "@/components/ui/StatusChip";
-import type { SaveGenderAction, SdmRow } from "./types";
+import { toneOf } from "@/components/performa/format";
+import type { SdmRow } from "./types";
 
 type StaffCardsProps = {
   rows: SdmRow[];
   emptyTitle: string;
   emptyHint: string;
-  accessKey: string;
-  saveGenderAction: SaveGenderAction;
+  settings: Settings;
   onEdit: (row: SdmRow) => void;
   /** Owner only: opens the delete confirmation. */
   onDelete?: (row: SdmRow) => void;
 };
 
+function Value({ value, empty = "Belum diisi" }: { value: string | null | undefined; empty?: string }) {
+  return value ? <span>{value}</span> : <span className="text-ink-muted">{empty}</span>;
+}
+
 /**
  * Master SDM on phones (< 900 px): one card per staff member with what decides "is this
- * record right": flags first, the key fields, L/P as a select that saves on change (the
- * bulk gap), and "Ubah data" for the full form. Client component.
+ * record right": flags first, the key fields, and "Ubah data" for the full form. Client component.
  */
-export function StaffCards({ rows, emptyTitle, emptyHint, accessKey, saveGenderAction, onEdit, onDelete }: StaffCardsProps) {
+export function StaffCards({ rows, emptyTitle, emptyHint, settings, onEdit, onDelete }: StaffCardsProps) {
   if (rows.length === 0) {
     return (
       <div className="py-6">
@@ -33,6 +34,7 @@ export function StaffCards({ rows, emptyTitle, emptyHint, accessKey, saveGenderA
       </div>
     );
   }
+  const pass = formatDecimal(settings.passGrade, 0, 2);
   return (
     <ul className="-mx-4 border-t border-line sm:-mx-6">
       {rows.map((row) => (
@@ -41,48 +43,62 @@ export function StaffCards({ rows, emptyTitle, emptyHint, accessKey, saveGenderA
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-ink">{row.name}</h3>
               <p className="text-xs text-ink-muted tabular-nums">
-                {row.code} · Stasiun {row.station}
+                {row.code} · {row.program ?? "Program belum diisi"} · Unit {row.station}
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {row.criteriaStatus ? <StatusChip label={row.criteriaStatus} bordered /> : null}
-              {row.consistency === "Beda – verifikasi" ? <StatusChip label={row.consistency} bordered /> : null}
-              {row.assignmentStatus !== "Aktif" ? <StatusChip label={row.assignmentStatus} bordered /> : null}
+              {row.status ? <StatusChip label={row.status} tone={toneOf(row.status)} bordered /> : null}
+              {row.consistency === "Beda – verifikasi" ? (
+                <StatusChip label={row.consistency} tone={toneOf(row.consistency)} bordered />
+              ) : null}
+              {row.assignmentStatus !== "Aktif" ? (
+                <StatusChip label={row.assignmentStatus} tone={toneOf(row.assignmentStatus)} bordered />
+              ) : null}
             </div>
           </div>
 
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div>
-              <dt className="section-label">NIPP</dt>
-              <dd className="flex flex-wrap items-center gap-1.5">
-                {row.nipp ? <span className="tabular-nums">{row.nipp}</span> : <span className="text-ink-muted">Belum diisi</span>}
-                {row.duplicateNippWith.length > 0 ? <StatusChip tone="warning" label="NIPP ganda" bordered /> : null}
-              </dd>
-            </div>
-            <div>
-              <dt className="section-label">Rata-rata praktik</dt>
-              <dd className="font-semibold tabular-nums">{formatScore(row.practiceAvg) || "Belum ada"}</dd>
-            </div>
-            <div>
-              <dt className="section-label">Pre / post-test</dt>
+              <dt className="section-label">Employee Number</dt>
               <dd className="tabular-nums">
-                {row.preTest === null && row.postTest === null
-                  ? "Belum ada"
-                  : `${formatDecimal(row.preTest, 0, 2) || "kosong"} / ${formatDecimal(row.postTest, 0, 2) || "kosong"}`}
+                <Value value={row.employeeNo} />
               </dd>
             </div>
             <div>
-              <dt className="section-label">Kesimpulan laporan</dt>
-              <dd>{row.reportConclusion ?? <span className="text-ink-muted">Belum diisi</span>}</dd>
+              <dt className="section-label">Touch Point</dt>
+              <dd>
+                <Value value={row.touchPoint} />
+              </dd>
+            </div>
+            <div>
+              <dt className="section-label">Role Play / Post-Test</dt>
+              <dd className="tabular-nums">
+                {row.rolePlay === null && row.postTest === null
+                  ? "Belum ada"
+                  : `${formatDecimal(row.rolePlay, 0, 2) || "kosong"} / ${formatDecimal(row.postTest, 0, 2) || "kosong"}`}
+              </dd>
+            </div>
+            <div>
+              <dt className="section-label">Final Result (lulus ≥{pass})</dt>
+              <dd className="font-semibold tabular-nums">{formatDecimal(row.finalResult, 1) || "Belum ada"}</dd>
+            </div>
+            <div>
+              <dt className="section-label">Remark di Laporan</dt>
+              <dd>
+                <Value value={row.reportRemark} />
+              </dd>
+            </div>
+            <div>
+              <dt className="section-label">L/P</dt>
+              <dd>
+                <Value value={row.gender} />
+              </dd>
             </div>
           </dl>
 
-          {row.duplicateNippWith.length > 0 ? (
-            <p className="text-xs text-warning">NIPP sama dengan {row.duplicateNippWith.join(", ")}.</p>
-          ) : null}
+          {row.failureCause ? <p className="text-xs text-warning">Penyebab utama: {row.failureCause}.</p> : null}
+          {row.feedback ? <p className="text-xs text-ink-muted">Feedback: {row.feedback}</p> : null}
           {row.notes ? <p className="text-xs text-ink-muted">Catatan: {row.notes}</p> : null}
-
-          <GenderSelect row={row} accessKey={accessKey} saveGenderAction={saveGenderAction} />
 
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => onEdit(row)}>
@@ -102,56 +118,5 @@ export function StaffCards({ rows, emptyTitle, emptyHint, accessKey, saveGenderA
         </li>
       ))}
     </ul>
-  );
-}
-
-/** L/P select that saves on change (only L/P changes; the rest is sent as shown). */
-function GenderSelect({ row, accessKey, saveGenderAction }: { row: SdmRow; accessKey: string; saveGenderAction: SaveGenderAction }) {
-  const [value, setValue] = useState(row.gender ?? "");
-  const [state, setState] = useState<SaveState>({ status: "idle" });
-  const [prevGender, setPrevGender] = useState(row.gender);
-
-  // Changed elsewhere (edit dialog, another link) and refreshed: show the stored value.
-  if (prevGender !== row.gender) {
-    setPrevGender(row.gender);
-    if (state.status !== "saving") setValue(row.gender ?? "");
-  }
-
-  async function change(next: string) {
-    const previous = value;
-    setValue(next);
-    setState({ status: "saving" });
-    try {
-      const result = await saveGenderAction(
-        accessKey,
-        { code: row.code, name: row.name, nipp: row.nipp, assignmentStatus: row.assignmentStatus, notes: row.notes },
-        next === "L" || next === "P" ? next : null,
-      );
-      if (result.ok) {
-        setState({ status: "saved", at: result.savedAt });
-      } else {
-        setValue(previous);
-        setState({ status: "error", message: result.error.message });
-      }
-    } catch {
-      setValue(previous);
-      setState({ status: "error", message: "koneksi ke server terputus. Pilih lagi." });
-    }
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-        L/P
-        <span className="w-44">
-          <Select aria-label={`L/P ${row.name}`} value={value} onChange={(event) => void change(event.target.value)}>
-            <option value="">Belum diisi</option>
-            <option value="L">L (laki-laki)</option>
-            <option value="P">P (perempuan)</option>
-          </Select>
-        </span>
-      </label>
-      <SaveStatus state={state} />
-    </div>
   );
 }

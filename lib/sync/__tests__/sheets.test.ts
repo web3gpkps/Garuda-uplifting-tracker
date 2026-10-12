@@ -76,7 +76,7 @@ describe("GoogleSheets.read", () => {
     expect(real.tabs["Master SDM"]).toMatchObject({ values: [["ID SDM", "SUB-01"]], formulas: [["ID SDM", "=B5"]], rowCount: 1000 });
     expect(real.tabs["Tindak Lanjut"]).toBeUndefined();
     expect(real.locale).toBe("en_US");
-    expect(SYNC_TABLES.length).toBe(7);
+    expect(SYNC_TABLES.length).toBe(8);
   });
 
   test("retries 429 and 5xx, then surfaces a SheetsError without a token in the message", async () => {
@@ -161,21 +161,37 @@ describe("GoogleSheets.apply", () => {
     expect(calls.some((c) => c.url.includes(":append"))).toBe(false);
   });
 
-  test("formula copies (PASTE_FORMULA) and notes go in one structural batch after the values", async () => {
+  test("notes go in one structural batch after the values", async () => {
     const ops = emptyOps();
-    ops.writes.push({ table: "weekly_scores", tab: "Log Performa Mingguan", row: 955, col: 0, value: 11 });
-    ops.formulaCopies.push({ table: "weekly_scores", tab: "Log Performa Mingguan", fromRow: 5, toRow: 955, cols: [1, 3] });
-    ops.notes.push({ table: "staff", tab: "Master SDM", row: 6, col: 9, text: "JOUMPA sync: Di luar rentang 1–5." });
-    ops.grow.push({ table: "weekly_scores", tab: "Log Performa Mingguan", rowCount: 1100 });
+    ops.writes.push({ table: "weekly_scores", tab: "Log Performa Mingguan", row: 2715, col: 0, value: 11 });
+    ops.notes.push({ table: "staff", tab: "Master SDM", row: 6, col: 9, text: "Garuda sync: Di luar rentang 0–100." });
     const calls = await applyWith(ops);
-    expect((calls[0].body!.requests as Req[])[0].updateSheetProperties.properties).toEqual({ sheetId: 4, gridProperties: { rowCount: 1100 } });
-    expect(calls[1].url).toEndWith("values:batchUpdate");
-    const structural = calls[2].body!.requests as Req[];
-    expect(structural.slice(0, 2).map((r) => [r.copyPaste.pasteType, r.copyPaste.source.startRowIndex, r.copyPaste.destination.startRowIndex, r.copyPaste.destination.startColumnIndex])).toEqual([
-      ["PASTE_FORMULA", 4, 954, 1],
-      ["PASTE_FORMULA", 4, 954, 3],
+    expect(calls).toHaveLength(2);
+    expect(calls[0].url).toEndWith("values:batchUpdate");
+    const structural = calls[1].body!.requests as Req[];
+    expect(structural[0].updateCells).toMatchObject({ fields: "note", range: { sheetId: 2, startRowIndex: 5, startColumnIndex: 9 } });
+  });
+
+  test("engine columns right of a narrow grid widen it before the header cells are written", async () => {
+    const ops = emptyOps();
+    ops.headerCells.push(
+      { table: "replacements", tab: "Penggantian SDM", row: 4, col: 15, text: "ID Sistem", hide: true },
+      { table: "replacements", tab: "Penggantian SDM", row: 4, col: 16, text: "ID SDM" },
+    );
+    const m = mockFetch([
+      (c) =>
+        c.url.includes("?fields=")
+          ? { json: { properties: { locale: "in_ID", timeZone: "Asia/Jakarta" }, sheets: [{ properties: { title: "Penggantian SDM", sheetId: 6, gridProperties: { rowCount: 44, columnCount: 15 } } }] } }
+          : undefined,
+      (c) => (c.url.includes("values:batchGet") ? { json: { valueRanges: [{ values: [] }] } } : undefined),
     ]);
-    expect(structural[2].updateCells).toMatchObject({ fields: "note", range: { sheetId: 2, startRowIndex: 5, startColumnIndex: 9 } });
+    const gs = new GoogleSheets("id", token, { fetch: m.fetch });
+    await gs.read(["Penggantian SDM"]);
+    m.calls.length = 0;
+    await gs.apply(ops, new Map());
+    const setup = m.calls[0].body!.requests as Req[];
+    expect(setup[0].updateSheetProperties).toEqual({ properties: { sheetId: 6, gridProperties: { columnCount: 17 } }, fields: "gridProperties.columnCount" });
+    expect(setup.filter((r) => r.updateCells).map((r) => r.updateCells.range.startColumnIndex)).toEqual([15, 16]);
   });
 
   test("ids resolved after the DB insert; unknown refs skipped; skipped tables untouched", async () => {

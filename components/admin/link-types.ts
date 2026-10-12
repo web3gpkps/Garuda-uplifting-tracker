@@ -1,21 +1,34 @@
-/** Share-link scopes and the shapes the Tautan stasiun screen passes around. */
+/**
+ * Share-link scopes and the shapes the Tautan stasiun screen passes around.
+ * A scope is "KPS" (head office, every station) or a station code from public.stations;
+ * the list of stations comes from the database, never from this file.
+ */
 
-export const LINK_SCOPES = ["SUB", "DPS", "CGK", "HLP", "KNO", "KPS"] as const;
-export type LinkScope = (typeof LINK_SCOPES)[number];
+export const KPS_SCOPE = "KPS";
 
-export function isLinkScope(value: string): value is LinkScope {
-  return (LINK_SCOPES as readonly string[]).includes(value);
+/** Same shape as the share_links_scope_check constraint. Existence is checked against public.stations. */
+const SCOPE_FORMAT = /^[A-Z0-9]{2,5}$/;
+
+export function isScopeFormat(value: string): boolean {
+  return value === KPS_SCOPE || SCOPE_FORMAT.test(value);
 }
 
-/** What each scope opens, in the words the share page itself uses (lib/workspace scopeLabel). */
-export const SCOPE_DESCRIPTION: Record<LinkScope, string> = {
-  SUB: "Stasiun SUB: data SUB saja",
-  DPS: "Stasiun DPS: data DPS saja",
-  CGK: "Stasiun CGK: data CGK, tindak lanjut laporan CGK & HLP",
-  HLP: "Stasiun HLP: data HLP, tindak lanjut laporan CGK & HLP",
-  KNO: "Stasiun KNO: data KNO saja",
-  KPS: "KPS: semua stasiun, termasuk Catatan KPS dan definisi tindak lanjut",
-};
+/** KPS first, then the stations in the stations table's order. */
+export function linkScopes(stationCodes: readonly string[]): string[] {
+  return [KPS_SCOPE, ...stationCodes.filter((code) => code !== KPS_SCOPE)];
+}
+
+/** What a scope opens, in the words the share page itself uses (lib/workspace scopeLabel). */
+export function scopeDescription(scope: string): string {
+  if (scope === KPS_SCOPE) {
+    return "KPS: semua stasiun, termasuk baseline training SDM dan pembaruan Tindak Lanjut nasional.";
+  }
+  return `Stasiun ${scope}: SDM, nilai mingguan, cek BMI, remedial, penggantian, dan temuan ${scope} saja. Tindak Lanjut hanya dibaca.`;
+}
+
+export function scopeName(scope: string): string {
+  return scope === KPS_SCOPE ? "KPS" : `Stasiun ${scope}`;
+}
 
 export type LinkRow = {
   id: string;

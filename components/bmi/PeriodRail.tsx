@@ -23,14 +23,15 @@ function BmiMarker() {
 }
 
 /**
- * The five BMI checks as a compact rail (echo of the 10-week WeekRail): each cell is a
- * real link to ?periode=P, shows the planned Monday and how many staff are measured.
+ * The BMI check slots (settings.bmi_periods, 6 in Garuda) as a compact rail (echo of the
+ * 10-week WeekRail): each cell is a real link to ?periode=P, shows the slot's planned date
+ * and how many staff are measured in it.
  * Current period: thicker --brand base. Selected: 2 px ink ring plus aria-current.
  */
 export function PeriodRail({ periods, selected, hrefForPeriod }: PeriodRailProps) {
   return (
-    <nav aria-label="Pilih periode cek BMI" className="w-full max-w-2xl">
-      <ol className="grid grid-cols-5 gap-1">
+    <nav aria-label="Pilih periode cek BMI" className="w-full max-w-3xl">
+      <ol className="grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.max(periods.length, 1)}, minmax(0, 1fr))` }}>
         {periods.map((p) => {
           const isSelected = p.period === selected;
           const isCurrent = p.phase === "current";

@@ -1,12 +1,7 @@
 import type { ReactNode } from "react";
-import { replacementsByGroup, TOTAL } from "@/lib/aggregate";
+import { replacementOverview } from "@/lib/aggregate";
 import { diffDays, formatHariTanggal, formatTanggal } from "@/lib/dates";
-import {
-  replacementPass,
-  replacementTimeliness,
-  type ReplacementRow,
-  type Settings,
-} from "@/lib/rules";
+import { replacementPass, replacementTimeliness, type Settings } from "@/lib/rules";
 import { formatDecimal } from "@/lib/format";
 import {
   changedVia,
@@ -25,7 +20,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { PageHeader, PageLoading } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { EmptyState, ErrorState } from "@/components/ui/States";
-import { StationFilter } from "@/components/ui/StationFilter";
+import { LinkSelect } from "@/components/grid/LinkSelect";
 import { HowToTip } from "@/components/ui/HowToTip";
 import { RememberView } from "@/components/ui/RememberView";
 import { rememberScope } from "@/components/ui/remember";
@@ -60,6 +55,7 @@ function changedWhen(row: { updatedByLink?: string | null; updatedAt?: string | 
 function toFormRow(row: Workspace["replacements"][number]): ReplacementFormRow {
   return {
     id: row.id,
+    program: row.program,
     station: row.station,
     staffCode: row.staffCode,
     replacedName: row.replacedName,
@@ -69,7 +65,7 @@ function toFormRow(row: Workspace["replacements"][number]): ReplacementFormRow {
     effectiveOn: row.effectiveOn,
     trainingOn: row.trainingOn,
     postTest: row.postTest === null ? null : Number(row.postTest),
-    practiceAvg: row.practiceAvg === null ? null : Number(row.practiceAvg),
+    finalResult: row.finalResult === null ? null : Number(row.finalResult),
     reported: row.reported,
     notes: row.notes,
   };
@@ -110,7 +106,12 @@ export function PenggantianScreen({ access, ws, searchParams: query }: ScreenPro
     accessKey: access.key,
     fixedStation: ws.isKps ? null : ws.scope,
     stations,
-    staff: sortedStaff(ws).map((st) => ({ code: st.code, name: st.name ?? st.code, station: st.station })),
+    staff: sortedStaff(ws).map((st) => ({
+      code: st.code,
+      name: st.name ?? st.code,
+      station: st.station,
+      program: st.program,
+    })),
     settings,
     today,
     defaultStation: stationFilter,
@@ -118,15 +119,13 @@ export function PenggantianScreen({ access, ws, searchParams: query }: ScreenPro
 
   const gridRows: ReplacementGridRow[] = rows.map((row) => ({
     ...toFormRow(row),
-    reportGroup: row.reportGroup,
     pass: replacementPass(row, settings),
     timeliness: replacementTimeliness(row, settings, today),
     changed: changedWhen(row, ws),
   }));
 
   const deadline = countdown(settings.replacementDeadline, today);
-  const minPost = formatDecimal(settings.posttestMin, 0, 2);
-  const minAvg = formatDecimal(settings.passAvgMin, 2);
+  const minPass = formatDecimal(settings.passGrade, 0, 2);
 
   return (
     <ReplacementPageStatus>
@@ -138,7 +137,7 @@ export function PenggantianScreen({ access, ws, searchParams: query }: ScreenPro
             <>
               Komitmen: SDM yang tidak memenuhi spesifikasi diganti paling lambat{" "}
               {formatTanggal(settings.replacementDeadline)}. Pengganti baru boleh bertugas setelah lulus training:
-              post-test minimal {minPost} dan rata-rata praktik minimal {minAvg}.
+              post-test dan nilai akhir (0 sampai 100) masing-masing minimal {minPass}.
             </>
           }
           actions={
@@ -152,15 +151,15 @@ export function PenggantianScreen({ access, ws, searchParams: query }: ScreenPro
             <RememberView scope={rememberScope(access, ws)} allowed={{ stasiun: stations }} shown={{ stasiun: stationFilter }} />
           ) : null}
           {ws.isKps ? (
-            <StationFilter
-              current={stationFilter}
+            <LinkSelect
+              label="Stasiun"
+              rememberStation
+              current={stationFilter ?? "semua"}
               options={[null, ...stations].map((code) => {
                 const count = code ? ws.replacements.filter((r) => r.station === code).length : ws.replacements.length;
                 return {
-                  code,
-                  label: code ?? "Semua stasiun",
-                  meta: String(count),
-                  metaLabel: `${count} penggantian`,
+                  value: code ?? "semua",
+                  label: `${code ?? "Semua stasiun"} (${count} penggantian)`,
                   href: href(code),
                 };
               })}
@@ -197,7 +196,7 @@ export function PenggantianScreen({ access, ws, searchParams: query }: ScreenPro
                 caption={`Penggantian SDM, ${scopeName}`}
                 rows={gridRows}
                 ctx={ctx}
-                summary={`${rows.length} penggantian · ${rows.filter((r) => replacementPass(r, settings)?.startsWith("Lulus")).length} pengganti lulus`}
+                summary={`${rows.length} penggantian · ${rows.filter((r) => replacementPass(r, settings) === "Lulus").length} pengganti lulus`}
                 actions={<AddReplacementButton ctx={ctx} label="Tambah baris" />}
                 phone={
                   <ol className="-mx-4 flex flex-col gap-4 sm:-mx-6" aria-label={`Daftar penggantian ${scopeName}`}>
@@ -228,12 +227,12 @@ function OnTrackSummary({
   today: string;
   deadline: { big: string; small: string };
 }) {
-  const total = replacementsByGroup(rows as ReplacementRow[], settings, today, []).find((r) => r.key === TOTAL)!;
+  const total = replacementOverview(rows, settings, today);
   const timeliness = rows.map((r) => replacementTimeliness(r, settings, today));
   const passes = rows.map((r) => replacementPass(r, settings));
   const late = total.lateOrOverdue;
   const waiting = timeliness.filter((t) => t === "Menunggu").length;
-  const notPassed = passes.filter((p) => p === "Belum lulus" || p === "Belum training/dinilai").length;
+  const notPassed = passes.filter((p) => p === "Belum Lulus" || p === "Belum training/dinilai").length;
 
   // One verdict, most urgent first: past the deadline, no effective date yet, not yet passed.
   let verdict: { text: string; className: string } | null = null;
@@ -341,11 +340,11 @@ function ReplacementCard({
   const timeliness = replacementTimeliness(row, settings, today);
   const formRow = toFormRow(row);
   const postTest = formRow.postTest;
-  const practiceAvg = formRow.practiceAvg;
+  const finalResult = formRow.finalResult;
   const meta = [
     row.staffCode,
+    row.program ? `Program ${row.program}` : null,
     row.station ? `Stasiun ${row.station}` : "Stasiun belum diisi",
-    row.reportGroup ? `Laporan ${row.reportGroup}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -402,11 +401,8 @@ function ReplacementCard({
               { term: "SDM pengganti", value: row.replacementName ?? <Empty>Belum ada</Empty>, wide: true },
               { term: "Tgl efektif", value: dateOrEmpty(row.effectiveOn) },
               { term: "Tgl training", value: dateOrEmpty(row.trainingOn) },
-              { term: "Post-test", value: <AgainstMinimum value={postTest} min={settings.posttestMin} digits={0} /> },
-              {
-                term: "Rata-rata praktik",
-                value: <AgainstMinimum value={practiceAvg} min={settings.passAvgMin} digits={2} />,
-              },
+              { term: "Post-test", value: <AgainstMinimum value={postTest} min={settings.passGrade} digits={0} /> },
+              { term: "Nilai akhir", value: <AgainstMinimum value={finalResult} min={settings.passGrade} digits={0} /> },
             ]}
           />
         </section>

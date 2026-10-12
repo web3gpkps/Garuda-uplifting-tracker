@@ -23,16 +23,13 @@ async function main() {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const client = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  // weekly_reports.scope arrives with the link-workspace migration; skip that table until it is applied.
-  const scope = await client.from("weekly_reports").select("scope").limit(1);
-  const specs = scope.error ? SYNC_TABLES.filter((s) => s.table !== "weekly_reports") : SYNC_TABLES;
-  if (scope.error) console.log("weekly_reports.scope not on the remote DB yet: weekly_reports skipped in this check");
+  const specs = SYNC_TABLES;
   const store = new SupabaseSyncStore(client, specs);
 
   // 1. DB reads
   const db = await store.readAll();
   const baseline = await store.readBaseline();
-  console.log("DB rows:", Object.fromEntries(Object.entries(db).map(([t, r]) => [t, r?.length ?? 0])));
+  console.log("DB rows:", Object.fromEntries(Object.entries(db).map(([t, r]) => [t, (r as unknown[] | undefined)?.length ?? 0])));
   console.log("stored baseline present:", baseline !== null);
   for (const spec of specs) {
     const bad: Record<string, number> = {};

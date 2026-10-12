@@ -21,6 +21,9 @@ export type BmiCheckInput = {
 export type BmiProfileInput = {
   staffCode: string;
   gender: "L" | "P" | null;
+  /** "Ada catatan BMI": true = Ya (cek tiap 14 hari), false = Tidak (bulanan), null = belum diisi. */
+  bmiHasNote: boolean | null;
+  /** "Catatan program kebugaran". */
   bmiNote: string | null;
 };
 
@@ -66,7 +69,7 @@ export async function saveBmiCheck(accessKey: string, input: BmiCheckInput): Pro
   };
 }
 
-/** share_save_profile: writes L/P and the BMI programme note together. */
+/** share_save_profile: writes L/P, "Ada catatan BMI" and the fitness programme note together. */
 export async function saveBmiProfile(accessKey: string, input: BmiProfileInput): Promise<BmiActionResult> {
   const resolved = await resolveAccess(accessKey);
   if (!resolved.ok) return { ok: false, error: resolved.error };
@@ -77,6 +80,9 @@ export async function saveBmiProfile(accessKey: string, input: BmiProfileInput):
   if (input.gender !== null && input.gender !== "L" && input.gender !== "P") {
     return invalid("gender", "Pilih L, P, atau kosongkan.");
   }
+  if (input.bmiHasNote !== null && typeof input.bmiHasNote !== "boolean") {
+    return invalid("bmi_has_note", "Pilih Ya, Tidak, atau kosongkan.");
+  }
   if (input.bmiNote !== null && typeof input.bmiNote !== "string") {
     return invalid("bmi_note", "Catatan tidak valid.");
   }
@@ -84,6 +90,7 @@ export async function saveBmiProfile(accessKey: string, input: BmiProfileInput):
   const { error } = await resolved.rpc("share_save_profile", {
     p_staff_code: input.staffCode,
     p_gender: input.gender as string,
+    p_bmi_has_note: input.bmiHasNote as boolean,
     p_bmi_note: input.bmiNote as string,
   });
   if (error) return { ok: false, error: toLinkError(error) };

@@ -14,7 +14,7 @@ type ProgrammePositionProps = {
   today: string;
   links: SheetLinks;
   /** Before week 1: what can be done now. */
-  firstSteps: { dueBeforeStart: number; noGender: number };
+  firstSteps: { dueBeforeStart: number; failedNoRemedial: number; bmiNoteMissing: number };
 };
 
 /**
@@ -69,7 +69,7 @@ export function ProgrammePosition({ ws, settings: s, today, links, firstSteps }:
             today={today}
             showSummary={false}
             hrefForWeek={(w) => links.to("laporan", { minggu: w })}
-            label="Jadwal 10 minggu; pilih minggu untuk membuka laporannya"
+            label={`Jadwal ${s.weeks} minggu; pilih minggu untuk membuka laporannya`}
           />
           <p className="text-xs text-ink-muted">Pilih minggu untuk membuka Laporan Mingguan minggu itu.</p>
         </div>
@@ -88,23 +88,35 @@ export function ProgrammePosition({ ws, settings: s, today, links, firstSteps }:
                 .
               </li>
             ) : null}
-            {firstSteps.noGender > 0 ? (
+            {firstSteps.failedNoRemedial > 0 ? (
               <li>
-                Isi L/P untuk {firstSteps.noGender} SDM di{" "}
-                <Link href={links.sdm} className={linkClass}>
-                  Master SDM
+                Jadwalkan remedial untuk {firstSteps.failedNoRemedial} peserta Failed di{" "}
+                <Link href={links.remedial} className={linkClass}>
+                  Remedial
                 </Link>
-                , supaya syarat tinggi badan bisa dicek sejak cek BMI pertama.
+                .
               </li>
             ) : null}
+            {firstSteps.bmiNoteMissing > 0 ? (
+              <li>
+                Isi “Ada catatan BMI” untuk {firstSteps.bmiNoteMissing} SDM di{" "}
+                <Link href={links.bmi} className={linkClass}>
+                  Cek BMI
+                </Link>
+                , supaya jadwal cek (2 mingguan atau bulanan) tepat sejak cek pertama.
+              </li>
+            ) : null}
+            <li>
+              Mulai {formatHariTanggal(s.week1Start)}: isi skor coaching Minggu ke-1 di{" "}
+              <Link href={links.to("performa", { minggu: 1 })} className={linkClass}>
+                Log Performa
+              </Link>
+              .
+            </li>
             <li>
               {formatHariTanggal(s.bmiFirstCheck)}: catat cek BMI periode 1 di{" "}
               <Link href={links.to("bmi", { periode: 1 })} className={linkClass}>
                 Cek BMI
-              </Link>
-              , lalu isi nilai praktik Minggu ke-1 di{" "}
-              <Link href={links.to("performa", { minggu: 1 })} className={linkClass}>
-                Log Performa
               </Link>
               .
             </li>

@@ -1,41 +1,46 @@
 @import "tailwindcss";
 
 /*
- * Design tokens from DESIGN.md ("Calm, Gapura-branded", light only).
+ * Design tokens from DESIGN.md (Garuda Indonesia × Gapura Airport Services, light only).
  * Raw tokens keep the DESIGN.md names; @theme maps them to Tailwind utilities
  * (bg-paper, text-ink, border-line-strong, bg-brand, text-critical, ...).
  * The default Tailwind palette, radii, shadows and animations are cleared on
- * purpose so screens can only use the agreed system.
+ * purpose so screens can only use the agreed system. Ratios are WCAG 2 contrast.
  */
 :root {
   color-scheme: light;
 
-  --paper: #faf9f5;
+  --paper: #f7f8fa; /* cool off-white, sits under the navy without a warm cast */
   --surface: #ffffff;
-  --ink: #26262a;
-  --ink-muted: #5b5a60;
-  --line: #d9d6cf;
-  --line-strong: #8c8a85;
-  --brand: #1a6b45;
-  --brand-strong: #155a3a; /* pressed/hover fill for --brand; white text 8.2:1 */
-  --brand-tint: #e6f4ec;
-  /* Editable grid cells only (workbook: "Kuning = sel input"). Ink 14.2:1, muted 6.4:1, brand 6.1:1. */
+  --ink: #1c2433; /* 14.6:1 on paper */
+  --ink-muted: #535b68; /* 6.5:1 on paper, 6.9:1 on surface */
+  --line: #d5dae1;
+  --line-strong: #7c8390; /* control borders: 3.8:1 on surface, 3.6:1 on paper and input tint */
+  --brand: #0b2f5b; /* Garuda navy: white on it 13.4:1, on paper 12.6:1 */
+  --brand-strong: #082446; /* pressed/hover fill for --brand; white text 15.5:1 */
+  --brand-tint: #e7eef7; /* selected rows, current week; brand on it 11.4:1, ink 13.3:1 */
+  /* Garuda teal, the one accent: current-week marker and the brand edge. 5.3:1 on paper,
+     5.6:1 on surface, 4.8:1 on brand-tint. The logo's own #008898 (4.0:1 on paper) and
+     #00808c (4.4:1) fall short for small text, so the accent is this darker step. */
+  --accent: #00737e;
+  /* Editable grid cells only (workbook: "Kuning = sel input"). Ink 14.7:1, muted 6.5:1, brand 12.6:1. */
   --input-tint: #fff9d6;
-  --mark-lime: #b6d655; /* brand moment only, never text or control borders */
+  --mark-lime: #b6d655; /* Gapura brand moment only, never text or control borders */
   --mark-emerald: #46bb7f;
 
-  /* Status tones (workbook colour code: hijau / oranye / merah). */
-  --good: #1a6b45;
-  --good-tint: #e6f4ec;
-  --warning: #8a4b00;
+  /* Status tones (workbook colour code: hijau / oranye / merah, plus violet for "in progress"
+     so it never reads as the navy brand). Text on its own tint. */
+  --good: #1d6b40; /* 5.7:1 */
+  --good-tint: #e6f3ea;
+  --warning: #8a4b00; /* 6.1:1 */
   --warning-tint: #fdf1d8;
-  --critical: #a1261b;
+  --critical: #a1261b; /* 6.3:1 */
   --critical-strong: #8a1f16; /* pressed/hover fill for danger buttons; white text 9.2:1 */
   --critical-tint: #fbe7e3;
-  --progress: #3f5f8a;
-  --progress-tint: #e8eef6;
-  --neutral: #5b5a60;
-  --neutral-tint: #efede8;
+  --progress: #6b3fa0; /* 6.3:1 */
+  --progress-tint: #f1ebf8;
+  --neutral: #535b68; /* 5.9:1 */
+  --neutral-tint: #eceef2;
 }
 
 @theme {
@@ -70,7 +75,7 @@
   --radius-panel: 10px;
 
   /* Shadow only for things that float above the page: menus, popovers, dialogs. */
-  --shadow-float: 0 12px 32px -8px rgb(38 38 42 / 0.2), 0 2px 6px rgb(38 38 42 / 0.08);
+  --shadow-float: 0 12px 32px -8px rgb(28 36 51 / 0.2), 0 2px 6px rgb(28 36 51 / 0.08);
 
   /* Top bar collapses to a menu button under 900 px (DESIGN.md Layout). */
   --breakpoint-nav: 56.25rem;
@@ -88,6 +93,7 @@
   --color-brand: var(--brand);
   --color-brand-strong: var(--brand-strong);
   --color-brand-tint: var(--brand-tint);
+  --color-accent: var(--accent);
   --color-input-tint: var(--input-tint);
   --color-mark-lime: var(--mark-lime);
   --color-mark-emerald: var(--mark-emerald);
@@ -129,7 +135,7 @@
     text-wrap: balance;
   }
 
-  /* Visible focus everywhere. The ring is --brand (6.2:1 on paper, 5.7:1 on brand-tint). */
+  /* Visible focus everywhere. The ring is --brand (12.6:1 on paper, 11.4:1 on brand-tint). */
   :focus-visible {
     outline: 2px solid var(--brand);
     outline-offset: 2px;
@@ -170,10 +176,10 @@
     color: var(--ink-muted);
   }
 
-  /* Native select with a drawn chevron; the control keeps its 3.45:1 border. */
+  /* Native select with a drawn chevron; the control keeps its 3.8:1 border. */
   .select-control {
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%235b5a60' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23535b68' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
     background-size: 12px 8px;

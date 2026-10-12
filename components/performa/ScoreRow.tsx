@@ -1,20 +1,22 @@
 "use client";
 
-import { useId, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { deltaVsBaseline, practiceAvg, weeklyStatus, type Settings } from "@/lib/rules";
+import { useId, useState, type FormEvent } from "react";
+import { GAP_TOPICS, TOUCH_POINTS, coachingAvg, coachingStatus, deltaVsBaseline, type Settings } from "@/lib/rules";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
-import { Input, NumberInput } from "@/components/ui/Field";
+import { Input, NumberInput, Select } from "@/components/ui/Field";
 import { SaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { cx } from "@/components/ui/cx";
-import type { WeeklyScoreInput, WeeklyScoreResult } from "@/components/performa/actions";
-import { formatScore, formatSignedScore } from "@/lib/format";
-import { ASPECTS, parseScore } from "./format";
-import { CELL, ROW_GRID, STICKY_FIRST } from "./entry-layout";
+import type { WeeklyScoreResult } from "@/components/performa/actions";
+import type { WeeklyScoreInput } from "@/components/performa/weekly-input";
+import { formatScore, formatSignedScore, toInputText } from "@/lib/format";
+import { ASPECT_FIELDS, parseScore, toneOf } from "./format";
 
 export type SavedScore = {
+  touchPoint: string | null;
+  /** COACHING_ASPECTS order. */
   scores: Array<number | null>;
+  gapTopic: string | null;
   observer: string | null;
   coachingNotes: string | null;
 };
@@ -23,8 +25,10 @@ export type EntryStaff = {
   code: string;
   name: string;
   assignmentStatus: string;
-  /** Training baseline average (Master SDM P), for Δ vs baseline. */
-  baselineAvg: number | null;
+  /** Master SDM Final Result, for Δ vs Final Result. */
+  finalResult: number | null;
+  /** Master SDM touch point, the default for a new row. */
+  defaultTouchPoint: string | null;
   /** This week's saved row, or null. */
   saved: SavedScore | null;
   /** "Diubah lewat tautan ini, 8 Okt 14.05" for the saved row. */
@@ -33,43 +37,43 @@ export type EntryStaff = {
 
 export type SaveScoreAction = (accessKey: string, input: WeeklyScoreInput) => Promise<WeeklyScoreResult>;
 
-type Draft = { scores: string[]; observer: string; notes: string };
+type Draft = { touchPoint: string; scores: string[]; gapTopic: string; observer: string; notes: string };
 
 function draftFrom(saved: SavedScore | null): Draft {
   return {
-    scores: ASPECTS.map((_, i) => (saved?.scores[i] == null ? "" : String(saved.scores[i]))),
+    touchPoint: saved?.touchPoint ?? "",
+    scores: ASPECT_FIELDS.map((_, i) => toInputText(saved?.scores[i])),
+    gapTopic: saved?.gapTopic ?? "",
     observer: saved?.observer ?? "",
     notes: saved?.coachingNotes ?? "",
   };
 }
 
 function normalise(d: Draft): Draft {
-  return { scores: d.scores.map((s) => s.trim()), observer: d.observer.trim(), notes: d.notes.trim() };
+  return {
+    touchPoint: d.touchPoint,
+    scores: d.scores.map((s) => s.trim()),
+    gapTopic: d.gapTopic,
+    observer: d.observer.trim(),
+    notes: d.notes.trim(),
+  };
 }
 
 function sameDraft(a: Draft, b: Draft): boolean {
   const x = normalise(a);
   const y = normalise(b);
-  return x.observer === y.observer && x.notes === y.notes && x.scores.every((s, i) => s === y.scores[i]);
+  return (
+    x.touchPoint === y.touchPoint &&
+    x.gapTopic === y.gapTopic &&
+    x.observer === y.observer &&
+    x.notes === y.notes &&
+    x.scores.every((s, i) => s === y.scores[i])
+  );
 }
 
 function isEmpty(d: Draft): boolean {
   const n = normalise(d);
-  return n.observer === "" && n.notes === "" && n.scores.every((s) => s === "");
-}
-
-const FIELD_INDEX: Record<string, number> = {
-  score_a: 0,
-  score_b: 1,
-  score_c: 2,
-  score_d: 3,
-  score_e: 4,
-  score_f: 5,
-};
-
-function joinLetters(letters: string[]): string {
-  if (letters.length <= 1) return letters.join("");
-  return `${letters.slice(0, -1).join(", ")} dan ${letters[letters.length - 1]}`;
+  return n.touchPoint === "" && n.gapTopic === "" && n.observer === "" && n.notes === "" && n.scores.every((s) => s === "");
 }
 
 type ScoreRowProps = {
@@ -77,23 +81,20 @@ type ScoreRowProps = {
   week: number;
   settings: Settings;
   staff: EntryStaff;
-  /** Observer name filled into an empty Pengamat field when scoring starts. */
+  /** Observer name filled into an empty Observer field when scoring starts. */
   defaultObserver: string;
   saveAction: SaveScoreAction;
 };
 
 /**
- * One staff member's scores for one week: A to F (1 to 5), live average, weekly status
- * and Δ vs baseline (lib/rules), observer, coaching notes, and a per-row save.
- * Enter in any field saves the row. Clearing every field of a saved row deletes it
+ * One staff member's Log Performa card for one week (phones): touch point, the four
+ * aspects 0 to 100, live Rata-rata / Status / Δ vs Final Result (lib/rules), topik gap,
+ * observer, catatan, and a save button. Clearing every field of a saved row deletes it
  * after a confirmation. Typed input survives a failed save.
  */
 export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, saveAction }: ScoreRowProps) {
   const id = useId();
-  const nameId = `${id}-name`;
   const messageId = `${id}-message`;
-  const scoreRefs = useRef<Array<HTMLInputElement | null>>([]);
-  const observerRef = useRef<HTMLInputElement | null>(null);
 
   const [draft, setDraft] = useState<Draft>(() => draftFrom(staff.saved));
   const [prevSaved, setPrevSaved] = useState<SavedScore | null>(staff.saved);
@@ -101,94 +102,76 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
   const [serverField, setServerField] = useState<{ field: string; message: string } | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // New server data after refresh(): adopt it unless the person is still editing this row.
+  // New server data after refresh(): adopt it unless the person is still editing this card.
   if (prevSaved !== staff.saved) {
     setPrevSaved(staff.saved);
     if (sameDraft(draft, draftFrom(prevSaved))) setDraft(draftFrom(staff.saved));
   }
 
-  const savedDraft = draftFrom(staff.saved);
-  const dirty = !sameDraft(draft, savedDraft);
+  const dirty = !sameDraft(draft, draftFrom(staff.saved));
   const saving = saveState.status === "saving";
   const willDelete = dirty && staff.saved !== null && isEmpty(draft);
 
   const parsed = draft.scores.map(parseScore);
-  const invalidLetters = parsed.flatMap((p, i) => (p === "invalid" ? [ASPECTS[i].letter] : []));
+  const invalidLabels = parsed.flatMap((p, i) => (p === "invalid" ? [ASPECT_FIELDS[i].label] : []));
   const valid = parsed.map((p) => (p === "invalid" ? null : p));
-  const avg = practiceAvg(valid);
-  const status = weeklyStatus(avg, settings);
-  const delta = deltaVsBaseline(avg, staff.baselineAvg);
-  const serverIndex = serverField ? FIELD_INDEX[serverField.field] : undefined;
+  const avg = coachingAvg(valid);
+  const status = coachingStatus(avg, settings);
+  const delta = deltaVsBaseline(avg, staff.finalResult);
 
   let message: string | null = null;
-  if (invalidLetters.length > 0) {
-    message = `Nilai ${joinLetters(invalidLetters)} harus angka bulat 1 sampai 5.`;
-  } else if (serverField) {
-    message = serverField.message;
-  }
+  if (invalidLabels.length > 0) message = `Skor ${invalidLabels.join(", ")} harus angka 0 sampai 100.`;
+  else if (serverField) message = serverField.message;
 
   function edit(next: Draft) {
     setDraft(next);
-    if (saveState.status === "saved" || saveState.status === "error") setSaveState({ status: "idle" });
+    if (saveState.status === "saved" || saveState.status === "error" || saveState.status === "deleted") {
+      setSaveState({ status: "idle" });
+    }
     if (serverField) setServerField(null);
   }
 
-  function onScoreChange(index: number, event: ChangeEvent<HTMLInputElement>) {
-    const native = event.nativeEvent as InputEvent;
-    // A score is one key: typing into a filled field replaces it (wherever the caret is).
-    const typed = native.inputType === "insertText" && native.data ? native.data : null;
-    const value = typed !== null && draft.scores[index].trim() !== "" ? typed : event.target.value;
-    const scores = draft.scores.map((s, i) => (i === index ? value : s));
+  function editScore(index: number, value: string) {
     const startedScoring = draft.scores.every((s) => s.trim() === "") && value.trim() !== "";
-    const observer =
-      startedScoring && draft.observer.trim() === "" && defaultObserver.trim() !== ""
-        ? defaultObserver.trim()
-        : draft.observer;
-    edit({ ...draft, scores, observer });
-
-    // Typing one valid digit moves on to the next aspect (announced in the help text above the list).
-    if (typed !== null && /^[1-5]$/.test(value.trim())) {
-      const next = index < ASPECTS.length - 1 ? scoreRefs.current[index + 1] : observerRef.current;
-      next?.focus();
-    }
+    edit({
+      ...draft,
+      scores: draft.scores.map((s, i) => (i === index ? value : s)),
+      touchPoint: startedScoring && draft.touchPoint === "" ? (staff.defaultTouchPoint ?? "") : draft.touchPoint,
+      observer:
+        startedScoring && draft.observer.trim() === "" && defaultObserver.trim() !== ""
+          ? defaultObserver.trim()
+          : draft.observer,
+    });
   }
 
   async function persist(toSave: Draft) {
-    const values = toSave.scores.map(parseScore).map((p) => (p === "invalid" ? null : p));
+    const n = normalise(toSave);
     setSaveState({ status: "saving" });
     try {
       const result = await saveAction(accessKey, {
         staffCode: staff.code,
         week,
-        scores: values,
-        observer: toSave.observer,
-        coachingNotes: toSave.notes,
+        touchPoint: n.touchPoint || null,
+        scores: n.scores.map(parseScore).map((p) => (p === "invalid" ? null : p)),
+        gapTopic: n.gapTopic || null,
+        observer: n.observer || null,
+        coachingNotes: n.notes || null,
       });
       if (!result.ok) {
         setSaveState({ status: "error", message: result.error.message });
         if (result.error.field) setServerField({ field: result.error.field, message: result.error.message });
         return;
       }
-      // Show the trimmed values the database stored, unless the row was edited meanwhile.
-      setDraft((current) => (current === toSave ? normalise(toSave) : current));
+      setDraft((current) => (current === toSave ? n : current));
       setSaveState({ status: result.deleted ? "deleted" : "saved", at: result.savedAt });
     } catch {
-      setSaveState({
-        status: "error",
-        message: "koneksi ke server terputus. Nilai yang Anda ketik masih ada; simpan lagi.",
-      });
+      setSaveState({ status: "error", message: "koneksi ke server terputus. Nilai yang Anda ketik masih ada; simpan lagi." });
     }
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!dirty || saving) return;
-    if (invalidLetters.length > 0) {
-      const first = scoreRefs.current[parsed.findIndex((p) => p === "invalid")];
-      first?.focus();
-      first?.select();
-      return;
-    }
+    if (!dirty || saving || invalidLabels.length > 0) return;
     if (willDelete) {
       setConfirmOpen(true);
       return;
@@ -196,127 +179,131 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
     void persist(draft);
   }
 
-  function confirmDelete() {
-    setConfirmOpen(false);
-    void persist(draft);
-  }
-
   const notActive = staff.assignmentStatus && staff.assignmentStatus !== "Aktif";
+  const fieldInvalid = (field: string) => serverField?.field === field || undefined;
 
   return (
-    <li className="group border-b border-line px-4 py-4 focus-within:bg-brand-tint nav:px-0 nav:py-1.5">
-      <form onSubmit={onSubmit} noValidate>
-        <div role="group" aria-labelledby={nameId} className={ROW_GRID}>
-          <div
-            className={cx(
-              CELL.name,
-              STICKY_FIRST,
-              "flex flex-col justify-center gap-0.5 bg-transparent nav:bg-surface nav:group-focus-within:bg-brand-tint",
-            )}
-          >
-            <p id={nameId} className="text-sm font-semibold text-ink">
-              {staff.name}
-            </p>
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
-              <span className="tabular-nums">{staff.code}</span>
-              {notActive ? <StatusChip label={staff.assignmentStatus} /> : null}
-            </p>
-            {staff.changedLabel ? <p className="text-xs text-ink-muted">{staff.changedLabel}</p> : null}
-          </div>
+    <li className="border-b border-line px-4 py-4 focus-within:bg-brand-tint sm:px-6">
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-3" aria-labelledby={`${id}-name`}>
+        <div>
+          <p id={`${id}-name`} className="text-base font-semibold text-ink">
+            {staff.name}
+          </p>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
+            <span className="tabular-nums">{staff.code}</span>
+            {notActive ? <StatusChip label={staff.assignmentStatus} tone={toneOf(staff.assignmentStatus)} /> : null}
+          </p>
+          {staff.changedLabel ? <p className="text-xs text-ink-muted">{staff.changedLabel}</p> : null}
+        </div>
 
-          {ASPECTS.map((aspect, i) => {
-            const inputId = `${id}-${aspect.letter}`;
-            const bad = parsed[i] === "invalid" || serverIndex === i;
+        <label className="flex flex-col gap-1 text-xs font-semibold text-ink">
+          Touch Point
+          <Select
+            value={draft.touchPoint}
+            onChange={(e) => edit({ ...draft, touchPoint: e.target.value })}
+            aria-invalid={fieldInvalid("touch_point")}
+          >
+            <option value="">Belum diisi</option>
+            {TOUCH_POINTS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </Select>
+        </label>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {ASPECT_FIELDS.map((aspect, i) => {
+            const bad = parsed[i] === "invalid" || serverField?.field === aspect.field;
             return (
-              <div key={aspect.key} className={cx(CELL.score, "flex flex-col justify-end gap-1")}>
-                <label htmlFor={inputId} className="text-xs font-semibold text-ink nav:sr-only">
-                  {`${aspect.letter} ${aspect.name}`}
-                </label>
+              <label key={aspect.field} className="flex flex-col justify-end gap-1 text-xs font-semibold text-ink">
+                {aspect.label}
                 <NumberInput
-                  id={inputId}
-                  ref={(node) => {
-                    scoreRefs.current[i] = node;
-                  }}
+                  decimal
                   value={draft.scores[i]}
-                  onChange={(event) => onScoreChange(i, event)}
-                  onFocus={(event) => event.currentTarget.select()}
-                  alignEnd={false}
-                  className="text-center"
+                  onChange={(event) => editScore(i, event.target.value)}
                   aria-invalid={bad || undefined}
                   aria-describedby={bad && message ? messageId : undefined}
                 />
-              </div>
+              </label>
             );
           })}
+        </div>
 
-          <div className={cx(CELL.result, "flex flex-wrap items-center gap-x-3 gap-y-1 nav:flex-col nav:items-start nav:gap-1")}>
-            {avg !== null ? (
-              <p className="text-sm tabular-nums">
-                <span className="text-ink-muted nav:sr-only">Rata-rata </span>
-                <span className="font-semibold text-ink">{formatScore(avg)}</span>
-                {delta !== null ? (
-                  <span className="ml-2 text-xs text-ink-muted">
-                    <span aria-hidden="true">Δ </span>
-                    <span className="sr-only">selisih dengan baseline </span>
-                    {formatSignedScore(delta)}
-                  </span>
-                ) : null}
-              </p>
-            ) : null}
-            <StatusChip label={status} emptyLabel="Belum dinilai" />
-          </div>
-
-          <div className={cx(CELL.observer, "flex flex-col gap-1")}>
-            <label htmlFor={`${id}-observer`} className="text-xs font-semibold text-ink nav:sr-only">
-              Pengamat
-            </label>
-            <Input
-              id={`${id}-observer`}
-              ref={observerRef}
-              value={draft.observer}
-              onChange={(event) => edit({ ...draft, observer: event.target.value })}
-              maxLength={200}
-              autoComplete="off"
-              aria-invalid={serverField?.field === "observer" || undefined}
-            />
-          </div>
-
-          <div className={cx(CELL.notes, "flex flex-col gap-1")}>
-            <label htmlFor={`${id}-notes`} className="text-xs font-semibold text-ink nav:sr-only">
-              Catatan coaching
-            </label>
-            <Input
-              id={`${id}-notes`}
-              value={draft.notes}
-              onChange={(event) => edit({ ...draft, notes: event.target.value })}
-              maxLength={4000}
-              autoComplete="off"
-              aria-invalid={serverField?.field === "coaching_notes" || undefined}
-            />
-          </div>
-
-          <div className={cx(CELL.save, "flex flex-wrap items-center gap-x-3 gap-y-1 nav:flex-col nav:items-start nav:gap-0.5 nav:pr-3")}>
-            <Button
-              type="submit"
-              size="sm"
-              variant={willDelete ? "danger" : "primary"}
-              disabled={!dirty}
-              loading={saving}
-              loadingText="Menyimpan…"
-            >
-              {willDelete ? "Hapus nilai" : "Simpan nilai"}
-            </Button>
-            {dirty && !saving && saveState.status !== "error" ? (
-              <span className="text-xs font-semibold text-warning">Belum disimpan</span>
-            ) : null}
-            <SaveStatus state={saveState} className="nav:min-h-0" />
-          </div>
-
-          {message ? (
-            <p id={messageId} className={cx(CELL.message, "text-sm font-medium text-critical nav:pt-1 nav:pb-1")}>
-              <span className="nav:sticky nav:left-3 nav:inline-block">{message}</span>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1" aria-live="polite">
+          {avg !== null ? (
+            <p className="text-sm tabular-nums">
+              <span className="text-ink-muted">Rata-rata </span>
+              <span className="font-semibold text-ink">{formatScore(avg)}</span>
+              {delta !== null ? (
+                <span className="ml-2 text-xs text-ink-muted">Δ Final Result {formatSignedScore(delta)}</span>
+              ) : null}
             </p>
           ) : null}
+          <StatusChip label={status} tone={toneOf(status)} emptyLabel="Belum dinilai" />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs font-semibold text-ink">
+            Topik Gap
+            <Select
+              value={draft.gapTopic}
+              onChange={(e) => edit({ ...draft, gapTopic: e.target.value })}
+              aria-invalid={fieldInvalid("gap_topic")}
+            >
+              <option value="">Belum diisi</option>
+              {draft.gapTopic && !(GAP_TOPICS as readonly string[]).includes(draft.gapTopic) ? (
+                <option value={draft.gapTopic}>{draft.gapTopic}</option>
+              ) : null}
+              {GAP_TOPICS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-ink">
+            Observer
+            <Input
+              value={draft.observer}
+              onChange={(e) => edit({ ...draft, observer: e.target.value })}
+              maxLength={200}
+              autoComplete="off"
+              aria-invalid={fieldInvalid("observer")}
+            />
+          </label>
+        </div>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-ink">
+          Catatan
+          <Input
+            value={draft.notes}
+            onChange={(e) => edit({ ...draft, notes: e.target.value })}
+            maxLength={4000}
+            autoComplete="off"
+            aria-invalid={fieldInvalid("coaching_notes")}
+          />
+        </label>
+
+        {message ? (
+          <p id={messageId} className="text-sm font-medium text-critical">
+            {message}
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Button
+            type="submit"
+            variant={willDelete ? "danger" : "primary"}
+            disabled={!dirty || invalidLabels.length > 0}
+            loading={saving}
+            loadingText="Menyimpan…"
+          >
+            {willDelete ? "Hapus nilai" : "Simpan nilai"}
+          </Button>
+          {dirty && !saving && saveState.status !== "error" ? (
+            <span className="text-xs font-semibold text-warning">Belum disimpan</span>
+          ) : null}
+          <SaveStatus state={saveState} />
         </div>
       </form>
 
@@ -324,13 +311,19 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         title={`Hapus nilai Minggu ke-${week} untuk ${staff.name}?`}
-        description="Nilai A sampai F, pengamat, dan catatan coaching minggu ini dikosongkan. Nilai minggu lain tidak berubah."
+        description="Touch point, skor keempat aspek, topik gap, observer dan catatan minggu ini dikosongkan. Nilai minggu lain tidak berubah."
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
               Batal
             </Button>
-            <Button variant="danger" onClick={confirmDelete}>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setConfirmOpen(false);
+                void persist(draft);
+              }}
+            >
               Hapus nilai
             </Button>
           </>

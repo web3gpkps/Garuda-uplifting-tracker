@@ -13,8 +13,9 @@ type AuthFrameProps = {
 };
 
 /**
- * Frame for screens outside the shells (login, access problems). The panel's top edge in the
- * logo mark's lime-to-emerald gradient is the app's one brand moment.
+ * Frame for screens outside the shells (login, access problems). The panel's top edge is the
+ * app's one brand moment: Garuda navy to teal across most of it, then a short Gapura
+ * lime-to-emerald run, in the same order as the logos.
  */
 export function AuthFrame({ title, intro, children, footnote }: AuthFrameProps) {
   return (
@@ -24,10 +25,13 @@ export function AuthFrame({ title, intro, children, footnote }: AuthFrameProps) 
           aria-labelledby="auth-frame-title"
           className="overflow-hidden rounded-panel border border-line bg-surface"
         >
-          <div aria-hidden="true" className="h-1 bg-linear-to-r from-mark-lime to-mark-emerald" />
-          {/* Panel padding (24 px+) is the logo's clear space (≥ 25 % of 72 px = 18 px). */}
+          <div aria-hidden="true" className="flex h-1">
+            <span className="flex-3 bg-linear-to-r from-brand to-accent" />
+            <span className="flex-1 bg-linear-to-r from-mark-lime to-mark-emerald" />
+          </div>
+          {/* Panel padding (24 px+) is the lockup's clear space (≥ 25 % of 48 px = 12 px). */}
           <div className="px-6 pt-6 pb-8 sm:px-8 sm:pt-8">
-            <Logo height={72} clearSpace={false} />
+            <Logo height={48} compactHeight={40} clearSpace={false} />
             <p className="mt-5 text-sm font-semibold text-ink">{APP_NAME}</p>
             <p className="text-xs text-ink-muted">{APP_TAGLINE}</p>
             <h1 id="auth-frame-title" className="mt-5 border-t border-line pt-5 text-xl font-semibold text-ink sm:text-2xl">

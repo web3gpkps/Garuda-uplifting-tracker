@@ -57,17 +57,17 @@ describe("SupabaseSyncStore.apply", () => {
     sdm.splice(sdm.findIndex((r) => r[0] === "DPS-01"), 1);
     const n = sdm.length + 1;
     w.sheet.setCell("Master SDM", n, "ID SDM", "TMB-01");
-    w.sheet.setCell("Master SDM", n, "Stasiun", "SUB");
+    w.sheet.setCell("Master SDM", n, "Unit", "SUB");
     w.sheet.setCell("Master SDM", n, "Nama Petugas", "Baru");
     const log = w.sheet.tabs.get("Log Performa Mingguan")!.values;
     const r = log.findIndex((x) => x.includes("SUB-02")) + 1;
-    for (const h of ["A Penampilan", "B Grooming", "C Postur", "D Komunikasi", "E Touch Point", "F B. Inggris & Reservasi", "Observer / Penilai"]) {
+    for (const h of ["Touch Point", "A Grooming & Appearance", "B Product Knowledge", "C Attitude & Behaviour", "D Communication Skill", "Observer / Coach"]) {
       w.sheet.setCell("Log Performa Mingguan", r, h, "");
     }
     const m = log.length + 1;
     w.sheet.setCell("Log Performa Mingguan", m, "Minggu Ke", 1);
     w.sheet.setCell("Log Performa Mingguan", m, "ID SDM", "TMB-01");
-    w.sheet.setCell("Log Performa Mingguan", m, "A Penampilan", 3);
+    w.sheet.setCell("Log Performa Mingguan", m, "A Grooming & Appearance", 70);
     const nr = w.sheet.rows("Penggantian SDM").length + 2;
     w.sheet.setCell("Penggantian SDM", nr, "Nama SDM Diganti", "X");
     const plan = w.plan();
@@ -85,6 +85,20 @@ describe("SupabaseSyncStore.apply", () => {
     expect(idx("weekly_scores.delete")).toBeLessThan(idx("staff.delete"));
     expect(calls[idx("weekly_scores.delete")]).toContain('match({"staff_code":"SUB-02","week":1})');
     expect(calls[idx("staff.delete")]).toContain('in("code",["DPS-01"])');
+  });
+
+  test("bool columns go to the DB as booleans (Ya/Tidak in the sheet)", async () => {
+    const w = new World(smallDb());
+    w.sync();
+    const r = w.sheet.rows("Master SDM").findIndex((x) => x["ID SDM"] === "SUB-01") + 2;
+    w.sheet.setCell("Master SDM", r, "Ada Catatan BMI", "ya");
+    w.sheet.setCell("Master SDM", r + 1, "Ada Catatan BMI", "Tidak");
+    const { client, calls } = recordingClient();
+    await new SupabaseSyncStore(client).apply(w.plan());
+    expect(calls.filter((c) => c.startsWith("staff.update"))).toEqual([
+      'staff.update({"bmi_has_note":true}).match({"code":"SUB-01"})',
+      'staff.update({"bmi_has_note":false}).match({"code":"SUB-02"})',
+    ]);
   });
 
   test("a failing table is reported with code + message only (no row details) and others continue", async () => {
@@ -120,6 +134,8 @@ describe("SupabaseSyncStore lease + state", () => {
     const { client, calls } = recordingClient({ rows: { settings: [{ id: 1 }] } });
     const snap = await new SupabaseSyncStore(client).readAll();
     expect(snap.settings).toEqual([{ id: 1 }]);
+    expect(calls).toContain('stations.select("code").order("code")');
+    expect(calls.some((c) => c.startsWith("remedials.") && c.includes('order("staff_code"'))).toBe(true);
     expect(calls.find((c) => c.startsWith("weekly_scores."))).toContain('order("staff_code",{"ascending":true}).order("week",{"ascending":true}).range(0)');
   });
 });
@@ -128,15 +144,15 @@ test("issueToLog uses rejected:<kind>", () => {
   const w = new World(smallDb());
   w.sync();
   const r = w.sheet.rows("Master SDM").findIndex((x) => x["ID SDM"] === "SUB-01") + 2;
-  w.sheet.setCell("Master SDM", r, "A Penampilan", 9);
+  w.sheet.setCell("Master SDM", r, "Role Play", 150);
   const issue = merge({ baseline: w.baseline, sheet: w.sheet.snapshot(), db: w.db.snapshot(), specs: w.specs }).tables.find((t) => t.table === "staff")!.issues[0];
   expect(issueToLog(issue)).toEqual({
     table_name: "staff",
     row_key: "SUB-01",
-    column_name: "score_a",
+    column_name: "role_play",
     baseline: null,
-    sheet_value: 9,
-    db_value: 4,
+    sheet_value: 150,
+    db_value: 80,
     resolution: "rejected:invalid_value",
   });
 });

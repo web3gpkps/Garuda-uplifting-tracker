@@ -1,20 +1,22 @@
 "use client";
 
 import { createContext, use, useId, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { deleteReplacement, saveReplacement, type ReplacementInput } from "@/components/penggantian/actions";
+import { deleteReplacement, saveReplacement } from "@/components/penggantian/actions";
+import type { ReplacementInput } from "@/components/penggantian/replacement-input";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input, NumberInput, Select, Textarea, parseDecimal } from "@/components/ui/Field";
 import { SaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { formatTanggal } from "@/lib/dates";
-import { replacementPass, replacementTimeliness, type Settings } from "@/lib/rules";
+import { PROGRAMS, replacementPass, replacementTimeliness, type Settings } from "@/lib/rules";
 import type { LinkError } from "@/lib/workspace/errors";
 import { formatDecimal, toInputText } from "@/lib/format";
 import { isPlausibleDate } from "@/components/bmi/format";
 
 export type ReplacementFormRow = {
   id: number;
+  program: string | null;
   station: string | null;
   staffCode: string | null;
   replacedName: string;
@@ -24,7 +26,8 @@ export type ReplacementFormRow = {
   effectiveOn: string | null;
   trainingOn: string | null;
   postTest: number | null;
-  practiceAvg: number | null;
+  /** Nilai akhir training, 0..100. */
+  finalResult: number | null;
   reported: string | null;
   notes: string | null;
 };
@@ -34,7 +37,7 @@ export type ReplacementContext = {
   /** A station link's own station (fixed); null for KPS, who chooses. */
   fixedStation: string | null;
   stations: string[];
-  staff: Array<{ code: string; name: string; station: string | null }>;
+  staff: Array<{ code: string; name: string; station: string | null; program: string | null }>;
   settings: Settings;
   today: string;
   /** KPS: the station filter on screen, preselected when adding. */
@@ -42,13 +45,14 @@ export type ReplacementContext = {
 };
 
 type FieldKey =
+  | "program"
   | "station"
   | "staff"
   | "replacedName"
   | "reason"
   | "replacementName"
   | "postTest"
-  | "practiceAvg"
+  | "finalResult"
   | "reported"
   | "notes"
   | "withdrawnOn"
@@ -60,16 +64,19 @@ const DATE_INVALID = "Tanggal belum lengkap atau tidak valid.";
 const CONNECTION_LOST = "koneksi ke server terputus. Isian Anda masih ada; simpan lagi.";
 
 const SERVER_FIELD: Record<string, FieldKey> = {
+  program: "program",
   station: "station",
-  report_group: "station",
   staff_code: "staff",
   replaced_name: "replacedName",
   reason: "reason",
   replacement_name: "replacementName",
   post_test: "postTest",
-  practice_avg: "practiceAvg",
+  final_result: "finalResult",
   reported: "reported",
   notes: "notes",
+  withdrawn_on: "withdrawnOn",
+  effective_on: "effectiveOn",
+  training_on: "trainingOn",
 };
 
 function serverErrors(error: LinkError): Errors {
@@ -77,11 +84,15 @@ function serverErrors(error: LinkError): Errors {
   const key = SERVER_FIELD[error.field];
   if (!key) return {};
   const messages: Partial<Record<FieldKey, string>> = {
+    program: "Pilih program IULS atau RUST.",
     station: "Pilih stasiun yang benar.",
     staff: "SDM ini tidak ada di stasiun yang dipilih.",
     replacedName: "Pilih SDM dari daftar atau tulis nama SDM yang diganti.",
     postTest: "Post-test harus 0 sampai 100.",
-    practiceAvg: "Rata-rata praktik harus 1,00 sampai 5,00.",
+    finalResult: "Nilai akhir harus 0 sampai 100.",
+    withdrawnOn: DATE_INVALID,
+    effectiveOn: DATE_INVALID,
+    trainingOn: DATE_INVALID,
     reported: "Pilih Ya, Belum, atau kosongkan.",
   };
   return { [key]: messages[key] ?? "Isian terlalu panjang atau tidak valid." };
@@ -110,6 +121,7 @@ type FormProps = {
 function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setErrors }: FormProps) {
   const initialStation = row?.station ?? ctx.fixedStation ?? ctx.defaultStation ?? "";
   const [station, setStation] = useState(initialStation);
+  const [program, setProgram] = useState(row?.program ?? "");
   const [staffChoice, setStaffChoice] = useState(row?.staffCode ?? "");
   const [replacedName, setReplacedName] = useState(row?.replacedName ?? "");
   const [reason, setReason] = useState(row?.reason ?? "");
@@ -118,19 +130,19 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
   const [effectiveOn, setEffectiveOn] = useState(row?.effectiveOn ?? "");
   const [trainingOn, setTrainingOn] = useState(row?.trainingOn ?? "");
   const [postTest, setPostTest] = useState(toInputText(row?.postTest));
-  const [practiceAvg, setPracticeAvg] = useState(toInputText(row?.practiceAvg));
+  const [finalResult, setFinalResult] = useState(toInputText(row?.finalResult));
   const [reported, setReported] = useState(row?.reported === "Ya" || row?.reported === "Belum" ? row.reported : "");
   const [notes, setNotes] = useState(row?.notes ?? "");
 
   const s = ctx.settings;
   const stationStaff = ctx.staff.filter((st) => station !== "" && st.station === station);
   const postTestValue = parseDecimal(postTest);
-  const practiceValue = parseDecimal(practiceAvg);
+  const finalValue = parseDecimal(finalResult);
   const pass = replacementPass(
     {
       replacementName: blankToNull(replacementName),
       postTest: Number.isFinite(postTestValue) ? postTestValue : null,
-      practiceAvg: Number.isFinite(practiceValue) ? practiceValue : null,
+      finalResult: Number.isFinite(finalValue) ? finalValue : null,
     },
     s,
   );
@@ -152,7 +164,10 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
   function chooseStaff(code: string) {
     setStaffChoice(code);
     const person = ctx.staff.find((st) => st.code === code);
-    if (person) setReplacedName(person.name);
+    if (person) {
+      setReplacedName(person.name);
+      if (person.program) setProgram(person.program);
+    }
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -169,10 +184,10 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
       else if (decimalsOver(postTest, 2)) next.postTest = "Paling banyak dua angka di belakang koma.";
       else if (postTestValue < 0 || postTestValue > 100) next.postTest = "Post-test harus 0 sampai 100.";
     }
-    if (practiceValue !== null) {
-      if (Number.isNaN(practiceValue)) next.practiceAvg = "Tulis angka, misalnya 4,25.";
-      else if (decimalsOver(practiceAvg, 2)) next.practiceAvg = "Paling banyak dua angka di belakang koma.";
-      else if (practiceValue < 1 || practiceValue > 5) next.practiceAvg = "Rata-rata praktik harus 1,00 sampai 5,00.";
+    if (finalValue !== null) {
+      if (Number.isNaN(finalValue)) next.finalResult = "Tulis angka, misalnya 86,5.";
+      else if (decimalsOver(finalResult, 2)) next.finalResult = "Paling banyak dua angka di belakang koma.";
+      else if (finalValue < 0 || finalValue > 100) next.finalResult = "Nilai akhir harus 0 sampai 100.";
     }
     setErrors(next);
     if (Object.values(next).some(Boolean)) {
@@ -183,6 +198,7 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
 
     onSubmit({
       id: row?.id ?? null,
+      program: program === "IULS" || program === "RUST" ? program : null,
       station: ctx.fixedStation ?? blankToNull(station),
       staffCode: staffChoice === "" ? null : staffChoice,
       replacedName: blankToNull(replacedName),
@@ -192,7 +208,7 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
       effectiveOn: blankToNull(effectiveOn),
       trainingOn: blankToNull(trainingOn),
       postTest: postTestValue,
-      practiceAvg: practiceValue,
+      finalResult: finalValue,
       reported: reported === "Ya" || reported === "Belum" ? reported : null,
       notes: blankToNull(notes),
     });
@@ -222,6 +238,16 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
               </Select>
             </Field>
           )}
+          <Field label="Program" error={errors.program} help="Terisi dari SDM yang dipilih. Bisa diubah.">
+            <Select value={program} onChange={(e) => setProgram(e.target.value)}>
+              <option value="">Belum diisi</option>
+              {PROGRAMS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field
             label="Pilih dari daftar SDM"
             error={errors.staff}
@@ -262,8 +288,7 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
         <legend className="mb-1 text-base font-semibold text-ink">Pengganti</legend>
         <p className="text-sm text-ink-muted">
           Tgl efektif paling lambat {formatTanggal(s.replacementDeadline)}. Pengganti boleh bertugas setelah lulus
-          training: post-test minimal {formatDecimal(s.posttestMin, 0, 2)} dan rata-rata praktik minimal{" "}
-          {formatDecimal(s.passAvgMin, 2)}.
+          training: post-test dan nilai akhir masing-masing minimal {formatDecimal(s.passGrade, 0, 2)}.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="SDM pengganti" error={errors.replacementName} className="sm:col-span-2">
@@ -275,15 +300,15 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
           <Field label="Tgl training" error={errors.trainingOn}>
             <Input type="date" value={trainingOn} onChange={(e) => setTrainingOn(e.target.value)} />
           </Field>
-          <Field label="Post-test" error={errors.postTest} help={`Syarat minimal ${formatDecimal(s.posttestMin, 0, 2)}.`}>
+          <Field label="Post-test" error={errors.postTest} help={`0 sampai 100, syarat minimal ${formatDecimal(s.passGrade, 0, 2)}.`}>
             <NumberInput decimal value={postTest} onChange={(e) => setPostTest(e.target.value)} />
           </Field>
           <Field
-            label="Rata-rata praktik"
-            error={errors.practiceAvg}
-            help={`Syarat minimal ${formatDecimal(s.passAvgMin, 2)}.`}
+            label="Nilai akhir"
+            error={errors.finalResult}
+            help={`0 sampai 100, syarat minimal ${formatDecimal(s.passGrade, 0, 2)}.`}
           >
-            <NumberInput decimal value={practiceAvg} onChange={(e) => setPracticeAvg(e.target.value)} />
+            <NumberInput decimal value={finalResult} onChange={(e) => setFinalResult(e.target.value)} />
           </Field>
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-2 rounded-control bg-paper px-3 py-2">

@@ -7,7 +7,7 @@ import { cx } from "@/components/ui/cx";
 export type FlagItem = {
   key: string;
   count: number;
-  /** "Beda – verifikasi", "NIPP ganda", ... */
+  /** "Beda – verifikasi", "Failed", ... */
   title: string;
   /** What the flag means and why it matters. */
   detail: ReactNode;
@@ -19,7 +19,7 @@ export type FlagItem = {
 
 /**
  * "Perlu diperiksa": the record problems on this screen, counted generically from the
- * data (lib/rules for Beda; NIPP and L/P from the staff rows). Each one filters the
+ * data (lib/rules staffBaseline: consistency, status, failure cause). Each one filters the
  * table through a real link (?cek=...). Server component.
  */
 export function FlagSummary({ items, scopeName }: { items: FlagItem[]; scopeName: string }) {
@@ -29,13 +29,12 @@ export function FlagSummary({ items, scopeName }: { items: FlagItem[]; scopeName
       description={`Data SDM ${scopeName} yang tidak cocok atau belum lengkap. Pilih salah satu untuk menyaring tabel.`}
       padding="flush"
     >
-      <ul className="grid border-t border-line sm:grid-cols-2 xl:grid-cols-4">
+      <ul className="grid border-t border-line sm:grid-cols-3">
         {items.map((item) => (
           <li
             key={item.key}
             className={cx(
-              "flex flex-col gap-2 border-b border-line px-4 py-4 sm:px-6 xl:border-b-0 xl:border-r xl:last:border-r-0",
-              "sm:odd:border-r xl:odd:border-r",
+              "flex flex-col gap-2 border-b border-line px-4 py-4 sm:border-b-0 sm:border-r sm:px-6 sm:last:border-r-0",
               item.active && "bg-brand-tint",
             )}
           >

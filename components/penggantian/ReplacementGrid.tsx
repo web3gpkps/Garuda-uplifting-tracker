@@ -4,13 +4,12 @@ import { useCallback, useMemo, type ReactNode } from "react";
 import { DataGrid, type CellValue, type GridColumn, type SaveRowResult } from "@/components/grid/DataGrid";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { formatDecimal } from "@/lib/format";
-import type { ReplacementPass, ReplacementTimeliness } from "@/lib/rules";
+import { PROGRAMS, type ReplacementPass, type ReplacementTimeliness } from "@/lib/rules";
 import { saveReplacement } from "./actions";
 import { isPlausibleDate } from "@/components/bmi/format";
 import { ReplacementDeleteButton, type ReplacementContext, type ReplacementFormRow } from "./ReplacementDialogs";
 
 export type ReplacementGridRow = ReplacementFormRow & {
-  reportGroup: string | null;
   pass: ReplacementPass | null;
   timeliness: ReplacementTimeliness | null;
   /** "tautan ini, 8 Okt 07.55" or "pemilik / Google Sheet". */
@@ -33,29 +32,32 @@ const SEARCH = {
   text: (r: ReplacementGridRow) => `${r.replacedName} ${r.staffCode ?? ""} ${r.replacementName ?? ""}`,
 };
 
-/** Server field name (share_save_replacement DETAIL) → grid column key. */
 /** Plain-language messages for share_save_replacement's invalid_input fields. */
 const FIELD_MESSAGE: Record<string, string> = {
+  program: "Pilih program IULS atau RUST.",
   station: "Pilih stasiun yang benar.",
-  report_group: "Laporan tidak cocok dengan stasiun.",
   staff_code: "SDM ini bukan dari stasiun baris ini. Pilih SDM stasiun yang sama.",
   replaced_name: "Isi nama SDM yang diganti.",
   post_test: "Post-test harus 0 sampai 100.",
-  practice_avg: "Rata-rata praktik harus 1 sampai 5.",
+  final_result: "Nilai akhir harus 0 sampai 100.",
   reported: "Pilih Ya atau Belum.",
 };
 
+/** Server field name (share_save_replacement DETAIL) → grid column key. */
 const COLUMN_OF_FIELD: Record<string, string> = {
+  program: "program",
   station: "station",
-  report_group: "station",
   staff_code: "staff_code",
   replaced_name: "replaced_name",
   reason: "reason",
   replacement_name: "replacement_name",
   post_test: "post_test",
-  practice_avg: "practice_avg",
+  final_result: "final_result",
   reported: "reported",
   notes: "notes",
+  withdrawn_on: "withdrawn_on",
+  effective_on: "effective_on",
+  training_on: "training_on",
 };
 
 function chip(value: CellValue) {
@@ -87,7 +89,9 @@ function againstMinimum(value: CellValue, min: number, digits: number) {
  */
 export function ReplacementGrid({ caption, rows, ctx, summary, actions, phone }: ReplacementGridProps) {
   const { accessKey, fixedStation, settings } = ctx;
-  const staffKey = ctx.staff.map((s) => `${s.code}\u0001${s.name}\u0001${s.station ?? ""}`).join("\u0002");
+  const staffKey = ctx.staff
+    .map((s) => `${s.code}\u0001${s.name}\u0001${s.station ?? ""}\u0001${s.program ?? ""}`)
+    .join("\u0002");
   const stationsKey = ctx.stations.join(",");
 
   const columns = useMemo<GridColumn<ReplacementGridRow>[]>(() => {
@@ -95,8 +99,7 @@ export function ReplacementGrid({ caption, rows, ctx, summary, actions, phone }:
     const staff = entries.map(([code, name]) => ({ value: code, label: `${code} ${name}` }));
     const stationOf = new Map(entries.map(([code, , station]) => [code, station]));
     const canPickStation = fixedStation === null;
-    const minPost = formatDecimal(settings.posttestMin, 0, 2);
-    const minAvg = formatDecimal(settings.passAvgMin, 2);
+    const minPass = formatDecimal(settings.passGrade, 0, 2);
     return [
       {
         key: "replaced_name",
@@ -107,6 +110,15 @@ export function ReplacementGrid({ caption, rows, ctx, summary, actions, phone }:
         maxLength: 200,
         frozen: true,
         get: (r) => r.replacedName,
+      },
+      {
+        key: "program",
+        header: "Program",
+        group: "SDM diganti",
+        width: 92,
+        editor: "select",
+        options: PROGRAMS.map((value) => ({ value })),
+        get: (r) => r.program,
       },
       {
         key: "station",
@@ -132,10 +144,9 @@ export function ReplacementGrid({ caption, rows, ctx, summary, actions, phone }:
           const station = stationOf.get(value);
           return station && station !== row.station ? `Pilih SDM dari stasiun ${row.station}.` : null;
         },
-        // The list shows "KNO-03 <nama>"; the cell only needs the ID (name is the first column).
+        // The list shows "IULS-01 <nama>"; the cell only needs the ID (name is the first column).
         render: (value) => (value ? <span className="tabular-nums">{String(value)}</span> : null),
       },
-      { key: "report_group", header: "Laporan", group: "SDM diganti", width: 96, editor: "readonly", get: (r) => r.reportGroup },
       { key: "reason", header: "Alasan", group: "SDM diganti", width: 220, editor: "longtext", maxLength: 4000 },
       {
         key: "withdrawn_on",
@@ -175,8 +186,8 @@ export function ReplacementGrid({ caption, rows, ctx, summary, actions, phone }:
       },
       {
         key: "post_test",
-        header: `Post-test (≥ ${minPost})`,
-        label: `Post-test, syarat minimal ${minPost}`,
+        header: `Post-test (≥ ${minPass})`,
+        label: `Post-test, syarat minimal ${minPass}`,
         group: "Pengganti",
         width: 128,
         editor: "number",
@@ -184,20 +195,20 @@ export function ReplacementGrid({ caption, rows, ctx, summary, actions, phone }:
         max: 100,
         decimals: 2,
         get: (r) => r.postTest,
-        render: (value) => againstMinimum(value, settings.posttestMin, 0),
+        render: (value) => againstMinimum(value, settings.passGrade, 0),
       },
       {
-        key: "practice_avg",
-        header: `Praktik (≥ ${minAvg})`,
-        label: `Rata-rata praktik, syarat minimal ${minAvg}`,
+        key: "final_result",
+        header: `Nilai akhir (≥ ${minPass})`,
+        label: `Nilai akhir training, 0 sampai 100, syarat minimal ${minPass}`,
         group: "Pengganti",
-        width: 128,
+        width: 140,
         editor: "number",
-        min: 1,
-        max: 5,
+        min: 0,
+        max: 100,
         decimals: 2,
-        get: (r) => r.practiceAvg,
-        render: (value) => againstMinimum(value, settings.passAvgMin, 2),
+        get: (r) => r.finalResult,
+        render: (value) => againstMinimum(value, settings.passGrade, 0),
       },
       { key: "pass", header: "Status kelulusan", group: "Pengganti", width: 184, editor: "readonly", get: (r) => r.pass, render: chip },
       {
@@ -229,7 +240,7 @@ export function ReplacementGrid({ caption, rows, ctx, summary, actions, phone }:
         render: (_value, r) => <span className="text-xs text-ink-muted">{r.changed}</span>,
       },
     ];
-  }, [staffKey, stationsKey, fixedStation, settings.posttestMin, settings.passAvgMin]);
+  }, [staffKey, stationsKey, fixedStation, settings.passGrade]);
 
   const rowActions = useMemo(
     () => ({
@@ -245,15 +256,17 @@ export function ReplacementGrid({ caption, rows, ctx, summary, actions, phone }:
       const pick = <T,>(field: string, stored: T): T => (field in changes ? (changes[field] as T) : stored);
       const staffCode = pick<string | null>("staff_code", row.staffCode);
       let replacedName = pick<string | null>("replaced_name", row.replacedName);
-      // Picking someone from the roster fills the name, as in the add form.
-      if ("staff_code" in changes && !("replaced_name" in changes) && staffCode) {
-        replacedName = ctx.staff.find((s) => s.code === staffCode)?.name ?? replacedName;
-      }
+      let program = pick<string | null>("program", row.program);
+      // Picking someone from the roster fills the name and program, as in the add form.
+      const person = "staff_code" in changes && staffCode ? ctx.staff.find((s) => s.code === staffCode) : undefined;
+      if (person && !("replaced_name" in changes)) replacedName = person.name;
+      if (person?.program && !("program" in changes)) program = person.program;
       const reported = pick<string | null>("reported", row.reported);
       let result: Awaited<ReturnType<typeof saveReplacement>>;
       try {
         result = await saveReplacement(accessKey, {
           id: row.id,
+          program,
           station: fixedStation ?? pick<string | null>("station", row.station),
           staffCode,
           replacedName,
@@ -263,7 +276,7 @@ export function ReplacementGrid({ caption, rows, ctx, summary, actions, phone }:
           effectiveOn: pick<string | null>("effective_on", row.effectiveOn),
           trainingOn: pick<string | null>("training_on", row.trainingOn),
           postTest: pick<number | null>("post_test", row.postTest),
-          practiceAvg: pick<number | null>("practice_avg", row.practiceAvg),
+          finalResult: pick<number | null>("final_result", row.finalResult),
           reported: reported === "Ya" || reported === "Belum" ? reported : null,
           notes: pick<string | null>("notes", row.notes),
         });

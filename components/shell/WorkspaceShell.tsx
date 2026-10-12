@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { Workspace } from "@/lib/workspace";
 import type { WorkspaceAccess } from "@/lib/workspace/access";
 import { APP_NAME } from "@/lib/app-info";
-import { Brand } from "./Brand";
+import { Brand, LOGO_EDGE } from "./Brand";
 import { Logo } from "./Logo";
 import { ShellFrame, ShellLoading } from "./ShellFrame";
 import { WeekRail } from "./WeekRail";
@@ -18,8 +18,8 @@ type WorkspaceShellProps = {
 
 /**
  * Station workspace chrome (/s/<token>, no account): the scope is the first thing
- * next to the logo ("Stasiun SUB" / "KPS · semua stasiun"), the link's label sits on
- * the right, and the 10-week rail is the context line.
+ * next to the logos ("Stasiun CGK" / "KPS · semua stasiun"), the link's label sits on
+ * the right, and the programme rail (weeks from Parameter) is the context line.
  */
 export function WorkspaceShell({ access, workspace, today, children }: WorkspaceShellProps) {
   return (
@@ -51,7 +51,7 @@ export function WorkspaceShell({ access, workspace, today, children }: Workspace
           />
         ) : (
           <p className="text-xs text-ink-muted">
-            Jadwal 10 minggu belum terbaca dari tautan ini. Halaman tetap bisa dipakai.
+            Jadwal pemantauan belum terbaca dari tautan ini. Halaman tetap bisa dipakai.
           </p>
         )
       }
@@ -66,8 +66,8 @@ export function WorkspaceShellLoading() {
     <ShellLoading
       brand={
         <div className="flex min-w-0 items-center gap-3">
-          <Logo height={36} className="-ml-[9px]" />
-          <p className="truncate border-l border-line pl-3 text-sm font-semibold text-ink">
+          <Logo height={36} compactHeight={26} className={LOGO_EDGE} />
+          <p className="hidden truncate border-l border-line pl-3 text-sm font-semibold text-ink sm:block">
             {APP_NAME}
           </p>
         </div>

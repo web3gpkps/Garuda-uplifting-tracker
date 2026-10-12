@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { refresh } from "next/cache";
 import { requireAdmin } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
-import { isLinkScope, type LinkActionResult } from "./link-types";
+import { KPS_SCOPE, isScopeFormat, type LinkActionResult } from "./link-types";
 import { linkAccess } from "@/lib/workspace/access";
 
 const MAX_LABEL = 80;
@@ -30,12 +30,26 @@ async function insertLink(scope: string, label: string | null) {
   return supabase.from("share_links").insert({ scope, label }).select("token").single();
 }
 
+/**
+ * True when the scope is KPS or a listed station. The database enforces the same rule with a
+ * trigger; checking first turns a refusal into a message on the Lingkup field.
+ */
+async function scopeExists(scope: string): Promise<boolean | "unknown"> {
+  if (scope === KPS_SCOPE) return true;
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("stations").select("code").eq("code", scope).maybeSingle();
+  if (error) return "unknown";
+  return data !== null;
+}
+
 /** "Buat tautan": new link for a scope; returns the full URL to show once. */
-export async function createShareLink(scope: string, rawLabel: string): Promise<LinkActionResult> {
+export async function createShareLink(rawScope: string, rawLabel: string): Promise<LinkActionResult> {
   await requireAdmin();
+  const scope = rawScope.trim().toUpperCase();
   const label = cleanLabel(rawLabel);
   const fieldErrors: { scope?: string; label?: string } = {};
-  if (!isLinkScope(scope)) fieldErrors.scope = "Pilih lingkup tautan.";
+  if (!isScopeFormat(scope)) fieldErrors.scope = "Pilih lingkup tautan.";
+  else if ((await scopeExists(scope)) === false) fieldErrors.scope = `Stasiun ${scope} tidak ada di daftar stasiun.`;
   if (!label) fieldErrors.label = "Isi label, misalnya nama atau jabatan pemegang tautan.";
   else if (label.length > MAX_LABEL) fieldErrors.label = `Maksimal ${MAX_LABEL} karakter.`;
   if (fieldErrors.scope || fieldErrors.label) {
@@ -43,6 +57,9 @@ export async function createShareLink(scope: string, rawLabel: string): Promise<
   }
 
   const { data, error } = await insertLink(scope, label);
+  if (error?.message === "share_links_scope_check") {
+    return { ok: false, message: "Periksa isian yang ditandai.", fieldErrors: { scope: `Stasiun ${scope} tidak ada di daftar stasiun.` } };
+  }
   if (error || !data) {
     return { ok: false, message: `Tautan belum dibuat: database menolak (${error?.message ?? "tanpa jawaban"}).` };
   }

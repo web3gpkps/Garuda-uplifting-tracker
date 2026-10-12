@@ -1,5 +1,5 @@
 -- RLS: a signed-in non-admin sees and changes nothing; an admin sees and edits everything
--- (within the narrower rules for stations / settings / sync_state).
+-- (within the narrower rules for settings / sync_state).
 -- Uses its own fixture rows (codes TST-*); does not depend on seed.sql.
 begin;
 create extension if not exists pgtap with schema extensions;
@@ -12,13 +12,14 @@ insert into auth.users (id, email) values
 insert into public.admins (user_id, email) values
   ('11111111-1111-4111-8111-111111111111', 'tst-admin@example.invalid');
 
-insert into public.staff (code, station, name, nipp, pre_test, post_test, score_a, notes) values
-  ('TST-SUB', 'SUB', 'Uji Sub', 'NIPP-SECRET-1', 70, 85, 4, 'NOTES-SECRET');
-insert into public.weekly_scores (staff_code, week, score_a, coaching_notes) values ('TST-SUB', 1, 4, 'uji');
+insert into public.staff (code, program, station, name, employee_no, role_play, post_test, report_remark, notes) values
+  ('TST-SUB', 'IULS', 'SUB', 'Uji Sub', 'EMP-SECRET-1', 70, 85, 'Failed', 'NOTES-SECRET');
+insert into public.weekly_scores (staff_code, week, score_grooming, coaching_notes) values ('TST-SUB', 1, 80, 'uji');
 insert into public.bmi_checks (staff_code, period, check_date, height_cm, weight_kg) values
   ('TST-SUB', 1, date '2026-10-12', 165, 60);
-insert into public.action_items (code, report_group, action) values ('TST-TL01', 'SUB', 'Uji tindakan');
-insert into public.replacements (report_group, station, replaced_name) values ('SUB', 'SUB', 'Uji Diganti');
+insert into public.action_items (code, group_name, action) values ('TST-TL01', 'Coaching Frontliner', 'Uji tindakan');
+insert into public.remedials (staff_code, action) values ('TST-SUB', 'Individual Coaching');
+insert into public.replacements (program, station, replaced_name) values ('IULS', 'SUB', 'Uji Diganti');
 insert into public.weekly_reports (week, scope, findings) values (20, 'KPS', 'uji') on conflict (week, scope) do nothing;
 insert into public.share_links (scope, label) values ('SUB', 'uji');
 insert into public.sync_conflicts (table_name, row_key, column_name) values ('staff', 'TST-SUB', 'name');
@@ -66,8 +67,16 @@ select throws_ok(
   '42501', null, 'non-admin cannot insert bmi_checks'
 );
 select throws_ok(
+  $$insert into public.remedials (staff_code, action) values ('TST-SUB', 'Individual Coaching')$$,
+  '42501', null, 'non-admin cannot insert remedials'
+);
+select throws_ok(
   $$insert into public.share_links (scope, label) values ('KPS', 'x')$$,
   '42501', null, 'non-admin cannot create share links'
+);
+select throws_ok(
+  $$insert into public.stations (code, sort) values ('ZZT', 99)$$,
+  '42501', null, 'non-admin cannot add stations'
 );
 
 with u as (update public.staff set name = 'hacked' returning 1)
@@ -78,6 +87,8 @@ with u as (update public.share_links set revoked_at = null returning 1)
 select is(count(*)::int, 0, 'non-admin UPDATE share_links touches 0 rows') from u;
 with d as (delete from public.bmi_checks returning 1)
 select is(count(*)::int, 0, 'non-admin DELETE bmi_checks touches 0 rows') from d;
+with d as (delete from public.remedials returning 1)
+select is(count(*)::int, 0, 'non-admin DELETE remedials touches 0 rows') from d;
 with d as (delete from public.admins returning 1)
 select is(count(*)::int, 0, 'non-admin DELETE admins touches 0 rows') from d;
 
@@ -102,12 +113,16 @@ with u as (update public.staff set notes = 'diubah admin' where code = 'TST-SUB'
 select is(count(*)::int, 1, 'admin can update staff') from u;
 
 select lives_ok(
-  $$insert into public.weekly_scores (staff_code, week, score_b) values ('TST-SUB', 2, 3)$$,
+  $$insert into public.weekly_scores (staff_code, week, score_knowledge) values ('TST-SUB', 2, 88)$$,
   'admin can insert weekly_scores'
 );
 select lives_ok(
   $$insert into public.bmi_checks (staff_code, period, height_cm, weight_kg) values ('TST-SUB', 2, 170, 70)$$,
   'admin can insert bmi_checks'
+);
+select lives_ok(
+  $$update public.remedials set post_test = 90 where staff_code = 'TST-SUB'$$,
+  'admin can update remedials'
 );
 select lives_ok(
   $$insert into public.share_links (scope, label) values ('KPS', 'uji kps')$$,
@@ -121,9 +136,17 @@ select ok(
 with u as (update public.settings set weeks = 10 returning 1)
 select is(count(*)::int, 1, 'admin can update the settings row') from u;
 select throws_ok('delete from public.settings', '42501', null, 'admin cannot delete the settings row');
+select lives_ok(
+  $$insert into public.stations (code, sort) values ('ZZT', 99)$$,
+  'admin can add a station (owner maintains the station list)'
+);
 select throws_ok(
-  $$insert into public.stations (code, report_group, sort) values ('SUB', 'SUB', 9)$$,
-  '42501', null, 'stations are read-only for admins'
+  $$insert into public.share_links (scope, label) values ('ZZX', 'unknown')$$,
+  '23514', 'share_links_scope_check', 'a link scope must be KPS or a listed station'
+);
+select lives_ok(
+  $$insert into public.share_links (scope, label) values ('ZZT', 'new station')$$,
+  'a link can be made for a newly listed station'
 );
 select throws_ok('update public.sync_state set failures = 0', '42501', null, 'sync_state is read-only for admins');
 select is((select count(*) from public.sync_state), 1::bigint, 'admin can read sync_state');

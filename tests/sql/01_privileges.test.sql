@@ -1,19 +1,19 @@
 -- Privileges: anon has nothing on any table/sequence; only the three share RPCs are callable by anon;
 -- internals are not callable by API roles; future objects do not silently grant anon.
--- Run: supabase test db tests/sql
+-- Run: bun tests/sql/run.ts (PGlite), or supabase test db tests/sql where pgTAP is installed.
 begin;
 create extension if not exists pgtap with schema extensions;
 select * from no_plan();
 
 -- ------------------------------------------------------------- catalogue checks (as postgres)
 select ok(
-  (select count(*) from pg_catalog.pg_tables where schemaname = 'public') >= 12,
-  'all 12 public tables exist'
+  (select count(*) from pg_catalog.pg_tables where schemaname = 'public') >= 13,
+  'all 13 public tables exist'
 );
 
 select has_table('public', t, format('table public.%s exists', t))
   from unnest(array[
-    'stations', 'settings', 'staff', 'weekly_scores', 'bmi_checks', 'action_items',
+    'stations', 'settings', 'staff', 'weekly_scores', 'bmi_checks', 'action_items', 'remedials',
     'replacements', 'weekly_reports', 'share_links', 'admins', 'sync_state', 'sync_conflicts'
   ]) as t;
 
@@ -58,7 +58,7 @@ select results_eq(
       where n.nspname = 'public'
         and pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
       order by 1 $$,
-  $$ values ('share_delete_replacement'), ('share_kps_save_staff_baseline'), ('share_kps_update_action_item'), ('share_open'), ('share_save_check'), ('share_save_profile'), ('share_save_replacement'), ('share_save_staff'), ('share_save_weekly_report'), ('share_save_weekly_score'), ('share_update_action_item') $$,
+  $$ values ('share_delete_remedial'), ('share_delete_replacement'), ('share_kps_save_staff_baseline'), ('share_kps_update_action_item'), ('share_open'), ('share_save_check'), ('share_save_profile'), ('share_save_remedial'), ('share_save_replacement'), ('share_save_staff'), ('share_save_weekly_report'), ('share_save_weekly_score'), ('share_update_action_item') $$,
   'anon can execute exactly the share_* RPCs in public'
 );
 
@@ -69,7 +69,7 @@ select results_eq(
       where n.nspname = 'public'
         and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
       order by 1 $$,
-  $$ values ('is_admin'), ('share_delete_replacement'), ('share_kps_save_staff_baseline'), ('share_kps_update_action_item'), ('share_open'), ('share_save_check'), ('share_save_profile'), ('share_save_replacement'), ('share_save_staff'), ('share_save_weekly_report'), ('share_save_weekly_score'), ('share_update_action_item') $$,
+  $$ values ('is_admin'), ('share_delete_remedial'), ('share_delete_replacement'), ('share_kps_save_staff_baseline'), ('share_kps_update_action_item'), ('share_open'), ('share_save_check'), ('share_save_profile'), ('share_save_remedial'), ('share_save_replacement'), ('share_save_staff'), ('share_save_weekly_report'), ('share_save_weekly_score'), ('share_update_action_item') $$,
   'authenticated can execute exactly is_admin + the share_* RPCs in public'
 );
 
@@ -110,7 +110,7 @@ select results_eq(
        join pg_catalog.pg_namespace n on n.oid = p.pronamespace
       where n.nspname in ('public', 'private') and p.prosecdef
       order by 1 $$,
-  $$ values ('private.sync_ping'), ('public.is_admin'), ('public.share_delete_replacement'), ('public.share_kps_save_staff_baseline'), ('public.share_kps_update_action_item'), ('public.share_open'), ('public.share_save_check'), ('public.share_save_profile'), ('public.share_save_replacement'), ('public.share_save_staff'), ('public.share_save_weekly_report'), ('public.share_save_weekly_score'), ('public.share_update_action_item') $$,
+  $$ values ('private.sync_ping'), ('public.is_admin'), ('public.share_delete_remedial'), ('public.share_delete_replacement'), ('public.share_kps_save_staff_baseline'), ('public.share_kps_update_action_item'), ('public.share_open'), ('public.share_save_check'), ('public.share_save_profile'), ('public.share_save_remedial'), ('public.share_save_replacement'), ('public.share_save_staff'), ('public.share_save_weekly_report'), ('public.share_save_weekly_score'), ('public.share_update_action_item') $$,
   'SECURITY DEFINER is limited to is_admin, the share_* RPCs and the sync ping'
 );
 

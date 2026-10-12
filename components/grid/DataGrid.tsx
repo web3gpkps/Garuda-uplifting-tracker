@@ -8,25 +8,25 @@
  *   const columns = useMemo<GridColumn<Row>[]>(() => [
  *     { key: "code", header: "ID", width: 84, editor: "readonly", frozen: true },
  *     { key: "name", header: "Nama", width: 200, editor: "text", required: true, maxLength: 200, frozen: true },
- *     { key: "score_a", header: "A", label: "A Penampilan", group: "Nilai pelatihan", width: 52,
- *       editor: "score", get: (r) => r.scoreA },
+ *     { key: "score_knowledge", header: "Product Knowledge", group: "Skor coaching (0 sampai 100)", width: 120,
+ *       editor: "number", min: 0, max: 100, decimals: 2, get: (r) => r.scoreKnowledge },
  *     { key: "status", header: "Status", width: 120, editor: "readonly",
  *       render: (_v, r) => <StatusChip label={r.status} bordered /> },
  *   ], [deps]);
  *
  *   <DataGrid
- *     caption="Master SDM, semua stasiun"          // accessible name of the grid
+ *     caption="Master SDM, semua unit"             // accessible name of the grid
  *     rows={rows} rowKey={(r) => r.code} rowLabel={(r) => `${r.code}, ${r.name}`}
  *     columns={columns}                             // MEMOISE: a new array re-renders every row
  *     onSaveRow={async (key, changes, row) => …}    // per-row autosave, see below
- *     toolbar={<StationFilter …/>} actions={<AddButton/>} summary="75 SDM · 12 sudah dinilai"
+ *     toolbar={<StationFilter …/>} actions={<AddButton/>} summary="271 SDM · 12 sudah dinilai"
  *     search={{ placeholder: "Cari nama atau ID", text: (r) => `${r.code} ${r.name}` }}
  *     rowActions={{ header: "Aksi", width: 88, render: (r) => <Button size="sm">Ubah</Button> }}
- *     confirmClear={{ fields: ["score_a", …], message: (r) => `Hapus nilai ${r.name}?` }}
+ *     confirmClear={{ fields: ["score_grooming", …], message: (r) => `Hapus nilai ${r.name}?` }}
  *     confirmClear={{ groups: [{ fields: ["tb_1", "bb_1"], label: "ke-1" }, …],   // one entry per group
  *                     message: (r, labels) => `Hapus cek BMI ${labels.join(" dan ")} untuk ${r.name}?` }}
  *     highlightGroup="Cek ke-2 (26 Okt)" highlightNote="periode berjalan"   // highlighted, scrolled into view
- *     focusRowKey="SUB-TL03"                        // deep link: that row becomes active and focused
+ *     focusRowKey="GA-TL03"                         // deep link: that row becomes active and focused
  *     phone={<StaffCards …/>}                       // cards under 900 px (UX.md §2, phones)
  *   />
  *
@@ -42,12 +42,12 @@
  *   editable   (row) => boolean, to lock single rows (e.g. KPS-only fields for station links)
  *   validate   (value, row) => message | null, an extra rule after the type rules
  *   align      "end" for numbers (default for number / score)
- *   advance    single-key entry (score columns): a typed character is committed at once, no
+ *   advance    single-key entry (1-digit "score" columns): a typed character is committed at once, no
  *              editor opens; a valid value moves to the next input cell on the right
  *              (computed cells skipped), an invalid one stays with its message. F2 / Enter
  *              editing and paste work as usual.
  *   derive     read-only computed cells that follow the row as shown now, pending edits
- *              included: (row, value) => value("score_a") … (e.g. a live average and status)
+ *              included: (row, value) => value("score_grooming") … (e.g. a live average and status)
  *
  * confirmClear: a save that would empty a field set (or any of `groups`) holding stored
  * data asks first; "Batal" puts those cells back and the row's other edits still save.
@@ -172,7 +172,7 @@ export type DataGridProps<Row> = {
   highlightGroup?: string;
   /** Spoken after the highlighted group's header, e.g. "periode berjalan" or "periode yang dipilih". */
   highlightNote?: string;
-  /** Makes this row active and focused (deep links such as #tl-SUB-TL03). */
+  /** Makes this row active and focused (deep links such as #tl-GA-TL03). */
   focusRowKey?: string | null;
   /** Shown instead of the body when there are no rows at all (why + next action). */
   emptyState?: ReactNode;
@@ -592,7 +592,7 @@ function Grid<Row>({
     if (result.state.editing && !nav.editing) {
       const column = navColumns[nav.active.col];
       const initial = result.state.editing.initial;
-      // A dropdown opens with the typed key as its type-ahead (CellEditor), so "DPS-01" or a
+      // A dropdown opens with the typed key as its type-ahead (CellEditor), so "IULS-01" or a
       // name typed in full picks the right option.
       // Single-key entry: commit the typed character now; a valid value moves one cell right.
       if (column.advance && initial !== null) {

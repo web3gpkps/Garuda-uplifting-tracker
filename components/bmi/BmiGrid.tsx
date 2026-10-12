@@ -11,9 +11,10 @@ import {
 import { StatusChip } from "@/components/ui/StatusChip";
 import { formatTanggalPendek } from "@/lib/dates";
 import { formatDecimal, formatSignedKg } from "@/lib/format";
-import type { BmiCategory, HeightRequirement } from "@/lib/rules";
+import type { BmiCategory, BmiScheduleStatus } from "@/lib/rules";
 import { saveBmiCheck, saveBmiProfile, type BmiActionResult } from "./actions";
 import { isPlausibleDate } from "./format";
+import { hasNoteLabel, parseHasNote, scheduleTone } from "./summary";
 
 export type BmiGridCheck = {
   date: string | null;
@@ -28,13 +29,17 @@ export type BmiGridRow = {
   name: string;
   station: string | null;
   gender: string | null;
+  /** "Ada catatan BMI": Ya (cek tiap 14 hari) / Tidak (bulanan) / null (belum diisi, dianggap 14 hari). */
+  bmiHasNote: boolean | null;
+  /** "Catatan program kebugaran". */
   bmiNote: string | null;
   /** index 0 = period 1; null when that period has no check. */
   checks: Array<BmiGridCheck | null>;
   weightDelta: number | null;
   /** Periods with a weight, so Δ berat is shown only from the second weighing. */
   weighings: number;
-  heightRequirement: HeightRequirement | null;
+  nextCheck: string;
+  scheduleStatus: BmiScheduleStatus;
   /** "Diubah lewat tautan ini, 8 Okt 07.55" for the latest change to this staff member's checks. */
   changed: string | null;
 };
@@ -68,22 +73,13 @@ function chip(value: CellValue) {
   return value ? <StatusChip label={String(value)} bordered /> : null;
 }
 
-function requirementCell(row: BmiGridRow) {
-  if (row.heightRequirement === "Memenuhi" || row.heightRequirement === "Tidak Memenuhi") {
-    return <StatusChip label={row.heightRequirement} bordered />;
-  }
-  // A missing height standard is explained once, under the grid.
-  if (row.heightRequirement === null && row.checks.some(Boolean) && row.gender !== "L" && row.gender !== "P") {
-    return <span className="text-ink-muted">isi L/P</span>;
-  }
-  return null;
-}
-
 /**
- * Cek BMI 2 Mingguan as the workbook sheet (docs/UX.md §2): one row per staff member, five
- * column groups "Cek ke-P (tanggal)" with Tgl / TB / BB (input) and BMI / Kategori (computed),
- * then L/P, Δ berat, Syarat tinggi and the programme note. Each row saves itself: one
- * share_save_check per changed period, one share_save_profile when L/P or the note changed.
+ * Cek BMI 2 Mingguan as the workbook sheet (docs/UX.md §2): one row per staff member, one
+ * column group "Cek ke-P (tanggal)" per slot (settings.bmi_periods) with Tgl / TB / BB (input)
+ * and BMI / Kategori (computed), then the profile (L/P, Ada catatan BMI, Catatan program
+ * kebugaran) and the schedule (Δ berat, Cek berikutnya, Status jadwal, computed). Each row
+ * saves itself: one share_save_check per changed slot, one share_save_profile when L/P, the
+ * Ya/Tidak or the note changed.
  * Clearing TB and BB of a stored period asks first (the grid's confirmClear, one group per
  * period); "Batal" puts the values back. Client component.
  */
@@ -183,10 +179,30 @@ export function BmiGrid({
         get: (r) => (r.gender === "L" || r.gender === "P" ? r.gender : null),
       },
       {
+        key: "bmi_has_note",
+        header: "Ada catatan BMI",
+        label: "Ada catatan BMI (Ya: cek tiap 2 minggu, Tidak: cek bulanan)",
+        group: "Profil",
+        width: 120,
+        editor: "select",
+        options: [{ value: "Ya" }, { value: "Tidak" }],
+        get: (r) => hasNoteLabel(r.bmiHasNote),
+      },
+      {
+        key: "bmi_note",
+        header: "Catatan program kebugaran",
+        label: "Catatan program kebugaran",
+        group: "Profil",
+        width: 240,
+        editor: "longtext",
+        maxLength: 2000,
+        get: (r) => r.bmiNote,
+      },
+      {
         key: "delta",
         header: "Δ berat",
         label: "Perubahan berat sejak cek pertama",
-        group: "Profil",
+        group: "Jadwal",
         width: 88,
         editor: "readonly",
         align: "end",
@@ -194,24 +210,24 @@ export function BmiGrid({
         render: (value) => (typeof value === "number" ? formatSignedKg(value) : null),
       },
       {
-        key: "syarat",
-        header: "Syarat tinggi",
-        label: "Syarat tinggi badan",
-        group: "Profil",
-        width: 136,
+        key: "next_check",
+        header: "Cek berikutnya",
+        label: "Tanggal cek berikutnya",
+        group: "Jadwal",
+        width: 116,
         editor: "readonly",
-        get: (r) => r.heightRequirement,
-        render: (_value, r) => requirementCell(r),
+        get: (r) => r.nextCheck,
+        render: (value) =>
+          typeof value === "string" ? <time dateTime={value} className="tabular-nums">{formatTanggalPendek(value)}</time> : null,
       },
       {
-        key: "bmi_note",
-        header: "Catatan program BB",
-        label: "Catatan / program penyesuaian BB",
-        group: "Profil",
-        width: 240,
-        editor: "longtext",
-        maxLength: 2000,
-        get: (r) => r.bmiNote,
+        key: "schedule_status",
+        header: "Status jadwal",
+        group: "Jadwal",
+        width: 128,
+        editor: "readonly",
+        get: (r) => r.scheduleStatus,
+        render: (value) => (value ? <StatusChip label={String(value)} tone={scheduleTone(String(value))} bordered /> : null),
       },
       {
         key: "changed",
@@ -286,17 +302,20 @@ export function BmiGrid({
           (serverField) => (serverField && FIELD_OF_ERROR[serverField] ? `${FIELD_OF_ERROR[serverField]}_${w.period}` : null),
         );
       }
-      if (has("gender") || has("bmi_note")) {
+      if (has("gender") || has("bmi_has_note") || has("bmi_note")) {
         const gender = has("gender") ? changes.gender : row.gender;
+        const hasNote = has("bmi_has_note") ? parseHasNote(changes.bmi_has_note) : row.bmiHasNote;
         const note = has("bmi_note") ? changes.bmi_note : row.bmiNote;
         await run(
           () =>
             saveBmiProfile(accessKey, {
               staffCode: row.code,
               gender: gender === "L" || gender === "P" ? gender : null,
+              bmiHasNote: hasNote,
               bmiNote: typeof note === "string" && note.trim() !== "" ? note : null,
             }),
-          (serverField) => (serverField === "gender" || serverField === "bmi_note" ? serverField : null),
+          (serverField) =>
+            serverField === "gender" || serverField === "bmi_has_note" || serverField === "bmi_note" ? serverField : null,
         );
       }
 

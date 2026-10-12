@@ -2,10 +2,12 @@ import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 import { cx } from "@/components/ui/cx";
 import {
+  bmiCadenceNote,
   describeWeekStart,
   programmeSummary,
   railWeeks,
   shortDate,
+  slotsAfterRail,
   type ProgrammeSettings,
   type RailWeek,
 } from "./programme-calendar";
@@ -22,7 +24,8 @@ type WeekRailProps = {
   /** Makes each week a button. Only from a client component. Ignored when hrefForWeek is set. */
   onSelectWeek?: (week: number) => void;
   /**
-   * "full": week, start date and BMI label per cell; 5 per row on phones, one row from 768 px.
+   * "full": week, start date and BMI label per cell; 5 per row on phones, one row from 768 px
+   * (weeks come from Parameter, so the count is not fixed at 10).
    * "compact": numbers only, 28 px cells, for the header context line. Compact is for
    * display; for a week selector use "full" (its cells are ≥ 44 px tall).
    */
@@ -35,8 +38,9 @@ type WeekRailProps = {
 };
 
 /**
- * The 10-week rail (DESIGN.md identity motif): the current week and the BMI-check Mondays,
- * never colour-only. No hooks, so it renders on the server and inside client components.
+ * The programme rail (DESIGN.md identity motif): the monitoring weeks from Parameter, the
+ * current week (teal underline) and the weeks holding a BMI check slot, never colour-only.
+ * No hooks, so it renders on the server and inside client components.
  */
 export function WeekRail({
   settings,
@@ -53,6 +57,7 @@ export function WeekRail({
   const compact = variant === "compact";
   const interactive = Boolean(hrefForWeek || onSelectWeek);
   const gridStyle = { "--rail-cols": settings.weeks } as CSSProperties;
+  const later = slotsAfterRail(settings);
 
   return (
     <div className={cx("flex min-w-0 flex-col gap-2", className)}>
@@ -85,9 +90,14 @@ export function WeekRail({
             </li>
           ))}
         </ol>
-        <p className="flex items-center gap-1.5 text-xs text-ink-muted">
-          <BmiMarker />
-          Cek BMI
+        <p className="flex min-w-0 items-baseline gap-1.5 text-xs text-ink-muted">
+          <BmiMarker className="translate-y-[-1px]" />
+          <span>
+            Slot cek BMI. {bmiCadenceNote(settings)}
+            {later.length > 0
+              ? ` Slot ${later.map((slot) => `ke-${slot.period} (${shortDate(slot.date)})`).join(", ")} jatuh setelah minggu terakhir.`
+              : ""}
+          </span>
         </p>
       </div>
     </div>
@@ -108,7 +118,7 @@ function describe(week: RailWeek): string {
   const parts = [`Minggu ke-${week.week}`, `mulai ${describeWeekStart(week.start)}`];
   if (week.phase === "current") parts.push("minggu berjalan");
   if (week.phase === "past") parts.push("sudah lewat");
-  if (week.bmiPeriod) parts.push(`cek BMI periode ${week.bmiPeriod}`);
+  if (week.bmiPeriod) parts.push(`cek BMI ke-${week.bmiPeriod}`);
   return parts.join(", ");
 }
 
@@ -131,8 +141,9 @@ function WeekCell({ week, compact, selected, interactive, href, onSelect }: Week
     compact
       ? cx("h-7 items-center justify-center", interactive && "min-h-11 sm:min-h-7")
       : "min-h-16 flex-col items-start justify-start gap-0.5 px-1.5 py-1.5 sm:px-2",
+    // Current week: Garuda teal underline on the brand tint (teal 4.8:1 on it).
     isCurrent
-      ? "border-brand bg-brand-tint border-b-[3px]"
+      ? "border-accent bg-brand-tint border-b-[3px]"
       : isPast
         ? "border-transparent bg-neutral-tint"
         : "border-line bg-surface",
@@ -145,7 +156,7 @@ function WeekCell({ week, compact, selected, interactive, href, onSelect }: Week
       <span
         className={cx(
           "text-xs tabular-nums",
-          isCurrent ? "font-bold text-brand" : isPast ? "text-ink-muted" : "font-semibold text-ink",
+          isCurrent ? "font-bold text-accent" : isPast ? "text-ink-muted" : "font-semibold text-ink",
         )}
       >
         {week.week}
@@ -157,7 +168,7 @@ function WeekCell({ week, compact, selected, interactive, href, onSelect }: Week
       <span
         className={cx(
           "text-xs font-semibold",
-          isCurrent ? "text-brand" : isPast ? "text-ink-muted" : "text-ink",
+          isCurrent ? "text-accent" : isPast ? "text-ink-muted" : "text-ink",
         )}
       >
         Mg {week.week}
@@ -168,7 +179,7 @@ function WeekCell({ week, compact, selected, interactive, href, onSelect }: Week
       {week.bmiPeriod ? (
         <span className="flex items-center gap-1 text-xs text-ink-muted">
           <BmiMarker />
-          BMI
+          BMI {week.bmiPeriod}
         </span>
       ) : null}
     </>

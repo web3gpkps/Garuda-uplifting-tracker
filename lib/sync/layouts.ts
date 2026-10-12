@@ -1,18 +1,20 @@
 /**
  * Workbook layouts <-> the merge engine's row-1 tables.
  *
- * The replica is the imported workbook. Each synced table lives in a native tab (header on row 4,
- * pre-made rows, formulas between the inputs, Cek BMI in wide format, Parameter as label/value).
- * `projectAll` turns the real grid into one virtual row-1 table per synced table (what lib/sync/merge.ts
- * understands); `translate` turns the merge plan back into real cell writes.
+ * The replica is the Garuda workbook. Each synced table lives in a native tab (header on row 4,
+ * a fixed block of pre-made rows, formulas between the inputs, Cek BMI in wide format, Parameter as
+ * label/value). `projectAll` turns the real grid into one virtual row-1 table per synced table (what
+ * lib/sync/merge.ts understands); `translate` turns the merge plan back into real cell writes.
  *
  * Generic rules:
  * - A cell holding a formula is never read as input and never written (it reaches the merge as
  *   `locked`; translate refuses to write it). Keys may come from formulas (their computed value).
- * - Untouched tabs (Petunjuk, Dashboard, Rekap Performa, Laporan Mingguan) are never written.
- * - Rows are never inserted or deleted in workbook tabs (other tabs reference them by position):
- *   deletes clear input cells; new records fill free pre-made rows or extend below them with the
- *   template row's formulas copied (PASTE_FORMULA).
+ * - Untouched tabs (Petunjuk, Dashboard, Laporan Mingguan, Rekap Performa, Data Coaching,
+ *   Data Training) are never written.
+ * - Rows are never inserted or deleted in workbook tabs (Dashboard, Laporan, Rekap and Cek BMI refer
+ *   to fixed ranges such as 'Master SDM'!B5:B304). The block of a tab runs from its first data row to
+ *   the last row holding a formula; new records fill free rows inside it and are reported
+ *   (`no_sheet_row`) when it is full. Deletes clear the record's input cells.
  */
 import { isoToSerial, roundTo } from "./normalize";
 import { SYNC_TABLES, UNTOUCHED_TABS, columnId } from "./tables";
@@ -56,10 +58,7 @@ export interface RealOps {
   createTabs: { table: SyncTable; tab: string; spec: TableSpec; header: string[]; minRows: number; exists: boolean }[];
   /** Header cells the engine adds to a workbook tab (Penggantian SDM: ID Sistem, ID SDM). */
   headerCells: (RealCell & { table: SyncTable; text: string; hide?: boolean })[];
-  grow: { table: SyncTable; tab: string; rowCount: number }[];
   writes: RealWrite[];
-  /** copyPaste PASTE_FORMULA from `fromRow` to `toRow` for these columns. */
-  formulaCopies: { table: SyncTable; tab: string; fromRow: number; toRow: number; cols: number[] }[];
   notes: (RealCell & { table: SyncTable; text: string })[];
   /** Engine-owned tabs only. */
   deleteRows: { table: SyncTable; tab: string; rows: number[] }[];
@@ -68,7 +67,7 @@ export interface RealOps {
 }
 
 export function emptyOps(): RealOps {
-  return { createTabs: [], headerCells: [], grow: [], writes: [], formulaCopies: [], notes: [], deleteRows: [], appends: [] };
+  return { createTabs: [], headerCells: [], writes: [], notes: [], deleteRows: [], appends: [] };
 }
 
 export function isFormulaCell(tab: RealTab | undefined, row: number, col: number): boolean {
@@ -124,9 +123,7 @@ export const PERCENT: Transform = {
 
 export interface Placement {
   rows: number[];
-  formulaCopies: { fromRow: number; toRow: number; cols: number[] }[];
   extraWrites: { row: number; col: number; value: unknown }[];
-  growTo?: number;
 }
 
 export interface Projection {
@@ -135,12 +132,12 @@ export interface Projection {
   tab: string;
   error?: string;
   virtual?: SheetTab;
-  /** Real cell behind a virtual cell; undefined for synthetic cells (e.g. Cek BMI period). */
+  /** Real cell behind a virtual cell; undefined for synthetic cells (e.g. Cek BMI slot number). */
   cell(vrow: number, colId: string): RealCell | undefined;
   encode(colId: string, value: Canon, fmt: CellFormat): unknown;
-  /** Real column of a column in row-based layouts (for placing new rows). */
-  colOf?(colId: string): number | undefined;
-  /** appendMode "blank-row": where n new records go. */
+  /** Row-based layouts: the real cell of a column on a real row (for placing new records). */
+  cellAt?(row: number, colId: string): RealCell | undefined;
+  /** appendMode "blank-row": the free rows n new records go to (never more than `virtual.capacity`). */
   place?(n: number): Placement;
   /** Header cells to add before writing (missing engine columns). */
   setup: { row: number; col: number; text: string; hide?: boolean }[];
@@ -152,21 +149,35 @@ function failed(spec: TableSpec, tab: string, error: string): Projection {
   return { spec, tab, error, cell: () => undefined, encode: (_c, v, f) => encodeRaw(v, f), setup: [] };
 }
 
+const missingTab = (spec: TableSpec, title: string) =>
+  failed(spec, title, `Tab "${title}" tidak ditemukan di Google Sheet. Tabel ini tidak disinkronkan.`);
+
+/** Last row of a tab's fixed block: the last row (from `firstDataRow`) that holds any formula. */
+export function blockEnd(tab: RealTab, firstDataRow: number): number {
+  for (let r = lastRowOf(tab); r >= firstDataRow; r--) {
+    const width = Math.max(tab.values[r - 1]?.length ?? 0, tab.formulas[r - 1]?.length ?? 0);
+    for (let c = 0; c < width; c++) if (isFormulaCell(tab, r, c)) return r;
+  }
+  return firstDataRow - 1;
+}
+
 interface RowLayoutConfig {
   headerRow: number;
   firstDataRow: number;
   /** Columns the engine adds to the right of the header when missing. */
   addable?: string[];
   transforms?: Record<string, Transform>;
-  /** Column A holds a running number ("No") that new rows continue. */
+  /** Column A holds a running number ("No"); a free row without one gets the next number. */
   numbered?: boolean;
-  /** Columns that live in another tab, located by this row's key. */
-  external?: Record<string, (key: Canon) => { cell?: RealCell; tab?: RealTab }>;
+  /** Columns that must be blank for a row to count as free (default: every synced column). */
+  freeWhenBlank?: string[];
+  /** Columns that live in another tab, located from the real row of the record. */
+  external?: Record<string, (row: number) => { cell?: RealCell; tab?: RealTab }>;
 }
 
 function rowLayout(spec: TableSpec, real: RealSnapshot, cfg: RowLayoutConfig): Projection {
   const tab = real.tabs[spec.tab];
-  if (!tab) return failed(spec, spec.tab, `Tab "${spec.tab}" tidak ditemukan di Google Sheet. Tabel ini tidak disinkronkan.`);
+  if (!tab) return missingTab(spec, spec.tab);
 
   const positions = headerPositions(tab, cfg.headerRow);
   const lastHeaderCol = Math.max(-1, ...[...positions.values()].flat());
@@ -191,14 +202,12 @@ function rowLayout(spec: TableSpec, real: RealSnapshot, cfg: RowLayoutConfig): P
     return failed(spec, spec.tab, `Tab "${spec.tab}": ${parts.join("; ")}. Tabel ini tidak disinkronkan sampai header diperbaiki.`);
   }
 
-  const keyCol = colOf[spec.key[0]];
   const last = lastRowOf(tab);
   const header = spec.columns.map((c) => c.header);
   const values: unknown[][] = [header];
   const locked = new Set<string>();
   const vrowOf = (r: number) => r - cfg.firstDataRow + 2;
   const rowOfV = (v: number) => v + cfg.firstDataRow - 2;
-  const external = (colId: string, row: number) => cfg.external?.[colId]?.(tab.values[row - 1]?.[keyCol] as Canon);
 
   for (let r = cfg.firstDataRow; r <= last; r++) {
     const v = vrowOf(r);
@@ -206,8 +215,8 @@ function rowLayout(spec: TableSpec, real: RealSnapshot, cfg: RowLayoutConfig): P
     spec.columns.forEach((c, i) => {
       const ext = cfg.external?.[c.db];
       if (ext) {
-        const where = external(c.db, r);
-        if (!where?.cell || isFormulaCell(where.tab, where.cell.row, where.cell.col)) {
+        const where = ext(r);
+        if (!where.cell || isFormulaCell(where.tab, where.cell.row, where.cell.col)) {
           locked.add(`${v}:${i}`);
           out.push(undefined);
         } else out.push(where.tab!.values[where.cell.row - 1]?.[where.cell.col]);
@@ -221,34 +230,31 @@ function rowLayout(spec: TableSpec, real: RealSnapshot, cfg: RowLayoutConfig): P
     values.push(out);
   }
 
-  const dataCols = spec.columns.filter((c) => !cfg.external?.[c.db]).map((c) => colOf[c.db]);
-  // Formula columns of the first data row: copied into rows the engine adds below the block.
-  const templateWidth = tab.formulas[cfg.firstDataRow - 1]?.length ?? 0;
-  const templateFormulaCols = Array.from({ length: templateWidth }, (_, c) => c).filter((c) => isFormulaCell(tab, cfg.firstDataRow, c));
+  // Free rows inside the fixed block (never below it: other tabs only see the block's range).
+  const end = blockEnd(tab, cfg.firstDataRow);
+  const freeCols = (cfg.freeWhenBlank ?? spec.columns.filter((c) => !cfg.external?.[c.db]).map((c) => c.db)).map((id) => colOf[id]);
+  const freeRows: number[] = [];
+  for (let r = cfg.firstDataRow; r <= end; r++) {
+    if (freeCols.every((c) => isBlank(tab.values[r - 1]?.[c]) && !isFormulaCell(tab, r, c))) freeRows.push(r);
+  }
+  const cellAt = (row: number, colId: string): RealCell | undefined => {
+    if (cfg.external?.[colId]) return cfg.external[colId](row).cell;
+    return colOf[colId] === undefined ? undefined : { tab: spec.tab, row, col: colOf[colId] };
+  };
 
   return {
     spec,
     tab: spec.tab,
-    virtual: { title: spec.tab, sheetId: tab.sheetId, values, locked },
+    virtual: { title: spec.tab, sheetId: tab.sheetId, values, locked, capacity: freeRows.length },
     setup,
-    colOf: (colId) => colOf[colId],
-    cell(vrow, colId) {
-      const r = rowOfV(vrow);
-      if (cfg.external?.[colId]) return external(colId, r)?.cell;
-      return colOf[colId] === undefined ? undefined : { tab: spec.tab, row: r, col: colOf[colId] };
-    },
+    cellAt,
+    cell: (vrow, colId) => cellAt(rowOfV(vrow), colId),
     encode(colId, value, fmt) {
       return cfg.transforms?.[colId] ? cfg.transforms[colId].write(value) : encodeRaw(value, fmt);
     },
     place(n) {
-      const rows: number[] = [];
-      for (let r = cfg.firstDataRow; rows.length < n && r <= last; r++) {
-        if (dataCols.every((c) => isBlank(tab.values[r - 1]?.[c]))) rows.push(r);
-      }
-      for (let r = Math.max(last, cfg.firstDataRow - 1) + 1; rows.length < n; r++) rows.push(r);
-      const formulaCopies = rows
-        .filter((r) => templateFormulaCols.some((c) => !isFormulaCell(tab, r, c)))
-        .map((r) => ({ fromRow: cfg.firstDataRow, toRow: r, cols: templateFormulaCols }));
+      if (n > freeRows.length) throw new LayoutViolation(`${spec.table}: only ${freeRows.length} free rows in "${spec.tab}", ${n} needed.`);
+      const rows = freeRows.slice(0, n);
       const extraWrites: Placement["extraWrites"] = [];
       if (cfg.numbered) {
         let no = 0;
@@ -256,19 +262,21 @@ function rowLayout(spec: TableSpec, real: RealSnapshot, cfg: RowLayoutConfig): P
           const a = tab.values[r - 1]?.[0];
           if (typeof a === "number") no = Math.max(no, a);
         }
-        for (const r of rows) if (isBlank(tab.values[r - 1]?.[0])) extraWrites.push({ row: r, col: 0, value: ++no });
+        for (const r of rows) if (isBlank(tab.values[r - 1]?.[0]) && !isFormulaCell(tab, r, 0)) extraWrites.push({ row: r, col: 0, value: ++no });
       }
-      const maxRow = Math.max(...rows);
-      return { rows, formulaCopies, extraWrites, growTo: maxRow > tab.rowCount ? maxRow : undefined };
+      return { rows, extraWrites };
     },
   };
 }
 
-/** Cek BMI 2 Mingguan: one row per staff (data from row 6), periods side by side (Tgl Cek, Tinggi, Berat). */
+/**
+ * Cek BMI 2 Mingguan: one row per staff (data from row 6, row = Master SDM row + 1, B computed from
+ * Master SDM), slots side by side (Tgl Cek, Tinggi, Berat, then the BMI/Kategori formulas).
+ */
 function cekBmiLayout(spec: TableSpec, real: RealSnapshot): Projection {
   const title = spec.tab;
   const tab = real.tabs[title];
-  if (!tab) return failed(spec, title, `Tab "${title}" tidak ditemukan di Google Sheet. Tabel ini tidak disinkronkan.`);
+  if (!tab) return missingTab(spec, title);
   const g = bmiGeometry(tab);
   if ("error" in g) return failed(spec, title, `Tab "${title}": ${g.error} Tabel ini tidak disinkronkan sampai header diperbaiki.`);
 
@@ -276,12 +284,12 @@ function cekBmiLayout(spec: TableSpec, real: RealSnapshot): Projection {
   const idx = Object.fromEntries(spec.columns.map((c, i) => [c.db, i]));
   const values: unknown[][] = [header];
   const locked = new Set<string>();
-  const where = new Map<number, { row: number; period: number }>();
+  const where = new Map<number, { row: number; slot: number }>();
   const offsets: Record<string, number> = { check_date: 0, height_cm: 1, weight_kg: 2 };
   for (let r = g.firstDataRow; r <= lastRowOf(tab); r++) {
     const code = tab.values[r - 1]?.[g.keyCol];
     if (isBlank(code)) continue;
-    g.periods.forEach((start, i) => {
+    g.slots.forEach((start, i) => {
       const v = values.length + 1;
       const out: unknown[] = new Array(header.length);
       out[idx.staff_code] = code;
@@ -293,7 +301,7 @@ function cekBmiLayout(spec: TableSpec, real: RealSnapshot): Projection {
         if (isFormulaCell(tab, r, start + off)) locked.add(`${v}:${idx[colId]}`);
       }
       values.push(out);
-      where.set(v, { row: r, period: i });
+      where.set(v, { row: r, slot: i });
     });
   }
 
@@ -305,40 +313,62 @@ function cekBmiLayout(spec: TableSpec, real: RealSnapshot): Projection {
     cell(vrow, colId) {
       const w = where.get(vrow);
       if (!w || offsets[colId] === undefined) return undefined;
-      return { tab: title, row: w.row, col: g.periods[w.period] + offsets[colId] };
+      return { tab: title, row: w.row, col: g.slots[w.slot] + offsets[colId] };
     },
     encode: (_c, v, f) => encodeRaw(v, f),
   };
 }
 
+export const BMI_TAB = "Cek BMI 2 Mingguan";
+
 interface BmiGeometry {
   firstDataRow: number;
   keyCol: number;
+  /** "Ada Catatan BMI" (staff.bmi_has_note). */
+  hasNoteCol: number;
+  /** "Catatan Program Kebugaran" (staff.bmi_note). */
   noteCol: number;
-  /** Start column (Tgl Cek) of each period. */
-  periods: number[];
+  /** Start column (Tgl Cek) of each slot. */
+  slots: number[];
 }
 
 function bmiGeometry(tab: RealTab): BmiGeometry | { error: string } {
   const top = headerPositions(tab, 4);
   const sub = (tab.values[4] ?? []).map(normHeader);
-  const keyCols = top.get(normHeader("ID SDM")) ?? [];
-  const noteCols = top.get(normHeader("Catatan / Program Penyesuaian BB")) ?? [];
-  const periods: number[] = [];
+  const one = (h: string) => top.get(normHeader(h)) ?? [];
+  const [keyCols, hasNoteCols, noteCols] = [one("ID SDM"), one("Ada Catatan BMI"), one("Catatan Program Kebugaran")];
+  const slots: number[] = [];
   sub.forEach((h, c) => {
-    if (h === "tgl cek" && sub[c + 1] === "tinggi (cm)" && sub[c + 2] === "berat (kg)") periods.push(c);
+    if (h === "tgl cek" && sub[c + 1] === "tinggi (cm)" && sub[c + 2] === "berat (kg)") slots.push(c);
   });
-  if (keyCols.length !== 1) return { error: 'kolom "ID SDM" tidak ditemukan di baris 4.' };
-  if (noteCols.length !== 1) return { error: 'kolom "Catatan / Program Penyesuaian BB" tidak ditemukan di baris 4.' };
-  if (periods.length === 0) return { error: 'kolom "Tgl Cek / Tinggi (cm) / Berat (kg)" tidak ditemukan di baris 5.' };
-  return { firstDataRow: 6, keyCol: keyCols[0], noteCol: noteCols[0], periods };
+  const missing = [
+    keyCols.length !== 1 && '"ID SDM"',
+    hasNoteCols.length !== 1 && '"Ada Catatan BMI"',
+    noteCols.length !== 1 && '"Catatan Program Kebugaran"',
+  ].filter(Boolean);
+  if (missing.length) return { error: `kolom ${missing.join(", ")} tidak ditemukan (atau ganda) di baris 4.` };
+  if (slots.length === 0) return { error: 'kolom "Tgl Cek / Tinggi (cm) / Berat (kg)" tidak ditemukan di baris 5.' };
+  return { firstDataRow: 6, keyCol: keyCols[0], hasNoteCol: hasNoteCols[0], noteCol: noteCols[0], slots };
+}
+
+/**
+ * The Cek BMI row of a Master SDM row (Master row + 1), only if its ID SDM cell really mirrors that
+ * Master row (`='Master SDM'!B<row>` or the same computed value): a sorted or edited BMI tab is never
+ * written by position.
+ */
+function bmiRowFor(bmi: RealTab, geo: BmiGeometry, master: RealTab, masterKeyCol: number, row: number): number | undefined {
+  const r = row + 1;
+  const f = bmi.formulas[r - 1]?.[geo.keyCol];
+  if (typeof f === "string" && new RegExp(`'?Master SDM'?!\\$?B\\$?${row}(?!\\d)`).test(f)) return r;
+  const key = master.values[row - 1]?.[masterKeyCol];
+  return !isBlank(key) && String(bmi.values[r - 1]?.[geo.keyCol] ?? "") === String(key) ? r : undefined;
 }
 
 /** Parameter: label in column B, value in column C (rows 5..), matched by label text. */
 function parameterLayout(spec: TableSpec, real: RealSnapshot): Projection {
   const title = spec.tab;
   const tab = real.tabs[title];
-  if (!tab) return failed(spec, title, `Tab "${title}" tidak ditemukan di Google Sheet. Tabel ini tidak disinkronkan.`);
+  if (!tab) return missingTab(spec, title);
   const top = headerPositions(tab, 4);
   const labelCols = top.get("parameter") ?? [];
   const valueCols = top.get("nilai") ?? [];
@@ -395,33 +425,14 @@ function identityLayout(spec: TableSpec, real: RealSnapshot): Projection {
 
 export function project(spec: TableSpec, real: RealSnapshot): Projection {
   switch (spec.layout) {
-    case "master-sdm": {
-      const bmiTab = real.tabs["Cek BMI 2 Mingguan"];
-      const geo = bmiTab ? bmiGeometry(bmiTab) : undefined;
-      const bmiRows = new Map<string, number>();
-      if (bmiTab && geo && !("error" in geo)) {
-        for (let r = geo.firstDataRow; r <= lastRowOf(bmiTab); r++) {
-          const code = bmiTab.values[r - 1]?.[geo.keyCol];
-          if (!isBlank(code) && !bmiRows.has(String(code))) bmiRows.set(String(code), r);
-        }
-      }
-      return rowLayout(spec, real, {
-        headerRow: 4,
-        firstDataRow: 5,
-        external: {
-          // BMI note: column AK of Cek BMI 2 Mingguan, on the row showing this staff's ID SDM.
-          bmi_note: (code) => {
-            const r = code === null ? undefined : bmiRows.get(String(code));
-            if (!bmiTab || !geo || "error" in geo || r === undefined) return {};
-            return { cell: { tab: bmiTab.title, row: r, col: geo.noteCol }, tab: bmiTab };
-          },
-        },
-      });
-    }
+    case "master-sdm":
+      return masterLayout(spec, real);
     case "log-performa":
       return rowLayout(spec, real, { headerRow: 4, firstDataRow: 5 });
     case "tindak-lanjut":
       return rowLayout(spec, real, { headerRow: 4, firstDataRow: 5, numbered: true, transforms: { progress: PERCENT } });
+    case "remedial":
+      return rowLayout(spec, real, { headerRow: 4, firstDataRow: 5, numbered: true });
     case "penggantian":
       return rowLayout(spec, real, { headerRow: 4, firstDataRow: 5, numbered: true, addable: ["id", "staff_code"] });
     case "cek-bmi":
@@ -431,6 +442,30 @@ export function project(spec: TableSpec, real: RealSnapshot): Projection {
     default:
       return identityLayout(spec, real);
   }
+}
+
+/**
+ * Master SDM: header row 4, data 5..304. Free row = ID SDM and Nama Petugas both empty. The BMI flag
+ * and note are cells of Cek BMI 2 Mingguan (G, AS) on the row below; when that tab's layout is broken
+ * they are left alone (locked) and the rest of Master SDM still syncs.
+ */
+function masterLayout(spec: TableSpec, real: RealSnapshot): Projection {
+  const master = real.tabs[spec.tab];
+  const bmi = real.tabs[BMI_TAB];
+  const geo = bmi ? bmiGeometry(bmi) : undefined;
+  const keyCol = master ? (headerPositions(master, 4).get(normHeader("ID SDM")) ?? [])[0] : undefined;
+  const ext = (col: (g: BmiGeometry) => number) => (row: number) => {
+    if (!master || !bmi || !geo || "error" in geo || keyCol === undefined) return {};
+    const r = bmiRowFor(bmi, geo, master, keyCol, row);
+    return r === undefined ? {} : { cell: { tab: BMI_TAB, row: r, col: col(geo) }, tab: bmi };
+  };
+  return rowLayout(spec, real, {
+    headerRow: 4,
+    firstDataRow: 5,
+    numbered: true,
+    freeWhenBlank: ["code", "name"],
+    external: { bmi_has_note: ext((g) => g.hasNoteCol), bmi_note: ext((g) => g.noteCol) },
+  });
 }
 
 /** Real grid -> virtual snapshot for the merge, plus the projections needed to translate back. */
@@ -446,10 +481,10 @@ export function projectAll(real: RealSnapshot, specs: TableSpec[] = SYNC_TABLES)
   return { sheet, projections };
 }
 
-/** Tabs the adapter must read (synced tabs + Cek BMI for the staff BMI note). */
+/** Tabs the adapter must read (synced tabs + Cek BMI for the staff BMI flag and note). */
 export function tabsToRead(specs: TableSpec[] = SYNC_TABLES): string[] {
   const tabs = new Set(specs.map((s) => s.tab));
-  if (specs.some((s) => s.layout === "master-sdm")) tabs.add("Cek BMI 2 Mingguan");
+  if (specs.some((s) => s.layout === "master-sdm")) tabs.add(BMI_TAB);
   return [...tabs];
 }
 
@@ -508,19 +543,17 @@ export function translate(
       if (cell) ops.notes.push({ table, ...cell, text: n.text });
     }
     if (s.appends.length) {
-      if (!proj.place || !proj.colOf) throw new LayoutViolation(`${table}: no room for new rows in "${proj.tab}".`);
+      if (!proj.place || !proj.cellAt) throw new LayoutViolation(`${table}: no room for new rows in "${proj.tab}".`);
       const placement = proj.place(s.appends.length);
       s.appends.forEach((row, i) => {
         const r = placement.rows[i];
         row.forEach((c, vcol) => {
           const colId = colIdAt(vcol)!;
-          const col = proj.colOf!(colId);
-          if (col !== undefined && c.value !== null) ops.writes.push({ table, tab: proj.tab, row: r, col, value: proj.encode(colId, c.value, c.fmt) });
+          const cell = proj.cellAt!(r, colId);
+          if (cell && c.value !== null) ops.writes.push({ table, ...cell, value: proj.encode(colId, c.value, c.fmt) });
         });
       });
-      for (const f of placement.formulaCopies) ops.formulaCopies.push({ table, tab: proj.tab, ...f });
       for (const w of placement.extraWrites) ops.writes.push({ table, tab: proj.tab, ...w });
-      if (placement.growTo) ops.grow.push({ table, tab: proj.tab, rowCount: placement.growTo + 100 });
     }
   }
 
@@ -542,11 +575,9 @@ export function countOps(ops: RealOps) {
     createTabs: ops.createTabs.map((t) => t.tab),
     headerCells: ops.headerCells.length,
     cellWrites: ops.writes.length,
-    formulaCopies: ops.formulaCopies.length,
     notes: ops.notes.length,
     rowDeletes: ops.deleteRows.reduce((n, d) => n + d.rows.length, 0),
     appends: ops.appends.reduce((n, a) => n + a.rows.length, 0),
-    grow: ops.grow.length,
     tabsWritten: [...new Set([...ops.writes, ...ops.headerCells, ...ops.notes].map((w) => w.tab))],
   };
 }

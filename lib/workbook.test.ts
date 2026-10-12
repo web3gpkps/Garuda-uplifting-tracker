@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { dashboard, weeklyReport, type ActionProgressRow, type TrackerData } from './aggregate';
 
 /**
@@ -8,7 +8,7 @@ import { dashboard, weeklyReport, type ActionProgressRow, type TrackerData } fro
  * `python3 -I scripts/import_xlsx.py` from the (gitignored) workbook; skipped without it.
  * Rows are positional copies of the workbook sections (column C onwards), Excel "" = null.
  */
-const ROWS = join(import.meta.dir, '..', 'scripts', 'out', 'rows.json');
+const ROWS = fileURLToPath(new URL('../scripts/out/rows.json', import.meta.url));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const file: any = existsSync(ROWS) ? JSON.parse(readFileSync(ROWS, 'utf8')) : null;
 

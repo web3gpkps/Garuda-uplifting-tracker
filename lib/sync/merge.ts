@@ -140,6 +140,10 @@ interface Global {
   finalKeys: Map<SyncTable, Set<string>>;
   /** Keys this plan deletes from the DB, per table (children cascade). */
   dbDeleted: Map<SyncTable, Set<string>>;
+  /** Keys this plan appends to the sheet, per table (their child rows find a place next run). */
+  appended: Map<SyncTable, Set<string>>;
+  /** Valid unit codes (DB `stations`), when known. */
+  stations: Set<string> | null;
   nextRef: number;
 }
 
@@ -252,8 +256,6 @@ function compareTuple(a: (string | number)[], b: (string | number)[]): number {
   return 0;
 }
 
-const SCOPE_ORDER = ["SUB", "DPS", "CGK", "HLP", "KNO", "KPS"];
-
 function appendOrder(spec: TableSpec, v: CanonRow): (string | number)[] {
   const n = (x: Canon, dflt = 1e9) => (typeof x === "number" ? x : dflt);
   const s = (x: Canon) => (x === null ? "" : String(x));
@@ -265,7 +267,8 @@ function appendOrder(spec: TableSpec, v: CanonRow): (string | number)[] {
     case "bmi_checks":
       return [s(v.staff_code), n(v.period)];
     case "weekly_reports":
-      return [n(v.week), SCOPE_ORDER.indexOf(s(v.scope))];
+      // Stations alphabetically, KPS (head office) last.
+      return [n(v.week), v.scope === "KPS" ? 1 : 0, s(v.scope)];
     case "replacements":
       return [n(v.id)];
     default:
@@ -393,6 +396,14 @@ function mergeTable(spec: TableSpec, g: Global): TableResult {
     return `ID SDM "${value}" tidak ada di Master SDM.`;
   };
 
+  /** Normalize a sheet value; station codes must also exist in the DB's stations list. */
+  const normSheet = (raw: unknown, type: ColumnType) => {
+    const n = normalize(raw, type);
+    if (!n.ok || n.value === null || type.kind !== "station" || !g.stations) return n;
+    if ((type.kps && n.value === "KPS") || g.stations.has(String(n.value))) return n;
+    return { ok: false as const, message: `Unit "${n.value}" tidak ada di daftar unit (stations).` };
+  };
+
   // ---- cell write helper: formula cells are never written
   const writeCell = (row: number, colId: string, value: Canon, rk: string | null) => {
     const col = colIndex[colId];
@@ -417,7 +428,7 @@ function mergeTable(spec: TableSpec, g: Global): TableResult {
       for (const k of spec.key) {
         const kc = dataColumns(spec).find((c) => c.db === k)!;
         // Keys may come from formulas (e.g. Cek BMI's ID SDM): their computed value counts.
-        const n = normalize(cell(kc), kc.type);
+        const n = normSheet(cell(kc), kc.type);
         if (!n.ok) {
           addIssue("invalid_value", null, rowNo, kc.db, n.message, { sheetValue: cell(kc) });
           keyBad = true;
@@ -447,7 +458,7 @@ function mergeTable(spec: TableSpec, g: Global): TableResult {
           values[c.db] = null;
           continue;
         }
-        const n = normalize(cell(c), typeFor(spec, c, rk));
+        const n = normSheet(cell(c), typeFor(spec, c, rk));
         if (n.ok) values[c.db] = n.value;
         else {
           values[c.db] = null;
@@ -531,13 +542,20 @@ function mergeTable(spec: TableSpec, g: Global): TableResult {
       filledSlots.add(slot.row);
       return true;
     }
-    if (spec.appendMode === "none") {
+    // The parent row is only being added to the sheet in this run: its child rows get a place next run.
+    if (spec.appendMode === "none" && spec.parent && g.appended.get(spec.parent.table)?.has(String(values[spec.parent.column]))) {
+      return false;
+    }
+    const full = tab?.capacity !== undefined && res.appendRows.length >= tab.capacity;
+    if (spec.appendMode === "none" || full) {
       addIssue("no_sheet_row", rk, null, null, spec.noRowMessage ?? "Tidak ada baris untuk data ini di Sheet.", {
         sheetValue: rk,
       });
       return false;
     }
     res.appendRows.push(values);
+    if (!g.appended.has(spec.table)) g.appended.set(spec.table, new Set());
+    g.appended.get(spec.table)!.add(rk);
     return true;
   };
 
@@ -548,7 +566,7 @@ function mergeTable(spec: TableSpec, g: Global): TableResult {
       !!spec.parent && !g.finalKeys.get(spec.parent.table)?.has(String(r.keyVals[spec.parent.column]));
     if (spec.deleteMode === "clear" || (spec.emptyRowIsAbsent && !orphan)) {
       for (const c of nonKey) if (r.values[c.db] !== null || r.invalid.has(c.db)) writeCell(r.row, c.db, null, r.rk);
-      if (spec.generatedKey) writeCell(r.row, spec.key[0], null, r.rk);
+      if (spec.generatedKey || spec.clearKeyOnDelete) for (const k of spec.key) writeCell(r.row, k, null, r.rk);
     } else {
       plan.sheet.deleteRows.push(r.row);
       res.deletedRows.add(r.row);
@@ -780,13 +798,16 @@ function mergeTable(spec: TableSpec, g: Global): TableResult {
     }
   }
 
-  // ---- absent rows with leftovers: cleared when their record was just deleted, else reported
+  // ---- absent rows: cleared when their record was just deleted; leftovers otherwise reported
   for (const [rk, slot] of slots) {
-    if (!slot.leftovers || filledSlots.has(slot.row)) continue;
+    if (filledSlots.has(slot.row)) continue;
     if (dbDeleted.has(rk)) {
       for (const c of nonKey) if (slot.values[c.db] !== null || slot.invalid.has(c.db)) writeCell(slot.row, c.db, null, rk);
+      // The row becomes free again (Master SDM: ID SDM cleared with the rest).
+      if (spec.clearKeyOnDelete) for (const k of spec.key) writeCell(slot.row, k, null, rk);
       continue;
     }
+    if (!slot.leftovers) continue;
     // Something typed, but the columns that make the row a record are empty (e.g. a date without
     // height/weight, a staff row without a name).
     addIssue("incomplete_row", rk, slot.row, presence[0].db, `Baris belum lengkap: isi ${presence.map((c) => `"${c.header}"`).join(" dan ")}. Belum disimpan ke database.`);
@@ -846,7 +867,7 @@ function assemble(results: TableResult[]): void {
 }
 
 function noteText(issue: Issue): string {
-  return `JOUMPA sync: ${issue.message}`;
+  return `Garuda sync: ${issue.message}`;
 }
 
 /** Cell notes for new issues; clear notes of issues that are gone. Returns the issue map to store. */
@@ -900,6 +921,8 @@ export function merge(input: MergeInput): Plan {
     prevIssues: input.baseline?.issues ?? {},
     finalKeys: new Map(),
     dbDeleted: new Map(),
+    appended: new Map(),
+    stations: input.db.stations ? new Set(input.db.stations.map((r) => String(r.code))) : null,
     nextRef: 1,
   };
   const specs = input.specs ?? SYNC_TABLES;

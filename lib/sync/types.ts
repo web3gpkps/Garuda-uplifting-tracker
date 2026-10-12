@@ -13,6 +13,7 @@ export type SyncTable =
   | "weekly_scores"
   | "bmi_checks"
   | "action_items"
+  | "remedials"
   | "replacements"
   | "weekly_reports";
 
@@ -21,7 +22,11 @@ export type ColumnType =
   | { kind: "int"; min?: number; max?: number }
   | { kind: "numeric"; scale: number; min?: number; max?: number }
   | { kind: "date" }
-  | { kind: "enum"; values: readonly string[] };
+  | { kind: "enum"; values: readonly string[] }
+  /** Station code (`^[A-Z0-9]{2,5}$`, typed in any case); must exist in `stations`. `kps` also allows "KPS". */
+  | { kind: "station"; kps?: boolean }
+  /** Boolean in the DB, a two-option text in the sheet (canonical value: `yes` or `no`). */
+  | { kind: "bool"; yes: string; no: string };
 
 /** A column whose value is stored in the database and synced both ways. */
 export interface DataColumn {
@@ -48,7 +53,14 @@ export interface KvEntry {
 }
 
 /** Workbook layouts the sheet adapter knows (lib/sync/layouts.ts). Absent = engine-owned row-1 tab. */
-export type NativeLayout = "master-sdm" | "cek-bmi" | "log-performa" | "tindak-lanjut" | "penggantian" | "parameter";
+export type NativeLayout =
+  | "master-sdm"
+  | "cek-bmi"
+  | "log-performa"
+  | "tindak-lanjut"
+  | "remedial"
+  | "penggantian"
+  | "parameter";
 
 export interface TableSpec {
   table: SyncTable;
@@ -74,6 +86,8 @@ export interface TableSpec {
   noRowMessage?: string;
   /** Sheet-side delete: remove the row (default) or clear its input cells (fixed workbook layouts). */
   deleteMode?: "row" | "clear";
+  /** With deleteMode "clear": also clear the key cells, so the row becomes a free row again. */
+  clearKeyOnDelete?: boolean;
   /** Key/value table (settings): rows are fixed, never inserted or deleted. */
   kv?: { entries: KvEntry[]; validate?: (values: Record<string, Canon>) => string | null };
   /** Child table: `column` must reference an existing key of `table`. DB deletes cascade. */
@@ -93,6 +107,11 @@ export interface SheetTab {
   values: unknown[][];
   /** Cells ("row:col", 1-based row, 0-based col) holding a formula: never read as input, never written. */
   locked?: Set<string>;
+  /**
+   * Fixed blocks of pre-made rows: how many free rows are left for records the DB adds. Undefined =
+   * no limit (engine-owned tabs append). Records beyond it are reported (`no_sheet_row`), never appended.
+   */
+  capacity?: number;
 }
 
 export interface SheetSnapshot {
@@ -104,8 +123,11 @@ export interface SheetSnapshot {
   timeZone?: string;
 }
 
-/** Raw rows per table as returned by the database. `settings` is the single settings row. */
-export type DbSnapshot = Partial<Record<SyncTable, Record<string, unknown>[]>>;
+/**
+ * Raw rows per table as returned by the database. `settings` is the single settings row.
+ * `stations` (not synced) lists the valid unit codes that station columns are checked against.
+ */
+export type DbSnapshot = Partial<Record<SyncTable, Record<string, unknown>[]>> & { stations?: { code: string }[] };
 
 export interface Baseline {
   v: 1;

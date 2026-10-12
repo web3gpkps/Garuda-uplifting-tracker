@@ -1,10 +1,13 @@
 /** Plain-language names for sync_conflicts rows (docs/SYNC.md, "Resolving conflicts"). */
 
+import { SETTINGS_ENTRIES, SYNC_TABLES } from "@/lib/sync/tables";
+
 export const TABLE_LABEL: Record<string, string> = {
   staff: "SDM",
   weekly_scores: "Log Performa",
   bmi_checks: "Cek BMI",
   action_items: "Tindak Lanjut",
+  remedials: "Remedial",
   replacements: "Penggantian SDM",
   settings: "Parameter",
   weekly_reports: "Temuan Mingguan",
@@ -21,7 +24,18 @@ export const RESOLUTION_LABEL: Record<string, string> = {
   "rejected:unknown_setting": "Ditolak: parameter tidak dikenal",
   "rejected:deletes_skipped": "Penghapusan dilewati oleh pengaman",
   "rejected:header_error": "Ditolak: judul kolom tab rusak",
+  "rejected:no_sheet_row": "Tidak ada baris untuk data ini di Sheet",
+  "rejected:incomplete_row": "Ditolak: baris di Sheet belum lengkap",
 };
+
+/** The workbook's column header for a logged column (Parameter: the label of the setting). */
+export function columnLabel(table: string, column: string | null, rowKey: string | null): string | null {
+  if (column === null) return null;
+  if (table === "settings") return SETTINGS_ENTRIES.find((e) => e.key === rowKey)?.label ?? column;
+  if (column === "db" || column === "sheet") return column === "db" ? "Penghapusan di database" : "Penghapusan di Sheet";
+  const header = SYNC_TABLES.find((t) => t.table === table)?.columns.find((c) => c.db === column)?.header;
+  return header ?? column;
+}
 
 /** A jsonb cell as text: strings as-is, everything else as compact JSON. */
 export function jsonText(value: unknown): string | null {

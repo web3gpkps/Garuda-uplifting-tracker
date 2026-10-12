@@ -1,3 +1,4 @@
+import { parseSort } from "@/lib/dashboard";
 import { parseStation, stationCodes, type ScreenProps } from "@/lib/workspace";
 import { RememberView } from "@/components/ui/RememberView";
 import { rememberScope } from "@/components/ui/remember";
@@ -10,7 +11,7 @@ export function RingkasanLoading() {
   return <PageLoading title="Dashboard" label="Memuat dashboard" />;
 }
 
-/** Workbook sheet "Dashboard": what needs attention now, then sections 1 to 4. */
+/** Workbook sheet "Dashboard": programme position, KPI vs target, what needs attention, stations, sections 1 to 6. */
 export function RingkasanScreen({ access, ws, searchParams }: ScreenProps) {
   const stationFilter = parseStation(ws, searchParams.stasiun);
   return (
@@ -18,7 +19,13 @@ export function RingkasanScreen({ access, ws, searchParams }: ScreenProps) {
       {ws.isKps ? (
         <RememberView scope={rememberScope(access, ws)} allowed={{ stasiun: stationCodes(ws) }} shown={{ stasiun: stationFilter }} />
       ) : null}
-      <RingkasanView ws={ws} access={access} today={todayInJakarta()} stationFilter={stationFilter} />
+      <RingkasanView
+        ws={ws}
+        access={access}
+        today={todayInJakarta()}
+        stationFilter={stationFilter}
+        sort={parseSort(searchParams.urut)}
+      />
     </>
   );
 }

@@ -177,7 +177,7 @@ async function SyncData() {
             <p className="text-sm text-ink-muted">
               Halaman ini tidak punya tombol untuk menjalankan sinkronisasi: menjalankannya butuh kunci rahasia
               server yang tidak disimpan di aplikasi web. Sinkronisasi dipicu dari server (jadwal database dan
-              perubahan data) dan dari menu JOUMPA di Google Sheet, jika sudah dipasang.
+              perubahan data) dan dari menu Garuda di Google Sheet, jika sudah dipasang.
             </p>
           </div>
         )}

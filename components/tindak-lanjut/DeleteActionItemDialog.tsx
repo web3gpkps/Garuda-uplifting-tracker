@@ -45,7 +45,7 @@ export function DeleteActionItemDialog({ accessKey, item, onClose, onDeleted }: 
       }}
       dismissible={!pending}
       title={item ? `Hapus butir ${item.code}?` : "Hapus butir"}
-      description={item?.area ?? undefined}
+      description={item?.action ?? undefined}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={pending}>
@@ -60,7 +60,7 @@ export function DeleteActionItemDialog({ accessKey, item, onClose, onDeleted }: 
       {item ? (
         <div className="flex flex-col gap-2">
           <p>
-            Butir ini beserta Status ({item.status}, {item.progress}%), Realisasi / Bukti, dan Catatan KPS-nya hilang dari
+            Butir ini beserta Status ({item.status}, {item.progress}%), Realisasi / Bukti, dan Catatan Garuda / KPS-nya hilang dari
             aplikasi, dan dari Google Sheet pada sinkronisasi berikutnya. Penghapusan tidak bisa dibatalkan.
           </p>
           {error ? (

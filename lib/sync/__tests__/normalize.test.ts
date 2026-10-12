@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { eqCanon, isoToSerial, normalize, parseDateText, roundTo, serialToIso } from "../normalize";
+import { eqCanon, isoToSerial, normalize, parseDateText, roundTo, serialToIso, toDbValue } from "../normalize";
 import type { ColumnType } from "../types";
 
 const int15: ColumnType = { kind: "int", min: 1, max: 5 };
@@ -81,5 +81,26 @@ describe("text and enums", () => {
     expect(eqCanon(undefined, null)).toBe(true);
     expect(eqCanon(4, 4)).toBe(true);
     expect(eqCanon(4, "4")).toBe(false);
+  });
+});
+
+describe("station codes and Ya/Tidak flags", () => {
+  const station: ColumnType = { kind: "station" };
+  const scope: ColumnType = { kind: "station", kps: true };
+  const flag: ColumnType = { kind: "bool", yes: "Ya", no: "Tidak" };
+  test("station codes are trimmed and upper-cased; KPS only where allowed", () => {
+    expect(val(" cgk ", station)).toBe("CGK");
+    expect(err("KPS", station)).toBe(true);
+    expect(val("kps", scope)).toBe("KPS");
+    expect(err("Jakarta Pusat", station)).toBe(true);
+  });
+  test("Ya/Tidak <-> true/false", () => {
+    expect(val(true, flag)).toBe("Ya");
+    expect(val(false, flag)).toBe("Tidak");
+    expect(val(" ya ", flag)).toBe("Ya");
+    expect(val("TIDAK", flag)).toBe("Tidak");
+    expect(val("", flag)).toBeNull();
+    expect(err("Mungkin", flag)).toBe(true);
+    expect([toDbValue("Ya", flag), toDbValue("Tidak", flag), toDbValue(null, flag), toDbValue("Ya", station)]).toEqual([true, false, null, "Ya"]);
   });
 });

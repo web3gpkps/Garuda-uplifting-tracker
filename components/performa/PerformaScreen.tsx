@@ -1,4 +1,6 @@
-import { practiceAvg, staffRekap, weekEnd, weekOfDate, weekStart } from "@/lib/rules";
+import type { ReactNode } from "react";
+import { PROGRAMS, coachingAvg, finalResult, staffRekap, weekEnd, weekOfDate, weekStart, type Program } from "@/lib/rules";
+import { formatDecimal } from "@/lib/format";
 import { formatTanggal, formatTanggalPendek, formatHariTanggal } from "@/lib/dates";
 import {
   hrefs,
@@ -16,12 +18,13 @@ import { todayInJakarta } from "@/components/shell/programme-calendar";
 import { WeekRail } from "@/components/shell/WeekRail";
 import { PageHeader, PageLoading } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
-import { StationFilter, type StationFilterOption } from "@/components/ui/StationFilter";
 import { HowToTip } from "@/components/ui/HowToTip";
 import { RememberView } from "@/components/ui/RememberView";
 import { oneTo, rememberScope } from "@/components/ui/remember";
 import { TabNav } from "@/components/ui/TabNav";
 import { EmptyState } from "@/components/ui/States";
+import { LinkSelect, type LinkSelectOption } from "@/components/grid/LinkSelect";
+import { parseProgram } from "@/components/sdm/rows";
 import { WeeklyEntry, type EntryGroup } from "@/components/performa/WeeklyEntry";
 import type { EntryStaff } from "@/components/performa/ScoreRow";
 import { RekapTable } from "@/components/performa/RekapTable";
@@ -35,19 +38,20 @@ export function PerformaLoading() {
   return <PageLoading title={TITLE} label="Memuat nilai performa" />;
 }
 
-type Query = { tab: "input" | "rekap"; week: number; station: string | null };
+type Query = { tab: "input" | "rekap"; week: number; station: string | null; program: Program | null };
 
 function hrefFor(access: WorkspaceAccess, q: Query): string {
   return hrefs(access).to("performa", {
     tab: q.tab === "rekap" ? "rekap" : null,
     minggu: q.week,
     stasiun: q.station,
+    program: q.program,
   });
 }
 
 function isAssessed(ws: Workspace, code: string, week: number): boolean {
   const row = ws.weeklyScores.find((r) => r.staffCode === code && r.week === week);
-  return row ? practiceAvg(row) !== null : false;
+  return row ? coachingAvg(row) !== null : false;
 }
 
 /** Workbook sheets "Log Performa Mingguan" (input) and "Rekap Performa" (rekap). */
@@ -59,31 +63,47 @@ export function PerformaScreen({ access, ws, searchParams: sp }: ScreenProps) {
     tab: sp.tab === "rekap" ? "rekap" : "input",
     week: parseWeek(sp.minggu, settings, today),
     station: parseStation(ws, sp.stasiun),
+    program: parseProgram(sp.program),
   };
   const currentWeek = weekOfDate(today, settings);
   const allStaff = sortedStaff(ws);
-  const staff = query.station ? allStaff.filter((s) => s.station === query.station) : allStaff;
-  const scopeName = query.station ? `Stasiun ${query.station}` : ws.isKps ? "semua stasiun" : ws.scopeLabel;
+  const byProgram = query.program ? allStaff.filter((s) => s.program === query.program) : allStaff;
+  const inStation = query.station ? allStaff.filter((s) => s.station === query.station) : allStaff;
+  const staff = query.station ? byProgram.filter((s) => s.station === query.station) : byProgram;
+  const stationName = query.station ? `Unit ${query.station}` : ws.isKps ? "semua unit" : ws.scopeLabel;
+  const scopeName = query.program ? `${query.program}, ${stationName}` : stationName;
+  const showStation = ws.isKps && query.station === null;
 
-  const assessedCount = (list: WorkspaceStaff[]) =>
-    list.filter((s) => isAssessed(ws, s.code, query.week)).length;
+  const assessedCount = (list: WorkspaceStaff[]) => list.filter((s) => isAssessed(ws, s.code, query.week)).length;
+  const countLabel = (list: WorkspaceStaff[]) =>
+    query.tab === "input" ? `${assessedCount(list)}/${list.length} dinilai` : `${list.length} SDM`;
 
-  const stationOptions: StationFilterOption[] = ws.isKps
+  const stationOptions: LinkSelectOption[] = ws.isKps
     ? [null, ...stationCodes(ws)].map((code) => {
-        const list = code ? allStaff.filter((s) => s.station === code) : allStaff;
-        const done = assessedCount(list);
+        const list = code ? byProgram.filter((s) => s.station === code) : byProgram;
         return {
-          code,
-          label: code ?? "Semua stasiun",
-          meta: query.tab === "input" ? `${done}/${list.length}` : String(list.length),
-          metaLabel:
-            query.tab === "input"
-              ? `${done} dari ${list.length} SDM sudah dinilai`
-              : `${list.length} SDM`,
+          value: code ?? "semua",
+          label: `${code ?? "Semua unit"} (${countLabel(list)})`,
           href: hrefFor(access, { ...query, station: code }),
         };
       })
     : [];
+  const programOptions: LinkSelectOption[] = [null, ...PROGRAMS].map((p) => {
+    const list = p ? inStation.filter((s) => s.program === p) : inStation;
+    return {
+      value: p ?? "semua",
+      label: `${p ?? "Semua program"} (${countLabel(list)})`,
+      href: hrefFor(access, { ...query, program: p }),
+    };
+  });
+  const filters = (
+    <div className="flex flex-wrap gap-4">
+      <LinkSelect label="Program" options={programOptions} current={query.program ?? "semua"} />
+      {stationOptions.length > 0 ? (
+        <LinkSelect label="Unit (stasiun)" options={stationOptions} current={query.station ?? "semua"} rememberStation />
+      ) : null}
+    </div>
+  );
 
   const tabs = [
     { href: hrefFor(access, { ...query, tab: "input" }), label: "Input mingguan" },
@@ -99,16 +119,14 @@ export function PerformaScreen({ access, ws, searchParams: sp }: ScreenProps) {
       <PageHeader
         title={TITLE}
         context={`${ws.scopeLabel} · ${query.tab === "input" ? `Minggu ke-${query.week}, ${weekRange}` : `Rekap ${settings.weeks} minggu`}`}
-        description="Nilai praktik mingguan aspek A sampai F per SDM dari observasi, role play, atau mystery guest, beserta rekap perkembangannya dari minggu ke minggu."
+        description="Skor coaching mingguan per SDM untuk empat aspek (0 sampai 100) beserta rekap perkembangannya dibanding Final Result training."
       >
         <TabNav
           label="Tampilan performa"
           items={tabs}
           currentHref={query.tab === "rekap" ? tabs[1].href : tabs[0].href}
         />
-        {query.tab === "rekap" && stationOptions.length > 0 ? (
-          <StationFilter options={stationOptions} current={query.station} />
-        ) : null}
+        {query.tab === "rekap" ? filters : null}
         <RememberView
           scope={rememberScope(access, ws)}
           allowed={{ minggu: oneTo(settings.weeks), ...(ws.isKps ? { stasiun: stationCodes(ws) } : {}) }}
@@ -123,13 +141,14 @@ export function PerformaScreen({ access, ws, searchParams: sp }: ScreenProps) {
           query={query}
           staff={staff}
           scopeName={scopeName}
+          showStation={showStation}
           today={today}
           currentWeek={currentWeek}
           assessed={assessedCount(staff)}
-          stationOptions={stationOptions}
+          filters={filters}
         />
       ) : (
-        <RekapView ws={ws} staff={staff} scopeName={scopeName} currentWeek={currentWeek} />
+        <RekapView ws={ws} staff={staff} scopeName={scopeName} showStation={showStation} currentWeek={currentWeek} />
       )}
     </div>
   );
@@ -141,26 +160,29 @@ function InputView({
   query,
   staff,
   scopeName,
+  showStation,
   today,
   currentWeek,
   assessed,
-  stationOptions,
+  filters,
 }: {
   ws: Workspace;
   access: WorkspaceAccess;
   query: Query;
   staff: WorkspaceStaff[];
   scopeName: string;
+  showStation: boolean;
   today: string;
   currentWeek: number | null;
   assessed: number;
-  stationOptions: StationFilterOption[];
+  filters: ReactNode;
 }) {
   const settings = ruleSettings(ws.settings);
   const start = weekStart(query.week, settings);
   const isFuture = today < start;
   const total = staff.length;
   const percent = total === 0 ? 0 : Math.round((assessed / total) * 100);
+  const pass = formatDecimal(settings.passGrade, 0, 2);
 
   const groups: EntryGroup[] = [];
   const gridRows: ScoreGridRow[] = [];
@@ -171,35 +193,42 @@ function InputView({
       groups.push(group);
     }
     const row = ws.weeklyScores.find((r) => r.staffCode === s.code && r.week === query.week) ?? null;
+    const final = finalResult(s.rolePlay, s.postTest, settings);
+    const changedLabel = row ? lastChangedLabel(row, ws) : null;
     const entry: EntryStaff = {
       code: s.code,
       name: s.name,
       assignmentStatus: s.assignmentStatus,
-      baselineAvg: practiceAvg(s),
+      finalResult: final,
+      defaultTouchPoint: s.touchPoint,
       saved: row
         ? {
-            scores: [row.scoreA, row.scoreB, row.scoreC, row.scoreD, row.scoreE, row.scoreF],
+            touchPoint: row.touchPoint,
+            scores: [row.scoreGrooming, row.scoreKnowledge, row.scoreAttitude, row.scoreCommunication],
+            gapTopic: row.gapTopic,
             observer: row.observer,
             coachingNotes: row.coachingNotes,
           }
         : null,
-      changedLabel: row ? lastChangedLabel(row, ws) : null,
+      changedLabel,
     };
     group.staff.push(entry);
     gridRows.push({
       code: s.code,
       name: s.name,
+      station: s.station,
       assignmentStatus: s.assignmentStatus,
-      baselineAvg: entry.baselineAvg,
-      score_a: row?.scoreA ?? null,
-      score_b: row?.scoreB ?? null,
-      score_c: row?.scoreC ?? null,
-      score_d: row?.scoreD ?? null,
-      score_e: row?.scoreE ?? null,
-      score_f: row?.scoreF ?? null,
+      finalResult: final,
+      defaultTouchPoint: s.touchPoint,
+      touch_point: row?.touchPoint ?? null,
+      score_grooming: row?.scoreGrooming ?? null,
+      score_knowledge: row?.scoreKnowledge ?? null,
+      score_attitude: row?.scoreAttitude ?? null,
+      score_communication: row?.scoreCommunication ?? null,
+      gap_topic: row?.gapTopic ?? null,
       observer: row?.observer ?? null,
       coaching_notes: row?.coachingNotes ?? null,
-      changedLabel: entry.changedLabel,
+      changedLabel,
     });
   }
   for (const g of groups) {
@@ -209,7 +238,7 @@ function InputView({
 
   const weekHref = (w: number) => hrefFor(access, { ...query, week: w });
   const futureNote = isFuture
-    ? `Minggu ke-${query.week} belum berjalan (mulai ${formatHariTanggal(start)}). Nilai tetap bisa diisi bila penilaian sudah dilakukan.`
+    ? `Minggu ke-${query.week} belum berjalan (mulai ${formatHariTanggal(start)}). Nilai tetap bisa diisi bila coaching sudah dilakukan.`
     : null;
   const label = `Nilai Minggu ke-${query.week}, ${scopeName}`;
   const emptyState = (
@@ -217,10 +246,11 @@ function InputView({
       Tambahkan SDM lewat Master SDM (tombol Tambah SDM). Barisnya muncul di sini setelah tersimpan.
     </EmptyState>
   );
+  const listKey = `${query.week}-${query.station ?? "semua"}-${query.program ?? "semua"}`;
 
   return (
     <>
-      {/* Phones: the week and station pickers sit above the cards (on desktop they are in the grid toolbar). */}
+      {/* Phones: the week and filters sit above the cards (on desktop they are in the grid toolbar). */}
       <div className="flex flex-col gap-4 nav:hidden">
         {ws.schedule ? (
           <WeekRail
@@ -232,7 +262,7 @@ function InputView({
             label="Pilih minggu penilaian"
           />
         ) : null}
-        {stationOptions.length > 0 ? <StationFilter options={stationOptions} current={query.station} /> : null}
+        {filters}
       </div>
 
       <Panel
@@ -242,9 +272,10 @@ function InputView({
           <>
             <span className="hidden nav:inline">
               <HowToTip id="performa">
-                ketik angka 1 sampai 5 di sel kuning, kursor pindah sendiri ke aspek berikutnya. Blok nilai dari Excel
-                bisa ditempel dengan Ctrl+V. Baris tersimpan sendiri; kosongkan semua isian sebuah baris untuk menghapus
-                nilai minggu itu.
+                isi skor 0 sampai 100 (boleh desimal, contoh 87,5) di sel kuning; Rata-rata, Status (lulus bila {pass} atau
+                lebih) dan Δ Final Result terhitung sendiri. Blok nilai dari Excel bisa ditempel dengan Ctrl+V. Touch
+                point kosong memakai touch point di Master SDM. Baris tersimpan sendiri; kosongkan semua isian sebuah
+                baris untuk menghapus nilai minggu itu.
               </HowToTip>{" "}
             </span>
             {futureNote}
@@ -253,11 +284,12 @@ function InputView({
       >
         <div className="px-4 pb-4 sm:px-6 sm:pb-6">
           <ScoreGrid
-            key={`${query.week}-${query.station ?? "semua"}`}
+            key={listKey}
             caption={label}
             rows={gridRows}
             week={query.week}
             settings={settings}
+            showStation={showStation}
             accessKey={access.key}
             saveAction={saveWeeklyScore}
             summary={
@@ -281,7 +313,7 @@ function InputView({
                     />
                   </div>
                 ) : null}
-                {stationOptions.length > 0 ? <StationFilter options={stationOptions} current={query.station} /> : null}
+                {filters}
               </>
             }
             emptyState={emptyState}
@@ -301,7 +333,7 @@ function InputView({
                   <div className="px-4 sm:px-6">{emptyState}</div>
                 ) : (
                   <WeeklyEntry
-                    key={`${query.week}-${query.station ?? "semua"}`}
+                    key={listKey}
                     accessKey={access.key}
                     week={query.week}
                     settings={settings}
@@ -324,17 +356,21 @@ function RekapView({
   ws,
   staff,
   scopeName,
+  showStation,
   currentWeek,
 }: {
   ws: Workspace;
   staff: WorkspaceStaff[];
   scopeName: string;
+  showStation: boolean;
   currentWeek: number | null;
 }) {
   const settings = ruleSettings(ws.settings);
   const rows = staff.map((s) => ({
     code: s.code,
     name: s.name,
+    program: s.program,
+    station: s.station,
     rekap: staffRekap(s, ws.weeklyScores, settings),
   }));
   const anyScore = rows.some((r) => r.rekap.weeksAssessed > 0);
@@ -343,7 +379,11 @@ function RekapView({
     <Panel
       padding="flush"
       title={`Rekap performa, ${scopeName}`}
-      description="Rata-rata nilai praktik per minggu. Minggu tanpa nilai dibiarkan kosong. Status terkini memakai kriteria 6.2 (nilai terakhir dan post-test)."
+      description={`Rata-rata skor coaching per minggu. Minggu tanpa nilai dibiarkan kosong. Kenaikan = skor terkini dikurangi Final Result training; status terkini lulus bila skor terkini ${formatDecimal(
+        settings.passGrade,
+        0,
+        2,
+      )} atau lebih.`}
     >
       {!anyScore ? (
         <div className="border-t border-line px-4 sm:px-6">
@@ -358,6 +398,7 @@ function RekapView({
         rows={rows}
         weeks={settings.weeks}
         currentWeek={currentWeek}
+        showStation={showStation}
       />
     </Panel>
   );

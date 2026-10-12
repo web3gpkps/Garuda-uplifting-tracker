@@ -1,20 +1,12 @@
 /*
- * Tindak Lanjut view model. Every number and label comes from lib/rules.ts
- * (effectiveDueDate, actionDaysLeft, actionFlag); this file only shapes the rows
- * for the screen: which link last changed them, how urgent they are, how the
- * due date reads. Pure and server-safe (the page derives, the client filters).
+ * Tindak Lanjut view model. Every number and label comes from lib/rules.ts (daysLeft,
+ * actionFlag); this file only shapes the rows for the screen: which link last changed
+ * them, how urgent they are, how the due date reads. Pure and server-safe (the page
+ * derives, the client filters).
  */
 import { formatTanggal } from "@/lib/dates";
 import { relativeDays } from "@/lib/format";
-import {
-  actionDaysLeft,
-  actionFlag,
-  effectiveDueDate,
-  type ActionFlag,
-  type DueRule,
-  type IsoDate,
-  type Settings,
-} from "@/lib/rules";
+import { ACTION_GROUPS, ASPECTS, actionFlag, daysLeft, type ActionFlag, type IsoDate } from "@/lib/rules";
 import type { Workspace, WorkspaceActionItem } from "@/lib/workspace";
 import { changedVia, lastChangedLabel } from "@/lib/workspace/view";
 
@@ -23,49 +15,36 @@ export type ActionStatusValue = (typeof ACTION_STATUSES)[number];
 
 export const ACTION_KINDS = ["Sekali", "Rutin"] as const;
 
-export const DUE_RULES = ["bulanan-tgl-5", "cek-bmi-berikutnya", "jumat-berikutnya"] as const;
+export { ACTION_GROUPS, ASPECTS };
 
-/** Short name of a rolling due date, as shown next to the computed date. */
-export const DUE_RULE_LABEL: Record<DueRule, string> = {
-  "bulanan-tgl-5": "Tanggal 5 berikutnya",
-  "cek-bmi-berikutnya": "Cek BMI berikutnya",
-  "jumat-berikutnya": "Jumat berikutnya",
-};
+export const NO_DUE_FLAG: ActionFlag = "Batas waktu belum ditetapkan";
 
-/** Longer wording for the KPS select: which workbook item uses the rule. */
-export const DUE_RULE_OPTION: Record<DueRule, string> = {
-  "bulanan-tgl-5": "Tanggal 5 berikutnya (laporan progres bulanan)",
-  "cek-bmi-berikutnya": "Cek BMI berikutnya (per 2 minggu)",
-  "jumat-berikutnya": "Jumat berikutnya (laporan mingguan)",
-};
-
-export function asDueRule(value: string | null | undefined): DueRule | null {
-  return (DUE_RULES as readonly string[]).includes(value ?? "") ? (value as DueRule) : null;
-}
+/** Shown wherever a station link meets the (national) items it cannot change. */
+export const READ_ONLY_NOTE = "Tindak lanjut nasional dikelola KPS.";
 
 export type ActionView = {
   code: string;
-  reportGroup: string;
-  area: string | null;
+  /** Kelompok (Coaching Frontliner, Timeline Training, Evaluasi IULS & RUST). */
+  groupName: string;
+  aspect: string | null;
+  rootCause: string | null;
   action: string | null;
   target: string | null;
   kind: string | null;
   schedule: string | null;
   pic: string | null;
-  /** Column due_date ("Batas waktu tetap"). */
   dueDate: IsoDate | null;
-  dueRule: DueRule | null;
-  /** effectiveDueDate(): the rule's date today, else dueDate. */
-  effectiveDue: IsoDate | null;
-  /** "Jumat berikutnya (16 Okt 2026)", "31 Okt 2026" or null. */
+  /** "31 Okt 2026" or null. */
   dueLabel: string | null;
   daysLeft: number | null;
-  flag: ActionFlag | null;
+  flag: ActionFlag;
   status: string;
   progress: number;
   updatedOn: IsoDate | null;
   evidence: string | null;
   kpsNotes: string | null;
+  /** PDF slide, e.g. "Slide 15". */
+  source: string | null;
   sortOrder: number;
   /** 0 OVERDUE, 1 due within 7 days, 2 on track / routine, 3 no due date, 4 done. */
   urgency: number;
@@ -76,49 +55,40 @@ export type ActionView = {
   updatedAt: string;
 };
 
-function urgencyOf(flag: ActionFlag | null): number {
+export function urgencyOf(flag: ActionFlag): number {
   if (flag === "OVERDUE") return 0;
   if (flag === "Jatuh tempo ≤ 7 hari") return 1;
   if (flag === "Selesai") return 4;
-  if (flag === null) return 3;
+  if (flag === NO_DUE_FLAG) return 3;
   return 2;
 }
 
 export function toActionView(
   item: WorkspaceActionItem,
-  s: Settings,
   today: IsoDate,
   ws: Pick<Workspace, "linkId" | "linkLabels">,
 ): ActionView {
-  const dueRule = asDueRule(item.dueRule);
-  const ruleRow = { dueDate: item.dueDate, schedule: item.schedule, dueRule, status: item.status, kind: item.kind };
-  const effectiveDue = effectiveDueDate(ruleRow, s, today);
-  const flag = actionFlag(ruleRow, s, today);
-  const dueLabel = effectiveDue
-    ? dueRule
-      ? `${DUE_RULE_LABEL[dueRule]} (${formatTanggal(effectiveDue)})`
-      : formatTanggal(effectiveDue)
-    : null;
+  const flag = actionFlag(item, today);
   return {
     code: item.code,
-    reportGroup: item.reportGroup,
-    area: item.area,
+    groupName: item.groupName,
+    aspect: item.aspect,
+    rootCause: item.rootCause,
     action: item.action,
     target: item.target,
     kind: item.kind,
     schedule: item.schedule,
     pic: item.pic,
     dueDate: item.dueDate,
-    dueRule,
-    effectiveDue,
-    dueLabel,
-    daysLeft: actionDaysLeft(ruleRow, s, today),
+    dueLabel: item.dueDate ? formatTanggal(item.dueDate) : null,
+    daysLeft: daysLeft(item.dueDate, item.status, today),
     flag,
     status: item.status,
     progress: item.progress,
     updatedOn: item.updatedOn,
     evidence: item.evidence,
     kpsNotes: item.kpsNotes,
+    source: item.source,
     sortOrder: item.sortOrder ?? 0,
     urgency: urgencyOf(flag),
     lastChangedBy: changedVia(item, ws),
@@ -132,7 +102,8 @@ export function byUrgency(a: ActionView, b: ActionView): number {
   return (
     a.urgency - b.urgency ||
     (a.daysLeft ?? Number.POSITIVE_INFINITY) - (b.daysLeft ?? Number.POSITIVE_INFINITY) ||
-    a.sortOrder - b.sortOrder
+    a.sortOrder - b.sortOrder ||
+    a.code.localeCompare(b.code)
   );
 }
 
@@ -147,6 +118,39 @@ export function describeDaysLeft(days: number | null): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-export function needsAttention(view: ActionView): boolean {
+export function needsAttention(view: Pick<ActionView, "urgency">): boolean {
   return view.urgency <= 1;
+}
+
+export const FLAG_FILTERS = [
+  { value: "", label: "Semua flag" },
+  { value: "perlu", label: "Perlu ditangani (OVERDUE + ≤ 7 hari)" },
+  { value: "OVERDUE", label: "OVERDUE" },
+  { value: "Jatuh tempo ≤ 7 hari", label: "Jatuh tempo ≤ 7 hari" },
+  { value: "Rutin – pantau", label: "Rutin – pantau" },
+  { value: "On Track", label: "On Track" },
+  { value: "Selesai", label: "Selesai" },
+  { value: NO_DUE_FLAG, label: NO_DUE_FLAG },
+] as const;
+
+export type ActionFilters = { status: string; flag: string; aspect: string };
+
+export function matchesFilters(
+  view: Pick<ActionView, "status" | "flag" | "aspect" | "urgency">,
+  f: ActionFilters,
+): boolean {
+  if (f.status && view.status !== f.status) return false;
+  if (f.aspect && view.aspect !== f.aspect) return false;
+  if (f.flag === "perlu") return needsAttention(view);
+  return f.flag === "" || view.flag === f.flag;
+}
+
+/** `?aspek=` as one of ASPECTS, else "" (all aspects). */
+export function parseAspect(raw: string | null | undefined): string {
+  return raw && (ASPECTS as readonly string[]).includes(raw) ? raw : "";
+}
+
+/** `?kelompok=` as one of ACTION_GROUPS, else null (all groups). */
+export function parseGroup(raw: string | null | undefined): string | null {
+  return raw && (ACTION_GROUPS as readonly string[]).includes(raw) ? raw : null;
 }

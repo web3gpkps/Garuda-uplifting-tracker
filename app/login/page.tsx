@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { AuthFrame } from "@/components/shell/AuthFrame";
+import { SHEETS } from "@/lib/workspace/access";
 import { LoginForm } from "./LoginForm";
+
+const SHEET_NAMES = SHEETS.map((sheet) => sheet.label).join(", ");
 
 export const metadata: Metadata = { title: "Masuk" };
 
@@ -10,9 +13,8 @@ export default function LoginPage() {
       title="Masuk ke area pemilik"
       intro={
         <p>
-          Area pemilik berisi workbook semua stasiun (Dashboard, Master SDM, Log Performa, Cek BMI,
-          Tindak Lanjut, Penggantian SDM, Laporan Mingguan) serta tautan stasiun, Parameter, dan
-          sinkronisasi Google Sheet.
+          Area pemilik berisi workbook semua stasiun ({SHEET_NAMES}) serta tautan stasiun,
+          Parameter, dan sinkronisasi Google Sheet.
         </p>
       }
       footnote={

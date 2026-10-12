@@ -4,51 +4,44 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Button } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { DataGrid, type CellValue, type GridColumn, type SaveRowResult } from "@/components/grid/DataGrid";
-import { formatTanggal } from "@/lib/dates";
-import { actionDaysLeft, actionFlag, effectiveDueDate, type Settings } from "@/lib/rules";
+import { actionFlag, daysLeft } from "@/lib/rules";
 import { saveActionDefinition, saveActionProgress } from "./actions";
 import { ActionItemDialog } from "./ActionItemDialog";
 import { DeleteActionItemDialog } from "./DeleteActionItemDialog";
 import {
+  ACTION_GROUPS,
   ACTION_KINDS,
   ACTION_STATUSES,
-  DUE_RULES,
-  DUE_RULE_LABEL,
-  asDueRule,
+  ASPECTS,
+  FLAG_FILTERS,
+  READ_ONLY_NOTE,
   byUrgency,
   byWorkbookOrder,
   describeDaysLeft,
+  matchesFilters,
   needsAttention,
+  type ActionFilters,
   type ActionView,
 } from "./action-view";
 import type { DefinitionField, ProgressField } from "./types";
 
 type ActionGridProps = {
   accessKey: string;
-  isKps: boolean;
+  /** KPS links and the owner. Station links get a read-only grid. */
+  canEdit: boolean;
   isOwner: boolean;
   today: string;
-  settings: Settings;
   items: ActionView[];
-  /** Show the Laporan column (KPS / owner viewing every report group). */
+  /** From ?aspek=, "" for all aspects. */
+  initialAspect: string;
+  /** Show the Kelompok column (no group filter). */
   showGroup: boolean;
   caption: string;
   /** Cards + dialog for phones (< 900 px). */
   phone: ReactNode;
 };
 
-type Filters = { status: string; flag: string; order: "urgency" | "id" };
-
-const FLAG_FILTERS = [
-  { value: "", label: "Semua flag" },
-  { value: "perlu", label: "Perlu ditangani (OVERDUE + ≤ 7 hari)" },
-  { value: "OVERDUE", label: "OVERDUE" },
-  { value: "Jatuh tempo ≤ 7 hari", label: "Jatuh tempo ≤ 7 hari" },
-  { value: "Rutin – pantau", label: "Rutin – pantau" },
-  { value: "On Track", label: "On Track" },
-  { value: "Selesai", label: "Selesai" },
-  { value: "tanpa", label: "Tanpa batas waktu" },
-] as const;
+type Filters = ActionFilters & { order: "urgency" | "id" };
 
 const PROGRESS_KEYS: Record<string, ProgressField> = {
   status: "status",
@@ -57,38 +50,33 @@ const PROGRESS_KEYS: Record<string, ProgressField> = {
   evidence: "evidence",
 };
 const DEFINITION_KEYS: Record<string, DefinitionField> = {
-  area: "area",
+  group_name: "groupName",
+  aspect: "aspect",
+  root_cause: "rootCause",
   action: "action",
   target: "target",
   kind: "kind",
   schedule: "schedule",
   due_date: "dueDate",
-  due_rule: "dueRule",
   pic: "pic",
   kps_notes: "kpsNotes",
+  source: "source",
 };
 const GRID_KEY: Record<string, string> = Object.fromEntries(
   [...Object.entries(PROGRESS_KEYS), ...Object.entries(DEFINITION_KEYS)].map(([grid, field]) => [field, grid]),
 );
 
 const rowKey = (r: ActionView) => r.code;
-const rowLabel = (r: ActionView) => `${r.code}, ${r.area ?? "tanpa area"}`;
+const rowLabel = (r: ActionView) => `${r.code}, ${r.aspect ?? "tanpa aspek"}`;
 const SEARCH = {
-  placeholder: "ID, area, tindakan, PIC",
-  text: (r: ActionView) => `${r.code} ${r.area ?? ""} ${r.action ?? ""} ${r.pic ?? ""}`,
+  placeholder: "ID, tindakan, akar masalah, PIC",
+  text: (r: ActionView) => `${r.code} ${r.aspect ?? ""} ${r.action ?? ""} ${r.rootCause ?? ""} ${r.pic ?? ""} ${r.source ?? ""}`,
 };
-
-function matches(view: ActionView, f: Filters): boolean {
-  if (f.status && view.status !== f.status) return false;
-  if (f.flag === "perlu") return needsAttention(view);
-  if (f.flag === "tanpa") return view.flag === null;
-  return f.flag === "" || view.flag === f.flag;
-}
 
 /** The order is taken when a filter changes, not on every save, so a row never jumps away while it is edited. */
 function orderOf(items: ActionView[], f: Filters): string[] {
   return items
-    .filter((v) => matches(v, f))
+    .filter((v) => matchesFilters(v, f))
     .sort(f.order === "urgency" ? byUrgency : byWorkbookOrder)
     .map((v) => v.code);
 }
@@ -101,17 +89,18 @@ const toolSelect =
   "select-control min-h-10 rounded-control border border-line-strong bg-surface pl-3 text-sm text-ink hover:border-ink";
 
 /**
- * Tindak Lanjut as a spreadsheet (docs/UX.md §2). Yellow cells: Status, % Progres, Tgl update,
- * Realisasi / Bukti for every link; Area, Tindakan, Target, Jenis, Jadwal, batas waktu, PIC and
- * Catatan KPS for KPS and the owner. White cells (Batas waktu, Sisa hari, Flag) follow the row
- * as typed. Each row saves itself: progress through share_update_action_item, the KPS fields
- * through share_kps_update_action_item, each merged with the stored row. Client component.
+ * Tindak Lanjut as a spreadsheet (docs/UX.md §2). For KPS and the owner the yellow cells are
+ * Status, % Progres, Tgl update, Realisasi / Bukti, Catatan Garuda / KPS and the item's
+ * definition; white cells (Flag, Sisa hari) follow the row as typed. Each row saves itself:
+ * progress through share_update_action_item, the rest through share_kps_update_action_item,
+ * each merged with the stored row. Station links get the same grid read-only. Client component.
  */
-export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, showGroup, caption, phone }: ActionGridProps) {
-  // Settings and today are fixed for this page view; memoising columns on them keeps the grid steady after saves.
-  const [rules] = useState(() => ({ settings, today }));
-  const [filters, setFilters] = useState<Filters>({ status: "", flag: "", order: "urgency" });
-  const [order, setOrder] = useState<string[]>(() => orderOf(items, { status: "", flag: "", order: "urgency" }));
+export function ActionGrid({ accessKey, canEdit, isOwner, today, items, initialAspect, showGroup, caption, phone }: ActionGridProps) {
+  // Today is fixed for this page view; memoising columns on it keeps the grid steady after saves.
+  const [fixedToday] = useState(today);
+  const initialFilters: Filters = { status: "", flag: "", aspect: initialAspect, order: "urgency" };
+  const [filters, setFilters] = useState<Filters>(initialFilters);
+  const [order, setOrder] = useState<string[]>(() => orderOf(items, initialFilters));
   const [opened, setOpened] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
@@ -127,45 +116,49 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
     const listed = order.map((code) => byCode.get(code)).filter((v): v is ActionView => v !== undefined);
     const known = new Set(order);
     // Items added since the order was taken (owner "Tambah butir") go to the end.
-    const added = items.filter((v) => !known.has(v.code) && matches(v, filters));
+    const added = items.filter((v) => !known.has(v.code) && matchesFilters(v, filters));
     return [...listed, ...added];
   }, [items, order, filters]);
 
   const columns = useMemo<GridColumn<ActionView>[]>(() => {
-    const kpsOnly = () => isKps;
-    const { settings: s, today: t } = rules;
+    const t = fixedToday;
     const ruleRow = (row: ActionView, value: (key: string) => CellValue) => ({
       dueDate: (value("due_date") as string | null) ?? null,
-      schedule: (value("schedule") as string | null) ?? null,
-      dueRule: asDueRule(value("due_rule") as string | null),
       status: (value("status") as string | null) ?? row.status,
       kind: (value("kind") as string | null) ?? null,
     });
+    const definition = "Definisi butir";
     const list: GridColumn<ActionView>[] = [
-      { key: "code", header: "ID", width: 116, editor: "readonly", frozen: true },
+      { key: "code", header: "ID", width: 100, editor: "readonly", frozen: true },
       {
-        key: "area",
-        header: "Area",
-        width: 196,
-        editor: "text",
-        maxLength: 4000,
-        required: true,
+        key: "aspect",
+        header: "Aspek",
+        width: 200,
+        editor: "select",
+        options: ASPECTS.map((value) => ({ value })),
         frozen: true,
-        editable: kpsOnly,
       },
     ];
     if (showGroup) {
-      list.push({ key: "report_group", header: "Laporan", width: 96, editor: "readonly", get: (r) => r.reportGroup });
+      list.push({
+        key: "group_name",
+        header: "Kelompok",
+        width: 176,
+        editor: "select",
+        required: true,
+        options: ACTION_GROUPS.map((value) => ({ value })),
+        get: (r) => r.groupName,
+      });
     }
     list.push(
       {
         key: "flag",
         header: "Flag",
         group: "Dihitung otomatis",
-        width: 168,
+        width: 216,
         editor: "readonly",
-        derive: (row, value) => actionFlag(ruleRow(row, value), s, t),
-        render: (v) => chip(v, "Tanpa batas waktu"),
+        derive: (row, value) => actionFlag(ruleRow(row, value), t),
+        render: (v) => chip(v),
       },
       {
         key: "days_left",
@@ -174,7 +167,10 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
         width: 112,
         editor: "readonly",
         align: "start",
-        derive: (row, value) => actionDaysLeft(ruleRow(row, value), s, t),
+        derive: (row, value) => {
+          const r = ruleRow(row, value);
+          return daysLeft(r.dueDate, r.status, t);
+        },
         render: (v) => {
           const days = typeof v === "number" ? v : null;
           return (
@@ -183,20 +179,6 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
             </span>
           );
         },
-      },
-      {
-        key: "due_label",
-        header: "Batas waktu",
-        group: "Dihitung otomatis",
-        width: 216,
-        editor: "readonly",
-        derive: (row, value) => {
-          const r = ruleRow(row, value);
-          const due = effectiveDueDate(r, s, t);
-          if (!due) return null;
-          return r.dueRule ? `${DUE_RULE_LABEL[r.dueRule]} (${formatTanggal(due)})` : formatTanggal(due);
-        },
-        render: (v) => (v ? <span className="tabular-nums">{v}</span> : <span className="text-ink-muted">Belum ditentukan</span>),
       },
       {
         key: "status",
@@ -239,47 +221,36 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
       },
       {
         key: "kps_notes",
-        header: "Catatan KPS",
+        header: "Catatan Garuda / KPS",
         group: "KPS",
         width: 240,
         editor: "longtext",
         maxLength: 4000,
         get: (r) => r.kpsNotes,
-        editable: kpsOnly,
       },
-      { key: "action", header: "Tindakan", group: "Definisi butir", width: 320, editor: "longtext", maxLength: 4000, editable: kpsOnly },
-      { key: "target", header: "Target / Indikator", group: "Definisi butir", width: 240, editor: "longtext", maxLength: 4000, editable: kpsOnly },
-      { key: "pic", header: "PIC", group: "Definisi butir", width: 200, editor: "text", maxLength: 4000, editable: kpsOnly },
-      {
-        key: "kind",
-        header: "Jenis",
-        group: "Definisi butir",
-        width: 104,
-        editor: "select",
-        options: ACTION_KINDS.map((value) => ({ value })),
-        editable: kpsOnly,
-        render: (v) => chip(v),
-      },
-      { key: "schedule", header: "Jadwal", group: "Definisi butir", width: 240, editor: "longtext", maxLength: 4000, editable: kpsOnly },
       {
         key: "due_date",
-        header: "Batas waktu tetap",
-        group: "Definisi butir",
+        header: "Batas waktu",
+        group: definition,
         width: 140,
         editor: "date",
         get: (r) => r.dueDate,
-        editable: kpsOnly,
       },
+      { key: "root_cause", header: "Akar masalah", group: definition, width: 260, editor: "longtext", maxLength: 4000, get: (r) => r.rootCause },
+      { key: "action", header: "Tindakan", group: definition, width: 320, editor: "longtext", maxLength: 4000 },
+      { key: "target", header: "Target (KPI)", group: definition, width: 220, editor: "longtext", maxLength: 4000 },
+      { key: "pic", header: "PIC", group: definition, width: 180, editor: "text", maxLength: 4000 },
       {
-        key: "due_rule",
-        header: "Aturan batas waktu",
-        group: "Definisi butir",
-        width: 196,
+        key: "kind",
+        header: "Jenis",
+        group: definition,
+        width: 104,
         editor: "select",
-        options: DUE_RULES.map((value) => ({ value, label: DUE_RULE_LABEL[value] })),
-        get: (r) => r.dueRule,
-        editable: kpsOnly,
+        options: ACTION_KINDS.map((value) => ({ value })),
+        render: (v) => chip(v),
       },
+      { key: "schedule", header: "Jadwal", group: definition, width: 220, editor: "longtext", maxLength: 4000 },
+      { key: "source", header: "Sumber", group: definition, width: 112, editor: "text", maxLength: 200 },
       {
         key: "changed",
         header: "Terakhir diubah",
@@ -290,7 +261,7 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
       },
     );
     return list;
-  }, [isKps, showGroup, rules]);
+  }, [showGroup, fixedToday]);
 
   const rowActions = useMemo(
     () => ({
@@ -324,7 +295,7 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
 
       if (progressChanged) {
         // A progress change without a typed date is dated today, as the workbook asks ("Tgl update").
-        const updatedOn = "updated_on" in changes ? (changes.updated_on as string | null) : rules.today;
+        const updatedOn = "updated_on" in changes ? (changes.updated_on as string | null) : fixedToday;
         const result = await saveActionProgress(accessKey, {
           code: row.code,
           status: pick<string>("status", row.status),
@@ -337,15 +308,17 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
       if (definitionChanged) {
         const result = await saveActionDefinition(accessKey, {
           code: row.code,
-          area: pick<string | null>("area", row.area) ?? "",
+          groupName: pick<string | null>("group_name", row.groupName) ?? "",
+          aspect: pick<string | null>("aspect", row.aspect) ?? "",
+          rootCause: pick<string | null>("root_cause", row.rootCause) ?? "",
           action: pick<string | null>("action", row.action) ?? "",
           target: pick<string | null>("target", row.target) ?? "",
           kind: pick<string | null>("kind", row.kind) ?? "",
           schedule: pick<string | null>("schedule", row.schedule) ?? "",
           dueDate: pick<string | null>("due_date", row.dueDate) ?? "",
-          dueRule: pick<string | null>("due_rule", row.dueRule) ?? "",
           pic: pick<string | null>("pic", row.pic) ?? "",
           kpsNotes: pick<string | null>("kps_notes", row.kpsNotes) ?? "",
+          source: pick<string | null>("source", row.source) ?? "",
         });
         if (!result.ok) {
           const message = progressChanged ? `Progres tersimpan; catatan/definisi gagal: ${result.message}` : result.message;
@@ -354,7 +327,7 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
       }
       return { ok: true };
     },
-    [accessKey, rules],
+    [accessKey, fixedToday],
   );
 
   const overdue = rows.filter((v) => v.flag === "OVERDUE").length;
@@ -371,6 +344,17 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
           {filters.flag === "perlu" ? "Tampilkan semua butir" : "Hanya yang perlu ditangani"}
         </Button>
       ) : null}
+      <label className="flex flex-col gap-1">
+        <span className="section-label">Aspek</span>
+        <select className={toolSelect} value={filters.aspect} onChange={(e) => changeFilters({ aspect: e.target.value })}>
+          <option value="">Semua aspek</option>
+          {ASPECTS.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="flex flex-col gap-1">
         <span className="section-label">Status</span>
         <select className={toolSelect} value={filters.status} onChange={(e) => changeFilters({ status: e.target.value })}>
@@ -424,13 +408,15 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
       <div role="status" aria-live="polite">
         {notice ? <p className="text-sm font-semibold text-good">{notice}</p> : null}
       </div>
+      {!canEdit ? <p className="text-sm text-ink-muted">{READ_ONLY_NOTE} Sel tidak bisa diubah lewat tautan stasiun.</p> : null}
       <DataGrid
         caption={caption}
         rows={rows}
         columns={columns}
         rowKey={rowKey}
         rowLabel={rowLabel}
-        onSaveRow={onSaveRow}
+        // No onSaveRow: the grid is read-only (station links).
+        onSaveRow={canEdit ? onSaveRow : undefined}
         search={SEARCH}
         toolbar={toolbar}
         summary={`${rows.length} dari ${items.length} butir · ${overdue} OVERDUE · ${dueSoon} jatuh tempo ≤ 7 hari`}
@@ -439,7 +425,7 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
         emptyState={
           <>
             <p className="text-sm font-semibold text-ink">Tidak ada butir dengan filter ini</p>
-            <p className="mt-1 text-sm text-ink-muted">Ubah Status atau Flag di atas untuk melihat butir lain.</p>
+            <p className="mt-1 text-sm text-ink-muted">Ubah Aspek, Status, atau Flag di atas untuk melihat butir lain.</p>
           </>
         }
         phone={phone}
@@ -447,9 +433,8 @@ export function ActionGrid({ accessKey, isKps, isOwner, today, settings, items, 
       {/* One details dialog for the whole grid, opened from a row's button. */}
       <ActionItemDialog
         accessKey={accessKey}
-        isKps={isKps}
-        today={rules.today}
-        settings={rules.settings}
+        canEdit={canEdit}
+        today={fixedToday}
         item={openedItem}
         onClose={() => setOpened(null)}
         onSaved={() => undefined}

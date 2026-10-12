@@ -10,17 +10,15 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { CopyFeedback, CopyLinkField, copyText } from "./CopyLinkField";
 import { formatWaktu } from "./format";
 import { createShareLink, revokeShareLink, rotateShareLink } from "./link-actions";
-import { LINK_SCOPES, SCOPE_DESCRIPTION, isLinkScope, type LinkRow, type NewLink } from "./link-types";
+import { KPS_SCOPE, scopeDescription, scopeName, type LinkRow, type NewLink } from "./link-types";
 
 type LinksManagerProps = {
   links: LinkRow[];
+  /** "KPS" then every station code from public.stations, in sort order (linkScopes()). */
+  scopes: string[];
 };
 
 type Confirm = { mode: "revoke" | "rotate"; link: LinkRow } | null;
-
-function scopeName(scope: string): string {
-  return scope === "KPS" ? "KPS" : `Stasiun ${scope}`;
-}
 
 /** "…/s/3f9a12…c21b": enough to tell links apart without putting the secret on screen. */
 function maskedUrl(url: string): string {
@@ -34,9 +32,14 @@ function maskedUrl(url: string): string {
  * Tautan stasiun: who holds a working link per scope, create / copy / rotate / revoke.
  * A new link's full URL is shown once, right after it is made, with "Salin tautan".
  */
-export function LinksManager({ links }: LinksManagerProps) {
+export function LinksManager({ links, scopes }: LinksManagerProps) {
   const active = links.filter((l) => !l.revokedAt);
   const revoked = links.filter((l) => l.revokedAt);
+  const isKnownScope = (value: string) => scopes.includes(value);
+  const realCount = (s: string) => active.filter((l) => l.scope === s && !l.isQa).length;
+  const qaCount = (s: string) => active.filter((l) => l.scope === s && l.isQa).length;
+  const stationScopes = scopes.filter((s) => s !== KPS_SCOPE);
+  const withoutLink = stationScopes.filter((s) => realCount(s) === 0);
 
   const [scope, setScope] = useState<string>("");
   const [label, setLabel] = useState("");
@@ -54,7 +57,7 @@ export function LinksManager({ links }: LinksManagerProps) {
     event.preventDefault();
     setFormMessage(null);
     const errors: { scope?: string; label?: string } = {};
-    if (!isLinkScope(scope)) errors.scope = "Pilih lingkup tautan.";
+    if (!isKnownScope(scope)) errors.scope = "Pilih lingkup tautan.";
     if (label.trim() === "") errors.label = "Isi label, misalnya nama atau jabatan pemegang tautan.";
     setFormErrors(errors);
     if (errors.scope || errors.label) return;
@@ -100,26 +103,43 @@ export function LinksManager({ links }: LinksManagerProps) {
     });
   }
 
-  const scopeHelp = isLinkScope(scope) ? SCOPE_DESCRIPTION[scope] : "SUB, DPS, CGK, HLP, KNO, atau KPS (semua stasiun).";
+  const scopeHelp = isKnownScope(scope)
+    ? scopeDescription(scope)
+    : `KPS (semua stasiun) atau salah satu dari ${stationScopes.length} stasiun.`;
 
   return (
     <div className="flex flex-col gap-6">
-      <section aria-labelledby="cakupan-tautan">
-        <h2 id="cakupan-tautan" className="section-label mb-2">
+      <section aria-labelledby="cakupan-tautan" className="flex flex-col gap-2">
+        <h2 id="cakupan-tautan" className="section-label">
           Tautan aktif per lingkup
         </h2>
-        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          {LINK_SCOPES.map((s) => {
-            const forScope = active.filter((l) => l.scope === s);
-            const real = forScope.filter((l) => !l.isQa).length;
-            const qa = forScope.length - real;
+        <p className="text-sm text-ink">
+          {stationScopes.length === 0
+            ? "Daftar stasiun kosong. Tambahkan stasiun di tabel stations sebelum membuat tautan stasiun."
+            : withoutLink.length === 0
+              ? `Semua ${stationScopes.length} stasiun sudah punya tautan aktif.`
+              : `${withoutLink.length} dari ${stationScopes.length} stasiun belum punya tautan aktif.`}
+        </p>
+        <ul className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8">
+          {scopes.map((s) => {
+            const real = realCount(s);
+            const qa = qaCount(s);
             return (
-              <li key={s} className="rounded-panel border border-line bg-surface px-3 py-2">
-                <p className="text-sm font-semibold text-ink">{s}</p>
-                <p className={real === 0 ? "text-sm text-warning" : "text-sm text-ink"}>
-                  {real === 0 ? "Belum ada tautan" : `${real} tautan aktif`}
+              <li
+                key={s}
+                className={
+                  s === KPS_SCOPE
+                    ? "col-span-3 rounded-control border border-line bg-surface px-2.5 py-1.5 sm:col-span-2"
+                    : "rounded-control border border-line bg-surface px-2.5 py-1.5"
+                }
+              >
+                <p className="text-sm font-semibold text-ink">
+                  {s === KPS_SCOPE ? "KPS (semua stasiun)" : s}
                 </p>
-                {qa > 0 ? <p className="text-xs text-ink-muted">+ {qa} tautan uji QA</p> : null}
+                <p className={real === 0 ? "text-xs font-semibold text-warning" : "text-xs text-ink"}>
+                  {real === 0 ? "Belum ada" : `${real} aktif`}
+                  {qa > 0 ? <span className="font-normal text-ink-muted">, + {qa} uji QA</span> : null}
+                </p>
               </li>
             );
           })}
@@ -146,7 +166,7 @@ export function LinksManager({ links }: LinksManagerProps) {
           <CopyLinkField url={fresh.url} label={`Tautan baru ${fresh.scope}`} />
           <p className="text-sm text-ink">
             Tautan ini berlaku seperti kata sandi: siapa pun yang memegangnya bisa membuka dan mengubah data{" "}
-            {fresh.scope === "KPS" ? "semua stasiun" : `stasiun ${fresh.scope}`} tanpa login. Kirim lewat pesan
+            {fresh.scope === KPS_SCOPE ? "semua stasiun" : `stasiun ${fresh.scope}`} tanpa login. Kirim lewat pesan
             pribadi, jangan di grup.
           </p>
         </section>
@@ -167,9 +187,9 @@ export function LinksManager({ links }: LinksManagerProps) {
             <Field label="Lingkup" help={scopeHelp} error={formErrors.scope} required>
               <Select value={scope} onChange={(e) => setScope(e.target.value)}>
                 <option value="">Pilih lingkup</option>
-                {LINK_SCOPES.map((s) => (
+                {scopes.map((s) => (
                   <option key={s} value={s}>
-                    {s === "KPS" ? "KPS (semua stasiun)" : s}
+                    {s === KPS_SCOPE ? "KPS (semua stasiun)" : `Stasiun ${s}`}
                   </option>
                 ))}
               </Select>

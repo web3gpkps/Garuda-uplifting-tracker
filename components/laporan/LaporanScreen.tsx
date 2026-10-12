@@ -1,10 +1,10 @@
+import { parseWeek } from "@/lib/dashboard";
 import { parseStation, ruleSettings, stationCodes, type ScreenProps } from "@/lib/workspace";
 import { RememberView } from "@/components/ui/RememberView";
 import { oneTo, rememberScope } from "@/components/ui/remember";
 
 import { todayInJakarta } from "@/components/shell/programme-calendar";
 import { PageLoading } from "@/components/ui/PageHeader";
-import { parseWeek } from "@/components/performa/workspace-data";
 import { LaporanView } from "./LaporanView";
 
 export function LaporanLoading() {

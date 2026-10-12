@@ -12,7 +12,7 @@ type CellEditorProps = {
   rules: ValueRules;
   /** Text to start from: the typed key ("enter" mode) or the current value as text. */
   initialText: string;
-  /** Spoken label: "SUB-01, Abdullah, B Grooming". */
+  /** Spoken label: "IULS-01, Dummy A, Product Knowledge". */
   label: string;
   /** Commit what is typed and stay on the cell (blur, Simpan button, a picked date). */
   onCommit: () => void;

@@ -8,15 +8,14 @@ import { SaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Tabs } from "@/components/ui/Tabs";
 import { formatTanggal, isValidIsoDate } from "@/lib/dates";
-import { effectiveDueDate, type Settings } from "@/lib/rules";
+import { actionFlag } from "@/lib/rules";
 import { saveActionDefinition, saveActionProgress } from "@/components/tindak-lanjut/actions";
 import {
+  ACTION_GROUPS,
   ACTION_KINDS,
   ACTION_STATUSES,
-  DUE_RULES,
-  DUE_RULE_LABEL,
-  DUE_RULE_OPTION,
-  asDueRule,
+  ASPECTS,
+  READ_ONLY_NOTE,
   describeDaysLeft,
   type ActionView,
 } from "./action-view";
@@ -24,11 +23,11 @@ import type { DefinitionField, DefinitionInput, ProgressField } from "./types";
 
 type ActionItemDialogProps = {
   accessKey: string;
-  isKps: boolean;
+  /** KPS links and the owner. Station links see the item read-only. */
+  canEdit: boolean;
   /** Today in Asia/Jakarta (default "Tgl update"). */
   today: string;
-  settings: Settings;
-  /** The item being edited; null closes the dialog. */
+  /** The item being shown; null closes the dialog. */
   item: ActionView | null;
   onClose: () => void;
   /** Called after a successful save, for the per-row status. */
@@ -36,11 +35,11 @@ type ActionItemDialogProps = {
 };
 
 /**
- * Update dialog for one Tindak Lanjut item. Every link edits progress (Status, % progres,
- * Tgl update, Realisasi / Bukti); the KPS link also edits Catatan KPS and the item's
- * definition, on a second tab. Station links see those fields read-only.
+ * Details of one national Tindak Lanjut item. KPS and the owner update progress (Status,
+ * % progres, Tgl update, Realisasi / Bukti) and, on a second tab, Catatan Garuda / KPS and the
+ * item's definition. Station links see everything read-only.
  */
-export function ActionItemDialog({ accessKey, isKps, today, settings, item, onClose, onSaved }: ActionItemDialogProps) {
+export function ActionItemDialog({ accessKey, canEdit, today, item, onClose, onSaved }: ActionItemDialogProps) {
   const [busy, setBusy] = useState(false);
   const open = item !== null;
 
@@ -52,96 +51,117 @@ export function ActionItemDialog({ accessKey, isKps, today, settings, item, onCl
       }}
       dismissible={!busy}
       size="md"
-      title={item ? `Perbarui ${item.code}` : "Perbarui tindak lanjut"}
-      description={item?.area ?? undefined}
+      title={item ? (canEdit ? `Perbarui ${item.code}` : `Tindak lanjut ${item.code}`) : "Tindak lanjut"}
+      description={item ? [item.groupName, item.aspect].filter(Boolean).join(" · ") : undefined}
     >
       {item ? (
         // Keyed by code: opening another item starts from that item's saved values.
         <DialogBody
           key={item.code}
           accessKey={accessKey}
-          isKps={isKps}
+          canEdit={canEdit}
           today={today}
-          settings={settings}
           item={item}
           onBusyChange={setBusy}
           onSaved={onSaved}
+          onClose={onClose}
         />
       ) : null}
     </Dialog>
   );
 }
 
-type BodyProps = Omit<ActionItemDialogProps, "item" | "onClose"> & {
+type BodyProps = Omit<ActionItemDialogProps, "item"> & {
   item: ActionView;
   onBusyChange: (busy: boolean) => void;
 };
 
-function DialogBody({ accessKey, isKps, today, settings, item, onBusyChange, onSaved }: BodyProps) {
-  const progressForm = (
-    <ProgressForm accessKey={accessKey} today={today} item={item} onBusyChange={onBusyChange} onSaved={onSaved} />
-  );
+function DialogBody({ accessKey, canEdit, today, item, onBusyChange, onSaved, onClose }: BodyProps) {
+  if (!canEdit) {
+    return (
+      <div className="flex flex-col gap-4">
+        <ItemSummary item={item} full />
+        <p className="text-sm text-ink-muted">{READ_ONLY_NOTE} Perubahan dilakukan lewat tautan KPS.</p>
+        <DialogActions>
+          <Button variant="secondary" onClick={onClose}>
+            Tutup
+          </Button>
+        </DialogActions>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      <ItemSummary item={item} showKpsNotes={!isKps} />
-      {isKps ? (
-        <Tabs
-          label={`Bagian yang diubah untuk ${item.code}`}
-          items={[
-            { id: "progres", label: "Progres", panel: progressForm },
-            {
-              id: "definisi",
-              label: "Catatan KPS & definisi",
-              panel: (
-                <DefinitionForm
-                  accessKey={accessKey}
-                  today={today}
-                  settings={settings}
-                  item={item}
-                  onBusyChange={onBusyChange}
-                  onSaved={onSaved}
-                />
-              ),
-            },
-          ]}
-        />
-      ) : (
-        progressForm
-      )}
+      <ItemSummary item={item} full={false} />
+      <Tabs
+        label={`Bagian yang diubah untuk ${item.code}`}
+        items={[
+          {
+            id: "progres",
+            label: "Progres",
+            panel: <ProgressForm accessKey={accessKey} today={today} item={item} onBusyChange={onBusyChange} onSaved={onSaved} />,
+          },
+          {
+            id: "definisi",
+            label: "Catatan Garuda / KPS & definisi",
+            panel: (
+              <DefinitionForm accessKey={accessKey} today={today} item={item} onBusyChange={onBusyChange} onSaved={onSaved} />
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }
 
-function ItemSummary({ item, showKpsNotes }: { item: ActionView; showKpsNotes: boolean }) {
+function Entry({ label, value, empty = "Belum diisi", wide = true }: { label: string; value: string | null; empty?: string; wide?: boolean }) {
+  return (
+    <div className={wide ? "sm:col-span-2" : undefined}>
+      <dt className="section-label">{label}</dt>
+      <dd className="mt-0.5 whitespace-pre-line text-ink">{value ?? <span className="text-ink-muted">{empty}</span>}</dd>
+    </div>
+  );
+}
+
+/** `full`: every field (read-only view); otherwise the context above the forms. */
+function ItemSummary({ item, full }: { item: ActionView; full: boolean }) {
   return (
     <dl className="grid gap-3 rounded-control border border-line bg-paper p-3 sm:grid-cols-2">
-      <div className="sm:col-span-2">
-        <dt className="section-label">Tindakan</dt>
-        <dd className="mt-0.5 text-ink">{item.action ?? "Belum diisi"}</dd>
-      </div>
-      <div className="sm:col-span-2">
-        <dt className="section-label">Target / Indikator</dt>
-        <dd className="mt-0.5 text-ink">{item.target ?? "Belum diisi"}</dd>
-      </div>
+      <Entry label="Tindakan" value={item.action} />
+      <Entry label="Akar masalah" value={item.rootCause} />
+      <Entry label="Target (KPI)" value={item.target} />
       <div>
         <dt className="section-label">Batas waktu</dt>
         <dd className="mt-0.5 flex flex-wrap items-center gap-2">
-          <span className="tabular-nums">{item.dueLabel ?? "Belum ditentukan"}</span>
-          <StatusChip label={item.flag} emptyLabel="Tanpa batas waktu" />
+          <span className="tabular-nums">{item.dueLabel ?? "Belum ditetapkan"}</span>
+          <StatusChip label={item.flag} />
         </dd>
         <dd className="text-xs text-ink-muted">Sisa hari: {describeDaysLeft(item.daysLeft)}</dd>
       </div>
-      <div>
-        <dt className="section-label">PIC</dt>
-        <dd className="mt-0.5 text-ink">{item.pic ?? "Belum diisi"}</dd>
-      </div>
-      {showKpsNotes ? (
-        <div className="sm:col-span-2">
-          <dt className="section-label">Catatan KPS (hanya diubah lewat tautan KPS)</dt>
-          <dd className="mt-0.5 whitespace-pre-line text-ink">{item.kpsNotes ?? "Belum ada catatan"}</dd>
-        </div>
+      <Entry label="PIC" value={item.pic} wide={false} />
+      {full ? (
+        <>
+          <div>
+            <dt className="section-label">Status</dt>
+            <dd className="mt-0.5 flex items-center gap-2">
+              <StatusChip label={item.status} />
+              <span className="tabular-nums">{item.progress}%</span>
+            </dd>
+          </div>
+          <Entry
+            label="Tgl update"
+            value={item.updatedOn ? formatTanggal(item.updatedOn) : null}
+            empty="Belum diperbarui"
+            wide={false}
+          />
+          <Entry label="Realisasi / Bukti" value={item.evidence} empty="Belum ada bukti" />
+          <Entry label="Catatan Garuda / KPS" value={item.kpsNotes} empty="Belum ada catatan" />
+          <Entry label="Jenis" value={item.kind} wide={false} />
+          <Entry label="Jadwal" value={item.schedule} empty="Tidak ada jadwal khusus" wide={false} />
+        </>
       ) : null}
+      <Entry label="Sumber" value={item.source} wide={false} />
       <div className="sm:col-span-2">
         <dt className="sr-only">Perubahan terakhir</dt>
         <dd className="text-xs text-ink-muted">{item.changedLabel}</dd>
@@ -150,7 +170,7 @@ function ItemSummary({ item, showKpsNotes }: { item: ActionView; showKpsNotes: b
   );
 }
 
-// Progress (every link)
+// Progress (KPS and the owner)
 
 type FormProps = {
   accessKey: string;
@@ -220,26 +240,13 @@ function ProgressForm({ accessKey, today, item, onBusyChange, onSaved }: FormPro
             ))}
           </Select>
         </Field>
-        <Field
-          label="Tgl update"
-          help="Tanggal pembaruan ini. Bawaan: hari ini."
-          error={errors.updatedOn}
-        >
+        <Field label="Tgl update" help="Tanggal pembaruan ini. Bawaan: hari ini." error={errors.updatedOn}>
           <Input type="date" value={updatedOn} onChange={(e) => setUpdatedOn(e.target.value)} />
         </Field>
       </div>
 
-      <Field
-        label="% Progres"
-        help="Geser, atau ketik bilangan bulat 0 sampai 100."
-        error={errors.progress}
-        required
-      >
-        <NumberInput
-          value={progress}
-          onChange={(e) => setProgress(e.target.value)}
-          className="max-w-32"
-        />
+      <Field label="% Progres" help="Geser, atau ketik bilangan bulat 0 sampai 100." error={errors.progress} required>
+        <NumberInput value={progress} onChange={(e) => setProgress(e.target.value)} className="max-w-32" />
       </Field>
       <input
         type="range"
@@ -271,19 +278,21 @@ function ProgressForm({ accessKey, today, item, onBusyChange, onSaved }: FormPro
   );
 }
 
-// Catatan KPS + definition (KPS link only)
+// Catatan Garuda / KPS + definition (KPS and the owner)
 
-function DefinitionForm({ accessKey, today, item, settings, onBusyChange, onSaved }: FormProps & { settings: Settings }) {
+function DefinitionForm({ accessKey, today, item, onBusyChange, onSaved }: FormProps) {
   const [values, setValues] = useState<Omit<DefinitionInput, "code">>({
     kpsNotes: item.kpsNotes ?? "",
-    area: item.area ?? "",
+    groupName: item.groupName,
+    aspect: item.aspect ?? "",
+    rootCause: item.rootCause ?? "",
     action: item.action ?? "",
     target: item.target ?? "",
     kind: item.kind ?? "",
     schedule: item.schedule ?? "",
     dueDate: item.dueDate ?? "",
-    dueRule: item.dueRule ?? "",
     pic: item.pic ?? "",
+    source: item.source ?? "",
   });
   const [errors, setErrors] = useState<Partial<Record<DefinitionField, string>>>({});
   const [save, setSave] = useState<SaveState>({ status: "idle" });
@@ -292,18 +301,9 @@ function DefinitionForm({ accessKey, today, item, settings, onBusyChange, onSave
   const set = (field: keyof typeof values) => (value: string) =>
     setValues((current) => ({ ...current, [field]: value }));
 
-  // What "Batas waktu" will show with these values (same rule as the table).
-  const rule = asDueRule(values.dueRule);
-  const preview = effectiveDueDate(
-    { dueDate: isValidIsoDate(values.dueDate) ? values.dueDate : null, schedule: values.schedule || null, dueRule: rule },
-    settings,
-    today,
-  );
-  const previewText = preview
-    ? rule
-      ? `${DUE_RULE_LABEL[rule]} (${formatTanggal(preview)})`
-      : formatTanggal(preview)
-    : "Belum ditentukan";
+  // What Flag will show with these values (same rule as the table).
+  const due = isValidIsoDate(values.dueDate) ? values.dueDate : null;
+  const previewFlag = actionFlag({ dueDate: due, status: item.status, kind: values.kind || null }, today);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -330,16 +330,37 @@ function DefinitionForm({ accessKey, today, item, settings, onBusyChange, onSave
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-      <Field label="Catatan KPS" error={errors.kpsNotes}>
+      <Field label="Catatan Garuda / KPS" error={errors.kpsNotes}>
         <Textarea rows={3} value={values.kpsNotes} onChange={(e) => set("kpsNotes")(e.target.value)} />
       </Field>
-      <Field label="Area" error={errors.area}>
-        <Input value={values.area} onChange={(e) => set("area")(e.target.value)} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Kelompok" error={errors.groupName} required>
+          <Select value={values.groupName} onChange={(e) => set("groupName")(e.target.value)}>
+            {ACTION_GROUPS.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Aspek" error={errors.aspect}>
+          <Select value={values.aspect} onChange={(e) => set("aspect")(e.target.value)}>
+            <option value="">Belum diisi</option>
+            {ASPECTS.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+      <Field label="Akar masalah" error={errors.rootCause}>
+        <Textarea rows={2} value={values.rootCause} onChange={(e) => set("rootCause")(e.target.value)} />
       </Field>
       <Field label="Tindakan" error={errors.action}>
         <Textarea rows={3} value={values.action} onChange={(e) => set("action")(e.target.value)} />
       </Field>
-      <Field label="Target / Indikator" error={errors.target}>
+      <Field label="Target (KPI)" error={errors.target}>
         <Textarea rows={2} value={values.target} onChange={(e) => set("target")(e.target.value)} />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -356,35 +377,18 @@ function DefinitionForm({ accessKey, today, item, settings, onBusyChange, onSave
         <Field label="PIC" error={errors.pic}>
           <Input value={values.pic} onChange={(e) => set("pic")(e.target.value)} />
         </Field>
+        <Field label="Batas waktu" help="Kosongkan jika belum ditetapkan." error={errors.dueDate}>
+          <Input type="date" value={values.dueDate} onChange={(e) => set("dueDate")(e.target.value)} />
+        </Field>
+        <Field label="Sumber" help="Slide PDF, misalnya Slide 15." error={errors.source}>
+          <Input value={values.source} onChange={(e) => set("source")(e.target.value)} />
+        </Field>
       </div>
       <Field label="Jadwal" error={errors.schedule}>
         <Input value={values.schedule} onChange={(e) => set("schedule")(e.target.value)} />
       </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field
-          label="Aturan batas waktu"
-          help="Batas waktu bergulir dihitung ulang setiap hari."
-          error={errors.dueRule}
-        >
-          <Select value={values.dueRule} onChange={(e) => set("dueRule")(e.target.value)}>
-            <option value="">Tetap (pakai batas waktu tetap)</option>
-            {DUE_RULES.map((r) => (
-              <option key={r} value={r}>
-                {DUE_RULE_OPTION[r]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field
-          label="Batas waktu tetap"
-          help={rule ? "Tidak dipakai selama aturan bergulir dipilih." : "Kosongkan jika belum ada batas waktu."}
-          error={errors.dueDate}
-        >
-          <Input type="date" value={values.dueDate} onChange={(e) => set("dueDate")(e.target.value)} />
-        </Field>
-      </div>
-      <p className="text-sm text-ink-muted" aria-live="polite">
-        Batas waktu yang akan tampil: <span className="font-semibold text-ink tabular-nums">{previewText}</span>
+      <p className="flex flex-wrap items-center gap-2 text-sm text-ink-muted" aria-live="polite">
+        Flag yang akan tampil: <StatusChip label={previewFlag} />
       </p>
 
       <DialogActions>

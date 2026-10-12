@@ -13,28 +13,32 @@ export type ProgressInput = {
 };
 
 export type DefinitionField =
-  | "area"
+  | "groupName"
+  | "aspect"
+  | "rootCause"
   | "action"
   | "target"
   | "kind"
   | "schedule"
   | "dueDate"
-  | "dueRule"
   | "pic"
-  | "kpsNotes";
+  | "kpsNotes"
+  | "source";
 
-/** Every field is sent; "" clears it (NULL in the database). */
+/** Every field is sent; "" clears it (NULL in the database). An empty Kelompok keeps the stored one. */
 export type DefinitionInput = {
   code: string;
-  area: string;
+  groupName: string;
+  aspect: string;
+  rootCause: string;
   action: string;
   target: string;
   kind: string;
   schedule: string;
   dueDate: string;
-  dueRule: string;
   pic: string;
   kpsNotes: string;
+  source: string;
 };
 
 export type ActionSaveResult<F extends string> =
@@ -47,13 +51,15 @@ export const FIELD_LABEL: Record<ProgressField | DefinitionField, string> = {
   progress: "% Progres",
   updatedOn: "Tgl update",
   evidence: "Realisasi / Bukti",
-  area: "Area",
+  groupName: "Kelompok",
+  aspect: "Aspek",
+  rootCause: "Akar masalah",
   action: "Tindakan",
-  target: "Target / Indikator",
+  target: "Target (KPI)",
   kind: "Jenis",
   schedule: "Jadwal",
-  dueDate: "Batas waktu tetap",
-  dueRule: "Aturan batas waktu",
+  dueDate: "Batas waktu",
   pic: "PIC",
-  kpsNotes: "Catatan KPS",
+  kpsNotes: "Catatan Garuda / KPS",
+  source: "Sumber",
 };

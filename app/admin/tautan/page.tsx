@@ -6,21 +6,19 @@ import { Panel } from "@/components/ui/Panel";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { ReloadButton } from "@/components/ui/ReloadButton";
 import { LinksManager } from "@/components/admin/LinksManager";
-import type { LinkRow } from "@/components/admin/link-types";
+import { linkScopes, type LinkRow } from "@/components/admin/link-types";
 import { requireAdmin } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { linkAccess } from "@/lib/workspace/access";
 
 export const metadata: Metadata = { title: "Tautan" };
 
-const SCOPE_ORDER = ["SUB", "DPS", "CGK", "HLP", "KNO", "KPS"];
-
 export default function TautanPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Tautan stasiun"
-        description="Stasiun dan KPS mengisi data lewat tautan, tanpa akun. Buat, salin, ganti, atau cabut tautan di sini. Tautan berlaku seperti kata sandi: bagikan hanya kepada pemegangnya."
+        description="Stasiun dan KPS mengisi data lewat tautan, tanpa akun. Satu lingkup per tautan: KPS (semua stasiun) atau satu stasiun dari daftar stasiun. Tautan berlaku seperti kata sandi: bagikan hanya kepada pemegangnya."
       />
       <Suspense fallback={<LoadingState label="Memuat daftar tautan" />}>
         <LinksData />
@@ -40,10 +38,14 @@ async function origin(): Promise<string> {
 async function LinksData() {
   await requireAdmin();
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("share_links")
-    .select("id, scope, label, created_at, revoked_at, last_used_at, token")
-    .order("created_at", { ascending: false });
+  const [linksResult, stationsResult] = await Promise.all([
+    supabase
+      .from("share_links")
+      .select("id, scope, label, created_at, revoked_at, last_used_at, token")
+      .order("created_at", { ascending: false }),
+    supabase.from("stations").select("code").order("sort").order("code"),
+  ]);
+  const error = linksResult.error ?? stationsResult.error;
 
   if (error) {
     return (
@@ -58,7 +60,13 @@ async function LinksData() {
   }
 
   const base = await origin();
-  const links: LinkRow[] = (data ?? [])
+  const scopes = linkScopes((stationsResult.data ?? []).map((row) => row.code));
+  // Scopes no longer listed (a station removed after its link was made) sort last.
+  const rank = (scope: string) => {
+    const i = scopes.indexOf(scope);
+    return i < 0 ? scopes.length : i;
+  };
+  const links: LinkRow[] = (linksResult.data ?? [])
     .map((row) => ({
       id: row.id,
       scope: row.scope,
@@ -72,10 +80,10 @@ async function LinksData() {
     }))
     .sort(
       (a, b) =>
-        SCOPE_ORDER.indexOf(a.scope) - SCOPE_ORDER.indexOf(b.scope) ||
+        rank(a.scope) - rank(b.scope) ||
         Number(a.isQa) - Number(b.isQa) ||
         b.createdAt.localeCompare(a.createdAt),
     );
 
-  return <LinksManager links={links} />;
+  return <LinksManager links={links} scopes={scopes} />;
 }

@@ -1,12 +1,12 @@
 /**
- * JOUMPA Uplifting Action Tracker: pemicu sinkronisasi Google Sheet <-> database.
+ * Garuda People Development Tracker: pemicu sinkronisasi Google Sheet <-> database.
  *
  * Project standalone (dibuat dari script.google.com, tidak menempel di Sheet). Script ini hanya
  * mengirim "ping" ke server (POST /api/sync/run); server yang membaca dan menulis data. Script tidak
  * pernah membaca atau mengubah isi Sheet, dan tidak menyimpan kunci database.
  *
  * Script Properties (Project Settings > Script Properties):
- *   SHEET_ID          ID Google Sheet JOUMPA (bagian URL di antara /d/ dan /edit)
+ *   SHEET_ID          ID Google Sheet Garuda (bagian URL di antara /d/ dan /edit)
  *   SYNC_URL          https://<domain-aplikasi>/api/sync/run
  *   SYNC_PING_SECRET  rahasia khusus ping (hanya bisa memicu sinkronisasi, tidak bisa membaca data)
  *
@@ -48,7 +48,7 @@ function sinkronkanSekarang() {
 
 function hapusTrigger() {
   var jumlah = hapusTriggerKami_();
-  console.log(jumlah ? jumlah + ' trigger dilepas.' : 'Tidak ada trigger JOUMPA yang terpasang.');
+  console.log(jumlah ? jumlah + ' trigger dilepas.' : 'Tidak ada trigger Garuda yang terpasang.');
 }
 
 /** Trigger terpasang: setiap edit sel. */
@@ -69,8 +69,8 @@ function kirimPing_(sumber, pakaiJeda) {
 
   if (pakaiJeda) {
     var cache = CacheService.getScriptCache();
-    if (cache.get('joumpa_ping')) return { ok: true, pesan: 'Dilewati (jeda).' };
-    cache.put('joumpa_ping', '1', JEDA_PING_DETIK);
+    if (cache.get('garuda_ping')) return { ok: true, pesan: 'Dilewati (jeda).' };
+    cache.put('garuda_ping', '1', JEDA_PING_DETIK);
   }
 
   try {
@@ -99,7 +99,7 @@ function kirimPing_(sumber, pakaiJeda) {
     if (kode === 503) return { ok: false, pesan: 'Server belum dikonfigurasi untuk sinkronisasi.' };
     return { ok: false, pesan: 'Sinkronisasi gagal (kode ' + kode + '). Coba lagi nanti atau hubungi admin.' };
   } catch (err) {
-    console.warn('JOUMPA ping gagal: ' + err.message);
+    console.warn('Garuda ping gagal: ' + err.message);
     return { ok: false, pesan: 'Tidak dapat menghubungi server. Coba lagi nanti.' };
   }
 }
