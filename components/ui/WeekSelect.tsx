@@ -28,7 +28,8 @@ export function WeekSelect({ label, options, current, nowValue, className }: Wee
   const index = options.findIndex((o) => o.value === current);
   const prev = index > 0 ? options[index - 1] : null;
   const next = index >= 0 && index < options.length - 1 ? options[index + 1] : null;
-  const labelled = nowValue
+  // When the selected option is "now", the label above already says so; mark the option only otherwise.
+  const labelled = nowValue && nowValue !== current
     ? options.map((o) => (o.value === nowValue ? { ...o, label: `${o.label} · sekarang` } : o))
     : options;
 
@@ -49,7 +50,7 @@ export function WeekSelect({ label, options, current, nowValue, className }: Wee
           labelExtra={nowValue && nowValue === current ? <span className="text-accent"> · sekarang</span> : null}
           options={labelled}
           current={current}
-          width="w-full sm:w-52"
+          width="w-full sm:w-72"
         />
         {next ? (
           <Link href={next.href} scroll={false} aria-label={`Berikutnya: ${next.label}`} className={stepper}>

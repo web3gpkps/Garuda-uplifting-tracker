@@ -224,7 +224,7 @@ export function BmiGrid({
       out.push(...slotColumns(period, dates[period - 1], undefined), {
         key: "slot_status",
         header: "Status jadwal",
-        width: 220,
+        width: 280,
         editor: "readonly",
         get: (r) => r.slotStatus.text,
         render: (_value, r) => (
