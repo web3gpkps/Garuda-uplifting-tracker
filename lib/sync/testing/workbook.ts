@@ -276,7 +276,7 @@ export function buildWorkbook(db: DbSnapshot, opts: WorkbookOptions = {}): FakeW
   b.addTab(TL);
   b.set(TL, "A1", "TRACKING TINDAK LANJUT REKOMENDASI PEOPLE DEVELOPMENT GARUDA");
   headers(TL, 4, ["No", "ID", "Kelompok", "Aspek", "Akar Masalah / Temuan", "Tindakan / Inisiatif", "Target / KPI", "Jenis", "Jadwal",
-    "Batas Waktu", "PIC", "Status", "% Progres", "Tgl Update", "Realisasi / Bukti", "Catatan Garuda / KPS", "Sisa Hari", "Flag", "Sumber PDF"]);
+    "Batas Waktu", "PIC", "Status", "% Progres", "Tgl Update", "Realisasi / Bukti", "Catatan Garuda / KPS", "Sisa Hari", "Flag", "Sumber"]);
   const items = bySort(db.action_items as Row[]);
   for (let i = 0; i < items.length + tlFree; i++) {
     const r = 5 + i;
@@ -299,8 +299,8 @@ export function buildWorkbook(db: DbSnapshot, opts: WorkbookOptions = {}): FakeW
   b.addTab(MS);
   b.set(MS, "A1", "MASTER SDM GARUDA");
   headers(MS, 4, ["No", "ID SDM", "Program", "Provider", "Unit", "Nama Petugas", "Employee Number", "L/P", "Touch Point", "Role Play",
-    "Post-Test", "Final Result", "Remark di Laporan", "Status Menurut Kriteria ≥85", "Cek Konsistensi", "Penyebab Utama (slide 25)",
-    "Status Penugasan", "Evaluation Feedback (PDF)", "Catatan"]);
+    "Post-Test", "Final Result", "Remark di Laporan", "Status Menurut Kriteria ≥85", "Cek Konsistensi", "Penyebab Utama",
+    "Status Penugasan", "Evaluation Feedback", "Catatan"]);
   const masterRows = staff.length + masterFree;
   for (let i = 0; i < masterRows; i++) {
     const r = 5 + i;
@@ -460,7 +460,7 @@ export function buildWorkbook(db: DbSnapshot, opts: WorkbookOptions = {}): FakeW
   const paramRows: (string | null)[] = [
     "week1_start", "weeks", "bmi_first_check", "bmi_interval_days", "bmi_interval_months", "bmi_periods", "#Klasifikasi BMI",
     "bmi_underweight_below", "bmi_normal_max", "bmi_overweight_max", "#Kriteria kelulusan", "pass_grade", "weight_role_play",
-    "weight_post_test", "#Target KPI (slide 15)", "target_overweight_max", "target_overweight_months", "target_knowledge",
+    "weight_post_test", "#Target KPI", "target_overweight_max", "target_overweight_months", "target_knowledge",
     "target_interactive", "target_coverage", "coverage_done", "target_pass_rate", "#Penggantian SDM", "replacement_deadline", null,
   ];
   paramRows.forEach((key, i) => {

@@ -119,7 +119,7 @@ const staff: TableSpec = {
     d("post_test", "Post-Test", score()),
     d("report_remark", "Remark di Laporan", oneOf(REMARKS)),
     d("assignment_status", "Status Penugasan", oneOf(ASSIGNMENT_STATUSES), { required: true, defaultValue: "Aktif" }),
-    d("feedback", "Evaluation Feedback (PDF)", text()),
+    d("feedback", "Evaluation Feedback", text()),
     d("notes", "Catatan", text()),
     // These two live in tab "Cek BMI 2 Mingguan" (G, AS), on the row below the Master row.
     d("bmi_has_note", "Ada Catatan BMI", { kind: "bool", yes: "Ya", no: "Tidak" }),
@@ -199,7 +199,7 @@ const actionItems: TableSpec = {
     d("updated_on", "Tgl Update", date),
     d("evidence", "Realisasi / Bukti", text()),
     d("kps_notes", "Catatan Garuda / KPS", text()),
-    d("source", "Sumber PDF", text()),
+    d("source", "Sumber", text()),
   ],
 };
 

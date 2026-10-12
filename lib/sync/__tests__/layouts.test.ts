@@ -423,7 +423,7 @@ describe("Tindak Lanjut (% Progres scaling, numbered rows)", () => {
     expect(w.book.note(TL, `M${r1}`)).toContain("Di luar rentang 0–100");
   });
 
-  test("Catatan Garuda / KPS and Sumber PDF sync", () => {
+  test("Catatan Garuda / KPS and Sumber sync", () => {
     const w = world();
     const r = w.book.findRow(TL, "B", "GA-TL02");
     w.book.set(TL, `P${r}`, "Catatan KPS");
