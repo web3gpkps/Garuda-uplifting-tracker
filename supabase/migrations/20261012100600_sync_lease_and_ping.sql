@@ -134,7 +134,7 @@ begin
             'Authorization', 'Bearer ' || v_secret
           );
   exception when others then
-    raise log 'joumpa sync_ping skipped on %: % (%)', tg_table_name, sqlerrm, sqlstate;
+    raise log 'tracker sync_ping skipped on %: % (%)', tg_table_name, sqlerrm, sqlstate;
   end;
   return null;
 end;
@@ -156,6 +156,10 @@ create trigger bmi_checks_sync_ping
 
 create trigger action_items_sync_ping
   after insert or update or delete or truncate on public.action_items
+  for each statement execute function private.sync_ping();
+
+create trigger remedials_sync_ping
+  after insert or update or delete or truncate on public.remedials
   for each statement execute function private.sync_ping();
 
 create trigger replacements_sync_ping
