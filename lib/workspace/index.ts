@@ -72,7 +72,7 @@ type ShareOpenPayload = {
   link_labels?: Record<string, string>;
 };
 
-/** The settings columns the week rail needs (WeekRail accepts this shape as-is). */
+/** The settings columns the programme calendar needs. */
 export type WorkspaceSchedule = Pick<
   Tables<"settings">,
   "week1_start" | "weeks" | "bmi_first_check" | "bmi_interval_days" | "bmi_interval_months" | "bmi_periods"

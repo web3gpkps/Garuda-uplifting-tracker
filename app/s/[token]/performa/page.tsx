@@ -5,7 +5,7 @@ import { PerformaLoading, PerformaScreen } from "@/components/performa/PerformaS
 
 export const metadata: Metadata = { title: "Penilaian Mingguan" };
 
-/** Log Performa, station link (scope from the token). The screen is shared with /admin/performa. */
+/** Penilaian Mingguan, station link (scope from the token). The screen is shared with /admin/performa. */
 export default function Page({ params, searchParams }: PageProps<"/s/[token]/performa">) {
   return (
     <Suspense fallback={<PerformaLoading />}>

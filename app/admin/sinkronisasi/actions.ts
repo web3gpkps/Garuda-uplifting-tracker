@@ -20,7 +20,7 @@ export async function markConflictResolved(id: number): Promise<ResolveResult> {
     .is("resolved_at", null)
     .select("id")
     .maybeSingle();
-  if (error) return { ok: false, message: `Belum tersimpan: database menolak (${error.message}).` };
+  if (error) return { ok: false, message: "Belum tersimpan. Coba lagi." };
   if (!data) return { ok: false, message: "Konflik ini sudah ditandai selesai sebelumnya." };
   refresh();
   return { ok: true, resolvedAt };

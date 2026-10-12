@@ -1,22 +1,19 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  berandaSummary,
   currentBmiPeriod,
-  dashboardSummary,
   defaultWeek,
   formatPercent,
-  parseSort,
   parseWeek,
   phaseOf,
-  sortComparison,
+  stationTodo,
   targetText,
 } from './dashboard';
 import { TODAY, dashboardFixture } from './dashboard.fixture';
 import { DEFAULT_SETTINGS as S } from './rules';
 
-const tile = (tiles: { key: string }[], key: string) => tiles.find((t) => t.key === key) as Record<string, unknown>;
-
 describe('programme position', () => {
-  test('phase, default week and BMI slot follow the Parameter dates', () => {
+  test('phase, default week and BMI slot follow the settings dates', () => {
     expect(phaseOf(S, '2026-10-04')).toBe('before');
     expect(phaseOf(S, TODAY)).toBe('during');
     expect(phaseOf(S, '2026-12-14')).toBe('after');
@@ -49,8 +46,8 @@ describe('formatting', () => {
   });
 });
 
-describe('dashboardSummary', () => {
-  const summary = dashboardSummary(dashboardFixture(), TODAY, ['CGK', 'DPS']);
+describe('berandaSummary', () => {
+  const summary = berandaSummary(dashboardFixture(), TODAY, ['DPS', 'CGK']);
 
   test('week and slot of today', () => {
     expect(summary.phase).toBe('during');
@@ -58,70 +55,65 @@ describe('dashboardSummary', () => {
     expect(summary.bmiPeriod).toBe(1);
   });
 
-  test('target tiles: actual against target and posisi awal', () => {
-    expect(summary.targets.map((t) => t.key)).toEqual(['coverage', 'overweight', 'knowledge', 'interactive', 'kelulusan']);
-    expect(tile(summary.targets, 'overweight')).toMatchObject({ value: 0.5, status: 'Belum tercapai', target: 'Target < 20%', baseline: 'Posisi awal 37,3%' });
-    // Mean of aspect B (95, 85) = 90: not above 90 %.
-    expect(tile(summary.targets, 'knowledge')).toMatchObject({ value: 0.9, status: 'Belum tercapai' });
-    // Passed 2 (one of them withdrawn) + remedial passed 1, of 4 participants.
-    expect(tile(summary.targets, 'kelulusan')).toMatchObject({ value: 0.75, status: 'Belum tercapai', link: { sheet: 'remedial' } });
-  });
-
-  test('work tiles count what needs doing', () => {
-    expect(tile(summary.work, 'tindak-lanjut')).toMatchObject({ value: 1, total: 3, tone: 'critical' });
-    expect(tile(summary.work, 'tindak-lanjut').detail).toBe('1 OVERDUE · 1 jatuh tempo ≤ 7 hari');
-    // Withdrawn staff are not counted as due for scoring.
-    expect(tile(summary.work, 'dinilai')).toMatchObject({ value: 2, total: 3, link: { sheet: 'performa', query: { minggu: 3 } } });
-    expect(tile(summary.work, 'bmi-terlambat')).toMatchObject({ value: 1, total: 3, tone: 'critical' });
-    expect(tile(summary.work, 'tanpa-remedial')).toMatchObject({ value: 1, total: 2, tone: 'warning' });
-  });
-
-  test('before the programme the weekly tile says so instead of 0', () => {
-    const before = dashboardSummary(dashboardFixture(), '2026-10-01', ['CGK', 'DPS']);
-    const t = tile(before.work, 'dinilai');
-    expect(t.value).toBeNull();
-    expect(String(t.note)).toContain('Minggu ke-1');
-    expect(before.comparison[0].assessed.value).toBeNull();
-    expect(before.comparison[0].bmi.checkedThisPeriod).toBeNull();
-  });
-
-  test('one row per station plus all stations', () => {
-    const [cgk, dps] = summary.comparison;
-    expect(cgk).toMatchObject({
-      station: 'CGK',
-      staffCount: 2,
-      assessed: { value: 1, total: 2 },
-      bmi: { checkedThisPeriod: 1, everChecked: 1, overweight: 1, pctOverweight: 1, late: 1 },
-      training: { passed: 1, failed: 1, remedialPassed: 0, failedNoRemedial: 1, beda: 1 },
-    });
+  test('station rows, worst first, withdrawn staff left out', () => {
+    expect(summary.stations.map((r) => r.station)).toEqual(['CGK', 'DPS']);
+    const [cgk, dps] = summary.stations;
+    expect(cgk).toMatchObject({ onDuty: 2, assessed: 1, bmiChecked: 1, lateBmi: 1, failed: 1, failedNoRemedial: 1 });
+    expect(dps).toMatchObject({ onDuty: 1, assessed: 1, bmiChecked: 1, lateBmi: 0, failed: 1, failedNoRemedial: 0 });
     expect(cgk.links.bmi).toEqual({ sheet: 'bmi', query: { stasiun: 'CGK', periode: 1 } });
-    expect(dps).toMatchObject({
-      staffCount: 2,
-      assessed: { value: 1, total: 1 },
-      bmi: { late: 0, pctOverweight: 0 },
-      training: { passed: 1, failed: 1, remedialPassed: 1, failedNoRemedial: 0 },
-    });
-    expect(summary.comparisonTotal).toMatchObject({ station: 'TOTAL', staffCount: 4, assessed: { value: 2, total: 3 } });
-    expect(summary.comparisonTotal!.links.sdm).toEqual({ sheet: 'sdm', query: { stasiun: null } });
+    expect(cgk.links.remedial).toEqual({ sheet: 'remedial', query: { stasiun: 'CGK', status: 'Belum dijadwalkan' } });
+    expect(summary.total).toMatchObject({ station: 'TOTAL', onDuty: 3, assessed: 2, lateBmi: 1, failedNoRemedial: 1 });
+    expect(summary.total.links.performa).toEqual({ sheet: 'performa', query: { stasiun: null, minggu: 3 } });
+    expect(summary.actionOverdue).toBe(1);
   });
 
-  test('a single station has no total row', () => {
-    expect(dashboardSummary(dashboardFixture(), TODAY, ['CGK']).comparisonTotal).toBeNull();
+  test('targets: plain labels, posisi awal, target and current value', () => {
+    const overweight = summary.targets.find((t) => t.key === 'overweight');
+    expect(overweight).toMatchObject({ label: 'BMI overweight + obesitas', baseline: 0.3732, target: '< 20%', actual: 0.5, status: 'Belum tercapai' });
+    // Mean of aspect B (95, 85) = 90: not above 90 %.
+    expect(summary.targets.find((t) => t.key === 'knowledge')).toMatchObject({ actual: 0.9, status: 'Belum tercapai' });
+    expect(summary.targets.find((t) => t.key === 'passRate')?.target).toBe('Di atas posisi awal');
+  });
+
+  test('before the programme nothing is counted for the week', () => {
+    const before = berandaSummary(dashboardFixture(), '2026-10-01', ['CGK', 'DPS']);
+    expect(before.week).toBeNull();
+    expect(before.stations[0].assessed).toBeNull();
+    expect(before.stations[0].bmiChecked).toBeNull();
   });
 });
 
-describe('sortComparison', () => {
-  const rows = dashboardSummary(dashboardFixture(), TODAY, ['DPS', 'CGK']).comparison;
-  test('most urgent first, station order on ties', () => {
-    expect(sortComparison(rows, 'stasiun').map((r) => r.station)).toEqual(['DPS', 'CGK']);
-    expect(sortComparison(rows, 'terlambat').map((r) => r.station)).toEqual(['CGK', 'DPS']);
-    expect(sortComparison(rows, 'dinilai').map((r) => r.station)).toEqual(['CGK', 'DPS']);
-    expect(sortComparison(rows, 'bmi').map((r) => r.station)).toEqual(['CGK', 'DPS']);
-    expect(sortComparison(rows, 'remedial').map((r) => r.station)).toEqual(['CGK', 'DPS']);
+describe('stationTodo', () => {
+  test('this week: open counts per line, each with its filtered screen', () => {
+    const summary = berandaSummary(dashboardFixture(), TODAY, ['CGK']);
+    const items = stationTodo(summary, summary.stations[0], S, false);
+    expect(items.map((i) => [i.key, i.detail, i.state])).toEqual([
+      ['penilaian', '1 dari 2 SDM belum dinilai', 'todo'],
+      ['bmi', '1 dari 2 SDM sudah dicek', 'todo'],
+      ['remedial', '1 dari 1 peserta Failed', 'todo'],
+      ['temuan', 'Belum ditulis', 'todo'],
+    ]);
+    expect(items[0].link).toEqual({ sheet: 'performa', query: { stasiun: 'CGK', minggu: 3 } });
+    expect(items[1].late).toBe(1);
+    expect(items[3].link).toEqual({ sheet: 'laporan', query: { stasiun: 'CGK', minggu: 3 } });
   });
-  test('parseSort falls back to station order', () => {
-    expect(parseSort('bmi')).toBe('bmi');
-    expect(parseSort('nope')).toBe('stasiun');
-    expect(parseSort(undefined)).toBe('stasiun');
+
+  test('done lines say so', () => {
+    const summary = berandaSummary(dashboardFixture(), TODAY, ['DPS']);
+    const items = stationTodo(summary, summary.stations[0], S, true);
+    expect(items.map((i) => i.state)).toEqual(['done', 'done', 'done', 'done']);
+    expect(items[2].detail).toBe('Semua 1 peserta Failed sudah dijadwalkan');
+  });
+
+  test('before week 1 the list is what to prepare', () => {
+    const summary = berandaSummary(dashboardFixture(), '2026-10-01', ['CGK']);
+    const items = stationTodo(summary, summary.stations[0], S, false);
+    expect(items.map((i) => [i.key, i.state])).toEqual([
+      ['catatan-bmi', 'done'],
+      ['remedial', 'todo'],
+      ['penilaian', 'later'],
+      ['bmi', 'later'],
+    ]);
+    expect(items[2].detail).toContain('5 Okt 2026');
   });
 });

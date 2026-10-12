@@ -1,17 +1,18 @@
-import { Suspense, type ReactNode } from "react";
+import { Suspense } from "react";
 import type { Metadata } from "next";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageHeader, PageLoading } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
-import { ErrorState, LoadingState } from "@/components/ui/States";
+import { ErrorState } from "@/components/ui/States";
 import { ReloadButton } from "@/components/ui/ReloadButton";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { ConflictTable, type ConflictRow } from "@/components/admin/ConflictTable";
+import { ConflictTable, ResolvedConflicts, type ConflictRow } from "@/components/admin/ConflictTable";
 import { formatRelatif, formatWaktu } from "@/components/admin/format";
 import { requireAdmin } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Sinkronisasi" };
 
+const TITLE = "Sinkronisasi";
 const OPEN_LIMIT = 200;
 const RESOLVED_LIMIT = 50;
 const CONFLICT_COLUMNS =
@@ -19,14 +20,9 @@ const CONFLICT_COLUMNS =
 
 export default function SinkronisasiPage() {
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Sinkronisasi Google Sheet"
-      />
-      <Suspense fallback={<LoadingState label="Memuat status sinkronisasi" />}>
-        <SyncData />
-      </Suspense>
-    </div>
+    <Suspense fallback={<PageLoading title={TITLE} label="Memuat status sinkronisasi" />}>
+      <SyncData />
+    </Suspense>
   );
 }
 
@@ -56,15 +52,7 @@ function toConflict(row: {
   };
 }
 
-function Item({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <dt className="section-label">{label}</dt>
-      <dd className="mt-0.5 text-sm text-ink">{children}</dd>
-    </div>
-  );
-}
-
+/** Google Sheet sync: one status line, then the conflicts still to review. */
 async function SyncData() {
   await requireAdmin();
   const supabase = await createClient();
@@ -72,7 +60,7 @@ async function SyncData() {
   const [stateResult, openResult, resolvedResult] = await Promise.all([
     supabase
       .from("sync_state")
-      .select("initialized, lease_token, lease_until, last_success_at, last_error, failures, last_ping_at")
+      .select("initialized, lease_token, lease_until, last_success_at, failures, last_error")
       .eq("id", true)
       .maybeSingle(),
     supabase
@@ -93,143 +81,69 @@ async function SyncData() {
   // Request time (after the queries): reading the clock is allowed here.
   const now = new Date();
   const state = stateResult.data;
-  const leaseHeld = Boolean(state?.lease_token && state.lease_until && new Date(state.lease_until) > now);
-
-  let health: { label: string; tone: "good" | "warning" | "critical" | "neutral" };
-  if (!state) health = { label: "Status tidak tersedia", tone: "neutral" };
-  else if (state.failures > 0) health = { label: `Gagal ${state.failures} kali berturut-turut`, tone: "critical" };
-  else if (!state.last_success_at) health = { label: "Belum pernah berhasil", tone: "warning" };
-  else health = { label: "Sinkron terakhir berhasil", tone: "good" };
+  const running = Boolean(state?.lease_token && state.lease_until && new Date(state.lease_until) > now);
 
   const openRows = (openResult.data ?? []).map(toConflict);
   const resolvedRows = (resolvedResult.data ?? []).map(toConflict);
   const openCount = openResult.count ?? openRows.length;
+  const resolvedCount = resolvedResult.count ?? resolvedRows.length;
+
+  const last = state?.last_success_at
+    ? `Google Sheet terakhir sinkron ${formatWaktu(state.last_success_at)} WIB (${formatRelatif(state.last_success_at, now)})`
+    : "Google Sheet belum pernah sinkron";
+  const parts = [last, `${openCount} konflik belum ditinjau`];
+  if (running) parts.push("sedang berjalan");
 
   return (
     <div className="flex flex-col gap-6">
-      <Panel
-        title="Status"
-        actions={<StatusChip label={health.label} tone={health.tone} />}
-      >
-        {stateResult.error ? (
+      <PageHeader
+        title={TITLE}
+        meta={stateResult.error || !state ? `${openCount} konflik belum ditinjau` : parts.join(" · ")}
+      />
+
+      {stateResult.error || !state ? (
+        <Panel>
           <ErrorState
             title="Status sinkronisasi tidak bisa dimuat"
-            cause={`Database menjawab: ${stateResult.error.message}`}
-            action={<ReloadButton />}
+            cause={stateResult.error ? "Server tidak menjawab." : "Sinkronisasi belum disiapkan."}
+            action={stateResult.error ? <ReloadButton>Coba lagi</ReloadButton> : "Hubungi pengelola aplikasi."}
           />
-        ) : !state ? (
-          <ErrorState
-            title="Baris sync_state belum ada"
-            cause="Tabel sync_state seharusnya berisi satu baris dari migrasi sinkronisasi."
-            action="Jalankan ulang migrasi sync_tables atau hubungi pengelola aplikasi."
-          />
-        ) : (
-          <div className="flex flex-col gap-4">
-            <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Item label="Sinkron terakhir berhasil">
-                {state.last_success_at ? (
-                  <>
-                    {formatWaktu(state.last_success_at)} WIB
-                    <span className="block text-xs text-ink-muted">{formatRelatif(state.last_success_at, now)}</span>
-                  </>
-                ) : (
-                  <span className="text-ink-muted">Belum pernah</span>
-                )}
-              </Item>
-              <Item label="Gagal berturut-turut">
-                <span className="tabular-nums">{state.failures} kali</span>
-              </Item>
-              <Item label="Proses berjalan (kunci)">
-                {leaseHeld ? (
-                  <>Ya, terkunci sampai {formatWaktu(state.lease_until)} WIB</>
-                ) : (
-                  <span className="text-ink-muted">Tidak ada proses berjalan</span>
-                )}
-              </Item>
-              <Item label="Ping terakhir">
-                {state.last_ping_at ? (
-                  <>
-                    {formatWaktu(state.last_ping_at)} WIB
-                    <span className="block text-xs text-ink-muted">{formatRelatif(state.last_ping_at, now)}</span>
-                  </>
-                ) : (
-                  <span className="text-ink-muted">Belum ada ping</span>
-                )}
-              </Item>
-            </dl>
-            {!state.initialized ? (
-              <p className="text-sm text-warning">
-                Sinkron pertama belum selesai: belum ada data acuan (baseline) antara database dan Sheet.
-              </p>
-            ) : null}
-            <div>
-              <h3 className="section-label">Galat terakhir</h3>
-              {state.last_error ? (
-                <p className="mt-1 rounded-control border border-line bg-paper p-3 text-sm wrap-break-word whitespace-pre-wrap text-ink">
-                  {state.last_error}
-                </p>
-              ) : (
-                <p className="mt-1 text-sm text-ink-muted">Tidak ada galat tercatat.</p>
-              )}
-            </div>
-            <p className="text-sm text-ink-muted">
-              Halaman ini tidak punya tombol untuk menjalankan sinkronisasi: menjalankannya butuh kunci rahasia
-              server yang tidak disimpan di aplikasi web. Sinkronisasi dipicu dari server (jadwal database dan
-              perubahan data) dan dari menu Garuda di Google Sheet, jika sudah dipasang.
-            </p>
-          </div>
-        )}
-      </Panel>
+        </Panel>
+      ) : state.failures > 0 || !state.initialized ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-ink">
+          {state.failures > 0 ? <StatusChip label={`Gagal ${state.failures} kali berturut-turut`} tone="critical" /> : null}
+          {!state.initialized ? <StatusChip label="Sinkron pertama belum selesai" tone="warning" /> : null}
+          {state.last_error ? (
+            <details className="basis-full text-sm text-ink-muted">
+              <summary className="cursor-pointer text-ink">Detail teknis untuk pengelola</summary>
+              <pre className="mt-2 whitespace-pre-wrap break-words rounded-control bg-surface-sunken p-3 text-xs">
+                {state.last_error}
+              </pre>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
 
-      <Panel
-        title={`Belum ditinjau (${openCount})`}
-        padding="flush"
-      >
+      <Panel padding="flush">
         {openResult.error ? (
-          <div className="px-4 sm:px-6">
+          <div className="px-4">
             <ErrorState
               title="Daftar konflik tidak bisa dimuat"
-              cause={`Database menjawab: ${openResult.error.message}`}
-              action={<ReloadButton />}
+              cause="Server tidak menjawab."
+              action={<ReloadButton>Coba lagi</ReloadButton>}
             />
           </div>
         ) : (
-          <div className="border-t border-line">
-            <ConflictTable
-              caption="Konflik yang belum ditinjau"
-              rows={openRows}
-              mode="open"
-              emptyTitle="Tidak ada konflik yang perlu ditinjau"
-              emptyText="Konflik muncul di sini jika sel yang sama diubah di aplikasi dan di Sheet sebelum sinkron, atau jika nilai di Sheet ditolak."
-            />
-          </div>
+          <ConflictTable
+            caption="Konflik yang belum ditinjau"
+            rows={openRows}
+            mode="open"
+            emptyTitle="Tidak ada konflik yang perlu ditinjau"
+          />
         )}
       </Panel>
 
-      <Panel
-        title="Sudah ditinjau"
-        padding="flush"
-      >
-        {resolvedResult.error ? (
-          <div className="px-4 sm:px-6">
-            <ErrorState
-              title="Riwayat konflik tidak bisa dimuat"
-              cause={`Database menjawab: ${resolvedResult.error.message}`}
-              action={<ReloadButton />}
-            />
-          </div>
-        ) : (
-          <div className="border-t border-line">
-            <ConflictTable
-              caption="Konflik yang sudah ditinjau"
-              rows={resolvedRows}
-              mode="resolved"
-              emptyTitle="Belum ada konflik yang ditandai selesai"
-              emptyText="Setelah Anda menekan Tandai selesai, konflik pindah ke daftar ini."
-            />
-          </div>
-        )}
-      </Panel>
+      {resolvedResult.error ? null : <ResolvedConflicts rows={resolvedRows} count={resolvedCount} />}
     </div>
   );
 }

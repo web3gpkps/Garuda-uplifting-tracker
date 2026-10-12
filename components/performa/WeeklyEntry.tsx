@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import type { Settings } from "@/lib/rules";
 import { Field, Input } from "@/components/ui/Field";
 import { ScoreRow, type EntryStaff, type SaveScoreAction } from "./ScoreRow";
@@ -8,7 +8,7 @@ import { ScoreRow, type EntryStaff, type SaveScoreAction } from "./ScoreRow";
 export type EntryGroup = {
   /** Station code; the heading is shown only when the list holds more than one station. */
   station: string;
-  /** "26 SDM, 3 sudah dinilai". */
+  /** "3 dari 26 dinilai". */
   summary: string;
   staff: EntryStaff[];
 };
@@ -19,7 +19,7 @@ type WeeklyEntryProps = {
   settings: Settings;
   groups: EntryGroup[];
   showStationHeadings: boolean;
-  /** Accessible name of the list, e.g. "Nilai Minggu ke-1, Unit CGK". */
+  /** Accessible name of the list, e.g. "Penilaian Minggu ke-1, CGK". */
   label: string;
   saveAction: SaveScoreAction;
 };
@@ -62,35 +62,47 @@ function writeObserver(value: string) {
 }
 
 /**
- * Weekly entry on phones (Log Performa Mingguan): one card per staff member in scope.
- * Client component; each card saves on its own through `saveAction`.
+ * Penilaian on phones: one card per person in scope. Each card saves on its own; after a
+ * save, focus moves to the first score of the next card without a score (wrapping to the
+ * top), so a supervisor can score a whole station in one pass. Client component.
  */
 export function WeeklyEntry({ accessKey, week, settings, groups, showStationHeadings, label, saveAction }: WeeklyEntryProps) {
   const defaultObserver = useSyncExternalStore(subscribeObserver, readObserver, () => "");
+  const listRef = useRef<HTMLUListElement>(null);
+  const [announcement, setAnnouncement] = useState("");
+
+  const goToNext = useCallback((code: string) => {
+    const cards = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-entry-card]") ?? [])];
+    const index = cards.findIndex((c) => c.dataset.code === code);
+    const ordered = [...cards.slice(index + 1), ...cards.slice(0, Math.max(index, 0))];
+    const next = ordered.find((c) => c.dataset.scored === "false");
+    if (!next) {
+      setAnnouncement("Semua SDM di daftar ini sudah dinilai.");
+      return;
+    }
+    setAnnouncement("");
+    next.scrollIntoView({ block: "start" });
+    next.querySelector<HTMLElement>("[data-score-input]")?.focus({ preventScroll: true });
+  }, []);
 
   return (
     <div className="flex flex-col">
-      <div className="flex flex-col gap-3 border-b border-line px-4 pb-4 sm:px-6">
-        <Field
-          label="Observer untuk SDM yang Anda nilai"
-          help="Terisi sendiri di kolom Observer saat Anda mulai menilai SDM yang observernya masih kosong. Diingat di peramban ini."
-          className="max-w-md"
-        >
+      <div className="border-b border-line px-4 py-3">
+        <Field label="Nama observer" help="Terisi di kartu yang mulai dinilai." className="max-w-md">
           <Input
             value={defaultObserver}
             onChange={(event) => writeObserver(event.target.value)}
             maxLength={200}
             autoComplete="name"
-            placeholder="Nama Anda"
           />
         </Field>
-        <p className="max-w-md text-xs text-ink-muted">
-          Isi skor 0 sampai 100 (boleh desimal, contoh 87,5). Touch point terisi dari Master SDM saat Anda mulai
-          menilai. Kosongkan semua isian kartu yang sudah tersimpan untuk menghapusnya.
-        </p>
       </div>
 
-      <ul aria-label={label}>
+      <p role="status" aria-live="polite" className="empty:hidden px-4 pt-3 text-sm font-semibold text-good">
+        {announcement}
+      </p>
+
+      <ul ref={listRef} aria-label={label}>
         {groups.map((group) => (
           <GroupRows
             key={group.station}
@@ -101,6 +113,7 @@ export function WeeklyEntry({ accessKey, week, settings, groups, showStationHead
             settings={settings}
             defaultObserver={defaultObserver}
             saveAction={saveAction}
+            onSaved={goToNext}
           />
         ))}
       </ul>
@@ -120,15 +133,14 @@ function GroupRows({
   settings: Settings;
   defaultObserver: string;
   saveAction: SaveScoreAction;
+  onSaved: (code: string) => void;
 }) {
   return (
     <>
       {showHeading ? (
-        <li className="border-b border-line bg-paper px-4 py-2 sm:px-6">
-          <h3 className="text-sm font-semibold text-ink">
-            Unit {group.station}
-            <span className="ml-2 text-xs font-normal text-ink-muted">{group.summary}</span>
-          </h3>
+        <li className="flex items-baseline justify-between gap-3 border-b border-line bg-surface-sunken px-4 py-2">
+          <h3 className="station-code text-sm text-ink">{group.station}</h3>
+          <span className="text-xs text-ink-muted tabular-nums">{group.summary}</span>
         </li>
       ) : null}
       {group.staff.map((staff) => (

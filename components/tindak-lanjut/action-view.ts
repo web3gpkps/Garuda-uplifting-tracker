@@ -19,9 +19,6 @@ export { ACTION_GROUPS, ASPECTS };
 
 export const NO_DUE_FLAG: ActionFlag = "Batas waktu belum ditetapkan";
 
-/** Shown wherever a station link meets the (national) items it cannot change. */
-export const READ_ONLY_NOTE = "Tindak lanjut nasional dikelola KPS.";
-
 export type ActionView = {
   code: string;
   /** Kelompok (Coaching Frontliner, Timeline Training, Evaluasi IULS & RUST). */
@@ -43,12 +40,12 @@ export type ActionView = {
   updatedOn: IsoDate | null;
   evidence: string | null;
   kpsNotes: string | null;
-  /** PDF slide, e.g. "Slide 15". */
+  /** Where the item came from, e.g. an evaluation report. */
   source: string | null;
   sortOrder: number;
-  /** 0 OVERDUE, 1 due within 7 days, 2 on track / routine, 3 no due date, 4 done. */
+  /** 0 OVERDUE, 1 due within 7 days, 2 no due date, 3 on track / routine, 4 done. */
   urgency: number;
-  /** "tautan ini", another link's label, or "pemilik / Google Sheet". */
+  /** "tautan ini", another link's label, or "pengelola". */
   lastChangedBy: string;
   /** "Diubah lewat tautan ini, 8 Okt 14.05". */
   changedLabel: string;
@@ -59,8 +56,8 @@ export function urgencyOf(flag: ActionFlag): number {
   if (flag === "OVERDUE") return 0;
   if (flag === "Jatuh tempo ≤ 7 hari") return 1;
   if (flag === "Selesai") return 4;
-  if (flag === NO_DUE_FLAG) return 3;
-  return 2;
+  if (flag === NO_DUE_FLAG) return 2;
+  return 3;
 }
 
 export function toActionView(
@@ -97,7 +94,7 @@ export function toActionView(
   };
 }
 
-/** Most urgent first: OVERDUE, then due within 7 days, by days left; done items last. */
+/** Most urgent first: OVERDUE, due within 7 days, no due date yet, then the rest by days left; done last. */
 export function byUrgency(a: ActionView, b: ActionView): number {
   return (
     a.urgency - b.urgency ||
@@ -105,10 +102,6 @@ export function byUrgency(a: ActionView, b: ActionView): number {
     a.sortOrder - b.sortOrder ||
     a.code.localeCompare(b.code)
   );
-}
-
-export function byWorkbookOrder(a: ActionView, b: ActionView): number {
-  return a.sortOrder - b.sortOrder || a.code.localeCompare(b.code);
 }
 
 /** Sisa hari in words. Null (done, or no due date) is "Tidak dihitung". */
@@ -122,27 +115,12 @@ export function needsAttention(view: Pick<ActionView, "urgency">): boolean {
   return view.urgency <= 1;
 }
 
-export const FLAG_FILTERS = [
-  { value: "", label: "Semua flag" },
-  { value: "perlu", label: "Perlu ditangani (OVERDUE + ≤ 7 hari)" },
-  { value: "OVERDUE", label: "OVERDUE" },
-  { value: "Jatuh tempo ≤ 7 hari", label: "Jatuh tempo ≤ 7 hari" },
-  { value: "Rutin – pantau", label: "Rutin – pantau" },
-  { value: "On Track", label: "On Track" },
-  { value: "Selesai", label: "Selesai" },
-  { value: NO_DUE_FLAG, label: NO_DUE_FLAG },
-] as const;
+export type ActionFilters = { group: string | null; status: string; aspect: string };
 
-export type ActionFilters = { status: string; flag: string; aspect: string };
-
-export function matchesFilters(
-  view: Pick<ActionView, "status" | "flag" | "aspect" | "urgency">,
-  f: ActionFilters,
-): boolean {
+export function matchesFilters(view: Pick<ActionView, "groupName" | "status" | "aspect">, f: ActionFilters): boolean {
+  if (f.group && view.groupName !== f.group) return false;
   if (f.status && view.status !== f.status) return false;
-  if (f.aspect && view.aspect !== f.aspect) return false;
-  if (f.flag === "perlu") return needsAttention(view);
-  return f.flag === "" || view.flag === f.flag;
+  return !f.aspect || view.aspect === f.aspect;
 }
 
 /** `?aspek=` as one of ASPECTS, else "" (all aspects). */
@@ -153,4 +131,9 @@ export function parseAspect(raw: string | null | undefined): string {
 /** `?kelompok=` as one of ACTION_GROUPS, else null (all groups). */
 export function parseGroup(raw: string | null | undefined): string | null {
   return raw && (ACTION_GROUPS as readonly string[]).includes(raw) ? raw : null;
+}
+
+/** `?status=` as one of ACTION_STATUSES, else "" (all statuses). */
+export function parseStatus(raw: string | null | undefined): string {
+  return raw && (ACTION_STATUSES as readonly string[]).includes(raw) ? raw : "";
 }

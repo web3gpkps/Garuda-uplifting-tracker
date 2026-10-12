@@ -1,9 +1,9 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageHeader, PageLoading } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
-import { ErrorState, LoadingState } from "@/components/ui/States";
+import { ErrorState } from "@/components/ui/States";
 import { ReloadButton } from "@/components/ui/ReloadButton";
 import { LinksManager } from "@/components/admin/LinksManager";
 import { linkScopes, type LinkRow } from "@/components/admin/link-types";
@@ -13,16 +13,13 @@ import { linkAccess } from "@/lib/workspace/access";
 
 export const metadata: Metadata = { title: "Tautan Akses" };
 
+const TITLE = "Tautan Akses";
+
 export default function TautanPage() {
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Tautan stasiun"
-      />
-      <Suspense fallback={<LoadingState label="Memuat daftar tautan" />}>
-        <LinksData />
-      </Suspense>
-    </div>
+    <Suspense fallback={<PageLoading title={TITLE} label="Memuat daftar tautan" />}>
+      <LinksData />
+    </Suspense>
   );
 }
 
@@ -48,13 +45,16 @@ async function LinksData() {
 
   if (error) {
     return (
-      <Panel>
-        <ErrorState
-          title="Daftar tautan tidak bisa dimuat"
-          cause={`Database menjawab: ${error.message}`}
-          action={<ReloadButton />}
-        />
-      </Panel>
+      <div className="flex flex-col gap-6">
+        <PageHeader title={TITLE} />
+        <Panel>
+          <ErrorState
+            title="Daftar tautan tidak bisa dimuat"
+            cause="Server tidak menjawab."
+            action={<ReloadButton>Coba lagi</ReloadButton>}
+          />
+        </Panel>
+      </div>
     );
   }
 
@@ -84,5 +84,5 @@ async function LinksData() {
         b.createdAt.localeCompare(a.createdAt),
     );
 
-  return <LinksManager links={links} scopes={scopes} />;
+  return <LinksManager title={TITLE} links={links} scopes={scopes} />;
 }

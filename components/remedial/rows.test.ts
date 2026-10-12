@@ -1,18 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_SETTINGS, type Settings } from "@/lib/rules";
-import { filterRemedialRows, formatGain, remedialTone, parseRemedialFilter, remedialCounts, remedialRows, shortCause } from "./rows";
+import { byStatus, filterRemedialRows, formatGain, parseRemedialFilter, remedialCounts, remedialRows, rowAction, shortCause } from "./rows";
 
 const s: Settings = { ...DEFAULT_SETTINGS, passGrade: 85, weightRolePlay: 0.4, weightPostTest: 0.6 };
 
 const staff = [
   // Passed (final 90): not listed.
-  { code: "IULS-01", name: "Dummy A", program: "IULS", station: "CGK", rolePlay: 90, postTest: 90, reportRemark: "Passed" },
+  { code: "IULS-01", name: "Peserta A", program: "IULS", station: "CGK", rolePlay: 90, postTest: 90, reportRemark: "Passed" },
   // Failed, absent role play (final 54): listed without a remedial row.
-  { code: "IULS-02", name: "Dummy B", program: "IULS", station: "CGK", rolePlay: 0, postTest: 90, reportRemark: "Failed" },
+  { code: "IULS-02", name: "Peserta B", program: "IULS", station: "CGK", rolePlay: 0, postTest: 90, reportRemark: "Failed" },
   // Failed (final 80), remedial passed 90.
-  { code: "RUST-01", name: "Dummy C", program: "RUST", station: "DPS", rolePlay: 80, postTest: 80, reportRemark: "Failed" },
+  { code: "RUST-01", name: "Peserta C", program: "RUST", station: "DPS", rolePlay: 80, postTest: 80, reportRemark: "Failed" },
   // Failed (final 82), scheduled, no result yet.
-  { code: "RUST-02", name: "Dummy D", program: "RUST", station: "DPS", rolePlay: 70, postTest: 90, reportRemark: "Failed" },
+  { code: "RUST-02", name: "Peserta D", program: "RUST", station: "DPS", rolePlay: 70, postTest: 90, reportRemark: "Failed" },
   // No baseline, but a remedial row exists: listed, not counted as Failed.
   { code: "RUST-03", name: null, program: "RUST", station: "KNO", rolePlay: null, postTest: null, reportRemark: null },
 ];
@@ -20,7 +20,7 @@ const staff = [
 const remedials = [
   { staffCode: "RUST-01", action: "Individual Coaching", remedialOn: "2026-10-20", rolePlay: 90, postTest: 90, reported: "Ya", notes: null },
   { staffCode: "RUST-02", action: "Refresher & Remedial Assessment", remedialOn: null, rolePlay: null, postTest: null, reported: null, notes: null },
-  { staffCode: "RUST-03", action: null, remedialOn: null, rolePlay: 80, postTest: 80, reported: "Belum", notes: "Dummy" },
+  { staffCode: "RUST-03", action: null, remedialOn: null, rolePlay: 80, postTest: 80, reported: "Belum", notes: "Catatan" },
 ];
 
 describe("remedialRows", () => {
@@ -55,6 +55,7 @@ describe("remedialRows", () => {
       waiting: 1,
       absentRolePlay: 1,
       reported: 1,
+      unscheduled: 1,
     });
   });
 
@@ -85,7 +86,10 @@ test("display helpers", () => {
   expect(formatGain(10)).toBe("+10");
   expect(formatGain(-2.5)).toBe("-2,5");
   expect(formatGain(null)).toBe("");
-  expect(remedialTone("Lulus")).toBe("good");
-  expect(remedialTone("Belum Lulus")).toBe("critical");
-  expect(remedialTone("Belum dijadwalkan")).toBe("neutral");
+});
+
+test("order and row action", () => {
+  const rows = remedialRows(staff, remedials, s);
+  expect(byStatus(rows).map((r) => r.code)).toEqual(["IULS-02", "RUST-03", "RUST-02", "RUST-01"]);
+  expect(rows.map(rowAction)).toEqual(["Jadwalkan", "Ubah", "Isi hasil", "Jadwalkan"]);
 });

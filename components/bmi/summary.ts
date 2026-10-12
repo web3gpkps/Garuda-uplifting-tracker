@@ -2,8 +2,9 @@
  * Pure view helpers for the Cek BMI screen (no React, no server code), so they are unit
  * tested in summary.test.ts. Formulas stay in lib/rules; these only pick and count.
  */
-import { bmiCheckDate, type BmiScheduleStatus, type BmiSummary, type Settings } from "@/lib/rules";
-import type { StatusTone } from "@/components/ui/StatusChip";
+import { diffDays, formatTanggalPendek } from "@/lib/dates";
+import { bmiCheckDate, type BmiPeriodValue, type BmiSummary, type Settings } from "@/lib/rules";
+import { toneForStatus, type StatusTone } from "@/components/ui/StatusChip";
 
 /** The slot whose planned date is the latest on or before today; slot 1 before the first check. */
 export function defaultPeriod(s: Settings, today: string): number {
@@ -60,7 +61,7 @@ export function slotCounts(summaries: readonly BmiSummary[], period: number): Bm
   return out;
 }
 
-/** "Ada catatan BMI" as the workbook shows it. */
+/** "Ada catatan BMI" as Ya / Tidak. */
 export function hasNoteLabel(value: boolean | null | undefined): "Ya" | "Tidak" | null {
   if (value === true) return "Ya";
   if (value === false) return "Tidak";
@@ -85,10 +86,51 @@ export function checkRhythm(hasNote: boolean | null | undefined, s: Settings): s
   return `tiap ${s.bmiIntervalDays} hari`;
 }
 
-/** Tone for "Status jadwal" (set explicitly so it never depends on the shared label table). */
-export function scheduleTone(status: BmiScheduleStatus | string | null | undefined): StatusTone {
-  if (status === "Terlambat cek") return "critical";
-  if (status === "Cek ≤ 7 hari") return "warning";
-  if (status === "Terjadwal") return "good";
-  return "neutral";
+/** True when this slot holds a complete check (TB and BB, so a BMI). */
+export function isChecked(slot: BmiPeriodValue | null | undefined): boolean {
+  return Boolean(slot && slot.bmi !== null);
+}
+
+/**
+ * One status line per person for the chosen slot: "Sudah dicek · 26 Okt",
+ * "Belum dicek · terlambat 3 hari", "Belum dicek · jatuh tempo 2 hari lagi" or
+ * "Belum dicek · cek berikutnya 9 Nov". The tone comes from the shared tone map.
+ */
+export function slotStatusLine(
+  slot: BmiPeriodValue | null | undefined,
+  summary: Pick<BmiSummary, "nextCheck" | "scheduleStatus">,
+  today: string,
+): { text: string; tone: StatusTone } {
+  if (slot && isChecked(slot)) {
+    return {
+      text: slot.checkDate ? `Sudah dicek · ${formatTanggalPendek(slot.checkDate)}` : "Sudah dicek",
+      tone: "good",
+    };
+  }
+  const tone = toneForStatus(summary.scheduleStatus);
+  if (summary.scheduleStatus === "Terlambat cek") {
+    return { text: `Belum dicek · terlambat ${Math.max(1, diffDays(today, summary.nextCheck))} hari`, tone };
+  }
+  if (summary.scheduleStatus === "Cek ≤ 7 hari") {
+    const days = diffDays(summary.nextCheck, today);
+    return { text: days <= 0 ? "Belum dicek · jatuh tempo hari ini" : `Belum dicek · jatuh tempo ${days} hari lagi`, tone };
+  }
+  return { text: `Belum dicek · cek berikutnya ${formatTanggalPendek(summary.nextCheck)}`, tone: "neutral" };
+}
+
+const SCHEDULE_RANK: Record<string, number> = { "Terlambat cek": 0, "Cek ≤ 7 hari": 1 };
+
+/**
+ * Due and late first: late, then due within 7 days, then the rest; inside each group the
+ * people not yet checked in the chosen slot come first. Stable, so the staff order stays.
+ */
+export function dueFirst<T>(items: readonly T[], summaryOf: (item: T) => BmiSummary, period: number): T[] {
+  const rank = (item: T) => {
+    const s = summaryOf(item);
+    return (SCHEDULE_RANK[s.scheduleStatus] ?? 2) * 2 + (isChecked(s.periods[period - 1]) ? 1 : 0);
+  };
+  return items
+    .map((item, index) => ({ item, index, rank: rank(item) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((x) => x.item);
 }

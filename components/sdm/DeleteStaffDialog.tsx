@@ -52,7 +52,7 @@ export function DeleteStaffDialog({ row, onClose, accessKey, deleteAction, onDel
         setError(result.error.message);
       }
     } catch {
-      setError("Koneksi ke server terputus. SDM belum dihapus; coba lagi.");
+      setError("Koneksi terputus. SDM belum dihapus; coba lagi.");
     }
     setBusy(false);
   }
@@ -72,7 +72,7 @@ export function DeleteStaffDialog({ row, onClose, accessKey, deleteAction, onDel
       }}
       dismissible={!busy}
       title={target ? `Hapus SDM ${target.code} ${target.name}?` : "Hapus SDM?"}
-      description="Penghapusan ini permanen dan tidak bisa dibatalkan. Google Sheet ikut diperbarui pada sinkronisasi berikutnya."
+      description="Penghapusan ini permanen."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
@@ -87,13 +87,11 @@ export function DeleteStaffDialog({ row, onClose, accessKey, deleteAction, onDel
       {target ? (
         <div className="flex flex-col gap-2">
           <p>
-            Ikut terhapus: <strong className="tabular-nums">{lost}</strong> milik SDM ini.
+            Ikut terhapus: <strong className="tabular-nums">{lost}</strong>.
           </p>
-          <p>
-            {target.replacementCount > 0
-              ? `${plural(target.replacementCount, "baris Penggantian SDM")} tetap ada, tetapi tidak lagi tertaut ke SDM ini.`
-              : "Tidak ada baris Penggantian SDM yang tertaut ke SDM ini."}
-          </p>
+          {target.replacementCount > 0 ? (
+            <p>{`${plural(target.replacementCount, "penggantian")} tetap ada, tanpa tautan ke SDM ini.`}</p>
+          ) : null}
           {error ? (
             <p role="alert" className="rounded-control bg-critical-tint px-3 py-2 font-semibold text-critical">
               {error}

@@ -6,19 +6,19 @@ import { Dialog } from "@/components/ui/Dialog";
 import { SaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { deleteRemedial } from "./actions";
 
-export const CONNECTION_LOST = "koneksi ke server terputus. Isian Anda masih ada; simpan lagi.";
+export const CONNECTION_LOST = "Koneksi ke server terputus. Isian masih ada; simpan lagi.";
 
 type PageStatus = { state: SaveState; set: (state: SaveState) => void };
 
-const PageStatusContext = createContext<PageStatus | null>(null);
+export const PageStatusContext = createContext<PageStatus | null>(null);
 
-/** Page-level save feedback: "Dihapus pukul …" after a remedial row is removed from the grid. */
+/** Page-level save feedback after a dialog closes: "Tersimpan pukul …" or "Dihapus pukul …". */
 export function RemedialPageStatus({ children }: { children: ReactNode }) {
   const [state, set] = useState<SaveState>({ status: "idle" });
   return <PageStatusContext value={{ state, set }}>{children}</PageStatusContext>;
 }
 
-/** Shows the page-level status (rendered once, under the summary). */
+/** Shows the page-level status (rendered once, in the filter row). */
 export function RemedialPageStatusLine() {
   const page = use(PageStatusContext);
   return <SaveStatus state={page?.state ?? { status: "idle" }} />;
@@ -28,7 +28,7 @@ type DeleteProps = {
   accessKey: string;
   staffCode: string;
   name: string;
-  /** Grid row action (small, not in the tab order) or card button. */
+  /** "grid": small and out of the tab order (inside a grid row); "card": a normal button. */
   variant?: "grid" | "card";
   onDeleted?: (at: string) => void;
 };

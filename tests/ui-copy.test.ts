@@ -28,20 +28,21 @@ const FORBIDDEN: Array<[RegExp, string]> = [
   [/\b[Ss]heet\b/, "sheet"],
 ];
 
-/**
- * Screen files phase 2 is rewriting, all for the word "sheet" (the Sinkronisasi pages name
- * the Google Sheet replica; decide there whether "Google Sheet" stays as a product name and
- * narrow the pattern instead). Remove entries as screens are finished.
- */
+/** Screen files phase 2 is still rewriting. Remove entries as screens are finished. */
 const PENDING_SCREENS = new Set<string>([
-  "app/admin/sinkronisasi/page.tsx",
-  "components/admin/ConflictTable.tsx",
-  "components/admin/sync-labels.ts",
-  "components/ringkasan/RingkasanView.tsx",
-  "components/sdm/DeleteStaffDialog.tsx",
-  "components/tindak-lanjut/ActionRows.tsx",
-  "components/tindak-lanjut/DeleteActionItemDialog.tsx",
 ]);
+
+/**
+ * The owner-only sync screens name the replica by its product name, "Google Sheet". There,
+ * and only there, that exact proper noun is allowed; any other "sheet" still fails.
+ */
+function allowsGoogleSheet(rel: string): boolean {
+  return (
+    rel.startsWith("app/admin/sinkronisasi/") ||
+    rel === "components/admin/ConflictTable.tsx" ||
+    rel === "components/admin/sync-labels.ts"
+  );
+}
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -60,17 +61,29 @@ function hits(path: string): Hit[] {
   const text = readFileSync(path, "utf8");
   const file = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const found: Hit[] = [];
+  const googleSheet = allowsGoogleSheet(relative(ROOT, path).split("\\").join("/"));
   const check = (node: ts.Node, value: string) => {
     for (const [pattern, word] of FORBIDDEN) {
-      if (pattern.test(value)) {
+      const seen = word === "sheet" && googleSheet ? value.replace(/Google Sheet/g, "") : value;
+      if (pattern.test(seen)) {
         const line = file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
         found.push({ line, word, text: value.trim().slice(0, 80) });
       }
     }
   };
+  // Object keys and operands of an equality test are machine codes ("sheet-wins"), never copy.
+  const isCode = (node: ts.Node) => {
+    const parent = node.parent;
+    if (ts.isPropertyAssignment(parent) && parent.name === node) return true;
+    if (!ts.isBinaryExpression(parent)) return false;
+    const op = parent.operatorToken.kind;
+    return op === ts.SyntaxKind.EqualsEqualsEqualsToken || op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+  };
   const visit = (node: ts.Node) => {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
-    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) check(node, node.text);
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      if (!isCode(node)) check(node, node.text);
+    }
     else if (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) check(node, node.text);
     else if (ts.isJsxText(node)) check(node, node.text);
     ts.forEachChild(node, visit);

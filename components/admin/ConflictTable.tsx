@@ -27,7 +27,6 @@ type ConflictTableProps = {
   /** Open rows get "Tandai selesai"; reviewed rows show when they were reviewed. */
   mode: "open" | "resolved";
   emptyTitle: string;
-  emptyText: string;
 };
 
 function Value({ value }: { value: unknown }) {
@@ -36,8 +35,8 @@ function Value({ value }: { value: unknown }) {
   return <span className="wrap-break-word whitespace-pre-wrap">{text}</span>;
 }
 
-/** sync_conflicts rows, newest first; the first column holds the row identity and the action. */
-export function ConflictTable({ caption, rows, mode, emptyTitle, emptyText }: ConflictTableProps) {
+/** Sync conflicts, newest first; the first column holds the row identity and the action. */
+export function ConflictTable({ caption, rows, mode, emptyTitle }: ConflictTableProps) {
   const [states, setStates] = useState<Record<number, SaveState>>({});
   const [, startTransition] = useTransition();
   const busy = Object.values(states).some((s) => s.status === "saving");
@@ -58,23 +57,21 @@ export function ConflictTable({ caption, rows, mode, emptyTitle, emptyText }: Co
   }
 
   return (
-    <DataTable caption={caption} hideCaption minWidth="1280px">
+    <DataTable caption={caption} minWidth="1120px">
       <thead>
         <tr>
-          <Th className="w-56">Tabel · baris</Th>
-          <Th>Kolom</Th>
-          <Th>Nilai di Sheet</Th>
-          <Th>Nilai di database</Th>
-          <Th>Nilai awal (baseline)</Th>
+          <Th className="w-56">Data</Th>
+          <Th>Isian</Th>
+          <Th>Di Google Sheet</Th>
+          <Th>Di aplikasi</Th>
+          <Th>Nilai sebelumnya</Th>
           <Th>Keputusan</Th>
           <Th>{mode === "open" ? "Dicatat" : "Ditinjau"}</Th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 ? (
-          <DataTableEmpty colSpan={7} title={emptyTitle}>
-            {emptyText}
-          </DataTableEmpty>
+          <DataTableEmpty colSpan={7} title={emptyTitle} />
         ) : (
           rows.map((r) => {
             const state = states[r.id] ?? { status: "idle" };
@@ -83,7 +80,7 @@ export function ConflictTable({ caption, rows, mode, emptyTitle, emptyText }: Co
                 <Th scope="row" className="w-56 align-top font-normal">
                   <span className="block font-semibold text-ink">{TABLE_LABEL[r.tableName] ?? r.tableName}</span>
                   <span className="block text-sm whitespace-normal text-ink">
-                    {r.rowKey ?? <span className="text-ink-muted">tanpa kunci baris</span>}
+                    {r.rowKey ?? <span className="text-ink-muted">tanpa ID baris</span>}
                   </span>
                   {mode === "open" ? (
                     <span className="mt-2 flex flex-col items-start gap-1">
@@ -104,10 +101,7 @@ export function ConflictTable({ caption, rows, mode, emptyTitle, emptyText }: Co
                   {r.columnName === null ? (
                     <span className="text-ink-muted">seluruh baris</span>
                   ) : (
-                    <>
-                      <span className="block">{columnLabel(r.tableName, r.columnName, r.rowKey)}</span>
-                      <code className="text-xs text-ink-muted">{r.columnName}</code>
-                    </>
+                    columnLabel(r.tableName, r.columnName, r.rowKey)
                   )}
                 </Td>
                 <Td className="max-w-72 min-w-48 align-top">
@@ -120,12 +114,9 @@ export function ConflictTable({ caption, rows, mode, emptyTitle, emptyText }: Co
                   <Value value={r.baseline} />
                 </Td>
                 <Td className="min-w-56 align-top">
-                  <span className="block">
-                    {r.resolution ? (RESOLUTION_LABEL[r.resolution] ?? r.resolution) : "Tidak dicatat"}
-                  </span>
-                  {r.resolution ? <code className="text-xs text-ink-muted">{r.resolution}</code> : null}
+                  {r.resolution ? (RESOLUTION_LABEL[r.resolution] ?? "Lainnya") : <span className="text-ink-muted">–</span>}
                 </Td>
-                <Td className="align-top whitespace-nowrap">
+                <Td className="tabular align-top whitespace-nowrap">
                   {formatWaktu(mode === "open" ? r.createdAt : r.resolvedAt)}
                 </Td>
               </Tr>
@@ -134,5 +125,25 @@ export function ConflictTable({ caption, rows, mode, emptyTitle, emptyText }: Co
         )}
       </tbody>
     </DataTable>
+  );
+}
+
+/** Reviewed conflicts, hidden until asked for. */
+export function ResolvedConflicts({ rows, count }: { rows: ConflictRow[]; count: number }) {
+  const [shown, setShown] = useState(false);
+  if (count === 0) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <Button variant="ghost" aria-expanded={shown} onClick={() => setShown((v) => !v)}>
+          {shown ? "Sembunyikan yang sudah ditinjau" : `Tampilkan yang sudah ditinjau (${count})`}
+        </Button>
+      </div>
+      {shown ? (
+        <div className="rounded-panel border border-line bg-surface">
+          <ConflictTable caption="Konflik yang sudah ditinjau" rows={rows} mode="resolved" emptyTitle="Belum ada" />
+        </div>
+      ) : null}
+    </div>
   );
 }

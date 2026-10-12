@@ -12,7 +12,7 @@ import { ReplacementDeleteButton, type ReplacementContext, type ReplacementFormR
 export type ReplacementGridRow = ReplacementFormRow & {
   pass: ReplacementPass | null;
   timeliness: ReplacementTimeliness | null;
-  /** "tautan ini, 8 Okt 07.55" or "pemilik / Google Sheet". */
+  /** "tautan ini, 8 Okt 07.55" or "pengelola". */
   changed: string;
 };
 
@@ -21,7 +21,7 @@ type ReplacementGridProps = {
   rows: ReplacementGridRow[];
   ctx: ReplacementContext;
   summary: string;
-  actions: ReactNode;
+  actions?: ReactNode;
   phone: ReactNode;
 };
 
@@ -82,7 +82,7 @@ function againstMinimum(value: CellValue, min: number, digits: number) {
 }
 
 /**
- * Penggantian SDM as the workbook sheet (docs/UX.md §2): one row per replacement, every input
+ * Penggantian SDM as an entry grid: one row per replacement, every input
  * inline, Status kelulusan and Ketepatan waktu computed read-only, "Hapus" per row. A row
  * saves itself through share_save_replacement, which writes every field, so the changed
  * cells are merged with the stored row. Client component.

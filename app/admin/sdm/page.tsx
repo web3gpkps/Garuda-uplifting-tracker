@@ -5,7 +5,7 @@ import { SdmLoading, SdmScreen } from "@/components/sdm/SdmScreen";
 
 export const metadata: Metadata = { title: "Data SDM" };
 
-/** Master SDM, owner (all stations). The screen is shared with /s/[token]/sdm. */
+/** Data SDM, owner (all stations). The screen is shared with /s/[token]/sdm. */
 export default function Page({ searchParams }: PageProps<"/admin/sdm">) {
   return (
     <Suspense fallback={<SdmLoading />}>

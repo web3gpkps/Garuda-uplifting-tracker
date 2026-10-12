@@ -45,7 +45,7 @@ export type ActionSaveResult<F extends string> =
   | { ok: true; savedAt: string }
   | { ok: false; message: string; fieldErrors?: Partial<Record<F, string>> };
 
-/** Workbook column names, for messages that point at a field. */
+/** Field names, for messages that point at a field. */
 export const FIELD_LABEL: Record<ProgressField | DefinitionField, string> = {
   status: "Status",
   progress: "% Progres",

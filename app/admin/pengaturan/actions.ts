@@ -18,10 +18,10 @@ export async function saveSettings(values: SettingsValues): Promise<SaveSettings
   const supabase = await createClient();
   const { data, error } = await supabase.from("settings").update(update).eq("id", 1).select("updated_at").maybeSingle();
   if (error) {
-    return { ok: false, message: `Parameter belum tersimpan: database menolak (${error.message}).` };
+    return { ok: false, message: "Parameter belum tersimpan. Periksa isian, lalu coba lagi." };
   }
   if (!data) {
-    return { ok: false, message: "Baris Parameter tidak ditemukan atau akun ini tidak boleh mengubahnya." };
+    return { ok: false, message: "Parameter tidak bisa diubah dengan akun ini." };
   }
   refresh();
   return { ok: true, savedAt: data.updated_at };

@@ -101,7 +101,7 @@ export async function saveActionProgress(
     }
     const field = linkError.field ? PROGRESS_FIELD[linkError.field] : undefined;
     if (!field) return { ok: false, message: linkError.message };
-    const message = `${FIELD_LABEL[field]} ditolak database. Periksa lagi isinya.`;
+    const message = `${FIELD_LABEL[field]} tidak valid. Periksa lagi isinya.`;
     return { ok: false, message, fieldErrors: { [field]: message } };
   }
 
@@ -182,7 +182,7 @@ export async function saveActionDefinition(
     }
     const field = linkError.field ? DEFINITION_FIELD[linkError.field] : undefined;
     if (!field) return { ok: false, message: linkError.message };
-    const message = `${FIELD_LABEL[field]} ditolak database. Periksa lagi isinya.`;
+    const message = `${FIELD_LABEL[field]} tidak valid. Periksa lagi isinya.`;
     return { ok: false, message, fieldErrors: { [field]: message } };
   }
 

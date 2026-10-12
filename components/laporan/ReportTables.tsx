@@ -1,17 +1,53 @@
 /*
- * Laporan Mingguan sections A, A2, C and the table of D, with the workbook's columns (rows per
- * program IULS / RUST and TOTAL or SEMUA). Section B is the Dashboard's ActionProgressTable.
- * Rows come from lib/aggregate weeklyReport(); nothing is recomputed here.
+ * Laporan Mingguan tables: sections A, A2, B (action progress per group and per aspect),
+ * C, the table of D, and the training results per program. Rows come from lib/aggregate
+ * (weeklyReport() and dashboard()); nothing is recomputed here.
  */
-import type { AspectAverageRow, BmiSlotRow, TrendRow, WeeklyPerformanceRow } from "@/lib/aggregate";
+import Link from "next/link";
+import type { ReactNode } from "react";
+import {
+  SEMUA,
+  TOTAL,
+  type ActionProgressRow,
+  type AspectAverageRow,
+  type BmiSlotRow,
+  type ProgramResultRow,
+  type TrendRow,
+  type WeeklyPerformanceRow,
+} from "@/lib/aggregate";
 import { formatPercent } from "@/lib/dashboard";
-import { formatScore, formatSignedScore } from "@/lib/format";
+import { formatProgress, formatScore, formatSignedScore } from "@/lib/format";
 import { COACHING_ASPECTS } from "@/lib/rules";
 import { DataTable, Td, Th, Tr } from "@/components/ui/DataTable";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { Flagged } from "@/components/dashboard/StationComparison";
-import { ColTh, Pct, RowTh, totalRowClass } from "@/components/ringkasan/DashboardTables";
-import { Value } from "@/components/ringkasan/format";
+import { Flagged, Value } from "@/components/ringkasan/format";
+
+/** Column header that may wrap onto two lines, so wide sections fit an A4 landscape page. */
+function ColTh({ children, numeric = true }: { children: ReactNode; numeric?: boolean }) {
+  return (
+    <Th numeric={numeric} className="min-w-18 align-bottom whitespace-normal">
+      {children}
+    </Th>
+  );
+}
+
+/** Row label cell; the TOTAL / SEMUA row reads heavier. */
+function RowTh({ children }: { children: ReactNode }) {
+  return (
+    <Th scope="row" className="font-semibold whitespace-nowrap text-ink">
+      {children}
+    </Th>
+  );
+}
+
+function totalRowClass(key: string): string | undefined {
+  return key === TOTAL || key === SEMUA ? "font-semibold [&>*]:bg-bg" : undefined;
+}
+
+/** Fraction as a percentage with one decimal ("84,5%"), or a muted dash. */
+function Pct({ value, digits = 1 }: { value: number | null | undefined; digits?: number }) {
+  return <Value value={value} format={(v) => formatPercent(v, digits)} />;
+}
 
 /** Section A. */
 export function WeeklyPerformanceTable({ caption, rows }: { caption: string; rows: WeeklyPerformanceRow[] }) {
@@ -26,7 +62,7 @@ export function WeeklyPerformanceTable({ caption, rows }: { caption: string; row
           <ColTh>Rata-rata minggu lalu</ColTh>
           <ColTh>Perubahan vs minggu lalu</ColTh>
           <ColTh>Rata-rata Final Result training</ColTh>
-          <ColTh>Kenaikan vs baseline*</ColTh>
+          <ColTh>Kenaikan vs Final Result</ColTh>
           <ColTh>Lulus</ColTh>
           <ColTh>Belum Lulus</ColTh>
           <ColTh>% Lulus</ColTh>
@@ -70,7 +106,7 @@ function MetChip({ met }: { met: boolean | null }) {
   return <StatusChip label={met ? "Tercapai" : "Belum tercapai"} tone={met ? "good" : "warning"} />;
 }
 
-/** Section A2: mean per coaching aspect against the slide-15 targets. */
+/** Section A2: mean per coaching aspect against the programme targets. */
 export function AspectTable({
   caption,
   rows,
@@ -134,7 +170,7 @@ export function BmiSlotTable({ caption, rows }: { caption: string; rows: BmiSlot
           <ColTh>Overweight</ColTh>
           <ColTh>Obesitas</ColTh>
           <ColTh>% overweight + obesitas</ColTh>
-          <ColTh>Terlambat cek (jadwal tiap SDM)</ColTh>
+          <ColTh>Terlambat cek</ColTh>
         </tr>
       </thead>
       <tbody>
@@ -185,6 +221,116 @@ export function TrendTable({ caption, rows, selectedWeek }: { caption: string; r
                 <Value value={v} format={formatScore} />
               </Td>
             ))}
+          </Tr>
+        ))}
+      </tbody>
+    </DataTable>
+  );
+}
+
+/** Section B: action items per group or per aspect. */
+export function ActionProgressTable({
+  caption,
+  rows,
+  hideCaption = true,
+  keyLabel = "Kelompok",
+  hrefFor,
+}: { caption: string; rows: ActionProgressRow[]; hideCaption?: boolean } & {
+  keyLabel?: string;
+  /** Opens Tindak Lanjut filtered to that group or aspect (not for TOTAL). */
+  hrefFor?: (key: string) => string;
+}) {
+  return (
+    <DataTable caption={caption} hideCaption={hideCaption} stickyHeader={false} density="dense">
+      <thead>
+        <tr>
+          <Th className="align-bottom">{keyLabel}</Th>
+          <ColTh>Total butir</ColTh>
+          <ColTh>Selesai</ColTh>
+          <ColTh>On Progress</ColTh>
+          <ColTh>Belum Mulai</ColTh>
+          <ColTh>Tertunda</ColTh>
+          <ColTh>OVERDUE</ColTh>
+          <ColTh>Jatuh tempo ≤ 7 hari</ColTh>
+          <ColTh>% Selesai</ColTh>
+          <ColTh>Rata-rata % progres</ColTh>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <Tr key={r.key} className={totalRowClass(r.key)}>
+            <RowTh>
+              {hrefFor && r.key !== TOTAL ? (
+                <Link href={hrefFor(r.key)} className="text-brand underline underline-offset-2">
+                  {r.key}
+                </Link>
+              ) : (
+                r.key
+              )}
+            </RowTh>
+            <Td numeric>{r.total}</Td>
+            <Td numeric>{r.selesai}</Td>
+            <Td numeric>{r.onProgress}</Td>
+            <Td numeric>{r.belumMulai}</Td>
+            <Td numeric>{r.tertunda}</Td>
+            <Td numeric>
+              <Flagged n={r.overdue} tone="critical" />
+            </Td>
+            <Td numeric>
+              <Flagged n={r.dueSoon} tone="warning" />
+            </Td>
+            <Td numeric>
+              <Pct value={r.pctDone} digits={0} />
+            </Td>
+            <Td numeric>
+              <Value value={r.avgProgress} format={formatProgress} />
+            </Td>
+          </Tr>
+        ))}
+      </tbody>
+    </DataTable>
+  );
+}
+
+/** Training results per program, before and after remedial, against the posisi awal. */
+export function ProgramResultsTable({ caption, rows, hideCaption = true }: { caption: string; rows: ProgramResultRow[]; hideCaption?: boolean }) {
+  return (
+    <DataTable caption={caption} hideCaption={hideCaption} stickyHeader={false} density="dense">
+      <thead>
+        <tr>
+          <Th className="align-bottom">Program</Th>
+          <ColTh>Peserta</ColTh>
+          <ColTh>Passed</ColTh>
+          <ColTh>Failed</ColTh>
+          <ColTh>Failed karena absen role play</ColTh>
+          <ColTh>Remedial tercatat</ColTh>
+          <ColTh>Lulus remedial</ColTh>
+          <ColTh>Lulus akhir</ColTh>
+          <ColTh>% lulus akhir</ColTh>
+          <ColTh>Posisi awal (Gapura)</ColTh>
+          <ColTh>Perlu verifikasi</ColTh>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <Tr key={r.key} className={totalRowClass(r.key)}>
+            <RowTh>{r.key}</RowTh>
+            <Td numeric>{r.participants}</Td>
+            <Td numeric>{r.passed}</Td>
+            <Td numeric>{r.failed}</Td>
+            <Td numeric>{r.absentRolePlay}</Td>
+            <Td numeric>{r.remedialRecorded}</Td>
+            <Td numeric>{r.remedialPassed}</Td>
+            <Td numeric>{r.finalPassed}</Td>
+            <Td numeric className="font-semibold">
+              <Pct value={r.pctFinalPassed} />
+            </Td>
+            <Td numeric>
+              <Pct value={r.pdfBaseline} />
+            </Td>
+            <Td numeric>
+              <Flagged n={r.beda} tone="warning" />
+            </Td>
           </Tr>
         ))}
       </tbody>

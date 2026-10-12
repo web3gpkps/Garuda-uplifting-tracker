@@ -6,14 +6,34 @@ import type { Workspace, WorkspaceStaff } from "@/lib/workspace";
 import { firstParam, lastChangedLabel } from "@/lib/workspace/view";
 import type { SdmRow } from "./types";
 
-export const CHECKS = ["beda", "failed", "absen"] as const;
+/** The record checks ("Perlu diperiksa"), each a reason a row gets the marker. */
+export const REASONS = ["beda", "failed", "absen"] as const;
+export type Reason = (typeof REASONS)[number];
+
+/** `?cek=` values: one reason, or "perlu" for any of them. */
+export const CHECKS = ["perlu", ...REASONS] as const;
 export type Check = (typeof CHECKS)[number];
 
-/** The record checks of the sheet ("Perlu diperiksa"). */
-export const MATCHES: Record<Check, (r: SdmRow) => boolean> = {
+export const REASON_LABELS: Record<Reason, string> = {
+  beda: "Beda – verifikasi",
+  failed: "Failed",
+  absen: "Absen role play",
+};
+
+const REASON_MATCHES: Record<Reason, (r: SdmRow) => boolean> = {
   beda: (r) => r.consistency === "Beda – verifikasi",
   failed: (r) => r.status === "Failed",
   absen: (r) => startsWithText(r.failureCause, "Kendala"),
+};
+
+/** Why a row needs a look, in REASONS order; empty when it is fine. */
+export function reasonsFor(row: SdmRow): Reason[] {
+  return REASONS.filter((reason) => REASON_MATCHES[reason](row));
+}
+
+export const MATCHES: Record<Check, (r: SdmRow) => boolean> = {
+  ...REASON_MATCHES,
+  perlu: (r) => reasonsFor(r).length > 0,
 };
 
 /** `?cek=` as a check, or null. */
@@ -26,6 +46,37 @@ export function parseCheck(raw: string | string[] | undefined): Check | null {
 export function parseProgram(raw: string | string[] | undefined): Program | null {
   const value = firstParam(raw)?.trim().toUpperCase();
   return (PROGRAMS as readonly string[]).includes(value ?? "") ? (value as Program) : null;
+}
+
+/**
+ * Column keys, left to right. The extra columns always follow the core ones, so
+ * collapsing them never shifts a core column and Excel paste (which fills the visible
+ * columns from the active cell) lands in the same cells either way.
+ */
+export function staffColumnKeys({ isKps, more }: { isKps: boolean; more: boolean }): string[] {
+  const core = [
+    "code",
+    "name",
+    "program",
+    ...(isKps ? ["station"] : []),
+    "touch_point",
+    "final_result",
+    "status",
+    "assignment_status",
+  ];
+  const extra = [
+    "employee_no",
+    "provider",
+    "gender",
+    "role_play",
+    "post_test",
+    "report_remark",
+    "consistency",
+    "failure_cause",
+    "feedback",
+    "notes",
+  ];
+  return more ? [...core, ...extra] : core;
 }
 
 type RowSource = Pick<Workspace, "linkId" | "linkLabels" | "weeklyScores" | "bmiChecks" | "remedials" | "replacements">;

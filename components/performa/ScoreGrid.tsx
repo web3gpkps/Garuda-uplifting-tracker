@@ -1,22 +1,24 @@
 "use client";
 
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { GAP_TOPICS, TOUCH_POINTS, coachingAvg, coachingStatus, deltaVsBaseline, type Settings } from "@/lib/rules";
 import { formatDecimal, formatScore, formatSignedScore } from "@/lib/format";
+import { Button } from "@/components/ui/Button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { DataGrid, type CellValue, type GridColumn, type SaveRowResult } from "@/components/grid/DataGrid";
 import { ASPECT_FIELDS, type AspectField } from "./format";
+import { SCORE_INPUT_KEYS, scoreColumnKeys } from "./score-columns";
 import type { SaveScoreAction } from "./ScoreRow";
 
-/** One staff member's Log Performa row for the selected week (column keys = RPC field names). */
+/** One staff member's weekly score row for the selected week (column keys = RPC field names). */
 export type ScoreGridRow = {
   code: string;
   name: string;
   station: string;
   assignmentStatus: string;
-  /** Master SDM Final Result, for Δ vs Final Result. */
+  /** Data SDM Final Result, for the difference column. */
   finalResult: number | null;
-  /** Master SDM touch point: used when a new row is scored without one. */
+  /** Data SDM touch point: used when a new row is scored without one. */
   defaultTouchPoint: string | null;
   touch_point: string | null;
   score_grooming: number | null;
@@ -31,11 +33,11 @@ export type ScoreGridRow = {
 };
 
 const SCORE_KEYS: AspectField[] = ASPECT_FIELDS.map((a) => a.field);
-const INPUT_KEYS = ["touch_point", ...SCORE_KEYS, "gap_topic", "observer", "coaching_notes"];
 
 const rowKey = (r: ScoreGridRow) => r.code;
 const rowLabel = (r: ScoreGridRow) => `${r.code}, ${r.name}`;
 const SEARCH = { placeholder: "Nama atau ID", text: (r: ScoreGridRow) => `${r.code} ${r.name}` };
+const MORE_GROUP = "Lainnya";
 
 function numberOrNull(value: CellValue): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -54,9 +56,9 @@ type ScoreGridProps = {
   showStation: boolean;
   accessKey: string;
   saveAction: SaveScoreAction;
-  /** Week picker and station filter (server-rendered). */
+  /** Week, station and program selects (server-rendered). */
   toolbar: ReactNode;
-  /** "12 dari 27 SDM sudah dinilai". */
+  /** "12 dari 27 dinilai". */
   summary: ReactNode;
   emptyState: ReactNode;
   /** The card flow for phones (< 900 px). */
@@ -64,23 +66,22 @@ type ScoreGridProps = {
 };
 
 /**
- * Log Performa Mingguan as a spreadsheet (docs/UX.md §2): Touch Point, the four coaching
- * aspects (0 to 100, decimals allowed), Topik Gap, Observer and Catatan are input cells;
- * Rata-rata, Status and Δ vs Final Result follow the typed scores live (lib/rules). Each
- * row saves itself through share_save_weekly_score; clearing every input of a saved row
- * deletes it after a confirmation. Remount it per week and station (key) so pending
- * edits never cross weeks.
+ * Penilaian Mingguan as an entry grid: ID, Nama, the four coaching aspects (0 to 100,
+ * decimals allowed), live Rata-rata and Status. Touch Point, Topik Gap, Observer, Catatan,
+ * the difference to Final Result and the last change sit behind "Kolom lainnya", always
+ * after the core columns (score-columns.ts explains why: paste stays put). Each row saves
+ * itself; clearing every input of a saved row asks first. Remount per week and station (key).
  */
 export function ScoreGrid(props: ScoreGridProps) {
   const { caption, rows, week, settings, showStation, accessKey, saveAction } = props;
+  const [more, setMore] = useState(false);
 
   const columns = useMemo<GridColumn<ScoreGridRow>[]>(() => {
     const avgOf = (value: (key: string) => CellValue) => coachingAvg(SCORE_KEYS.map((k) => numberOrNull(value(k))));
     const pass = formatDecimal(settings.passGrade, 0, 2);
-    const result = "Hasil minggu ini";
-    return [
-      { key: "code", header: "ID", width: 92, editor: "readonly", frozen: true },
-      {
+    const byKey: Record<string, GridColumn<ScoreGridRow>> = {
+      code: { key: "code", header: "ID", width: 92, editor: "readonly", frozen: true },
+      name: {
         key: "name",
         header: "Nama",
         width: 196,
@@ -96,12 +97,29 @@ export function ScoreGrid(props: ScoreGridProps) {
             value
           ),
       },
-      ...(showStation
-        ? [{ key: "station", header: "Unit", width: 64, editor: "readonly" } satisfies GridColumn<ScoreGridRow>]
-        : []),
-      {
+      station: { key: "station", header: "Unit", width: 64, editor: "readonly" },
+      avg: {
+        key: "avg",
+        header: "Rata-rata",
+        width: 88,
+        editor: "readonly",
+        align: "end",
+        derive: (_row, value) => avgOf(value),
+        render: (value) => <span className="font-semibold">{formatScore(numberOrNull(value))}</span>,
+      },
+      status: {
+        key: "status",
+        header: `Status ≥${pass}`,
+        label: `Status, lulus bila rata-rata ${pass} atau lebih`,
+        width: 120,
+        editor: "readonly",
+        derive: (_row, value) => coachingStatus(avgOf(value), settings),
+        render: (value) => <StatusChip label={textOrNull(value)} emptyLabel="Belum dinilai" />,
+      },
+      touch_point: {
         key: "touch_point",
         header: "Touch Point",
+        group: MORE_GROUP,
         width: 156,
         editor: "select",
         options: TOUCH_POINTS.map((value) => ({ value })),
@@ -109,74 +127,70 @@ export function ScoreGrid(props: ScoreGridProps) {
           value ? (
             String(value)
           ) : row.defaultTouchPoint ? (
-            <span className="text-ink-muted">{row.defaultTouchPoint} (Master)</span>
+            <span className="text-ink-muted" title="Dari Data SDM">
+              {row.defaultTouchPoint}
+            </span>
           ) : null,
       },
-      ...ASPECT_FIELDS.map(
-        (a): GridColumn<ScoreGridRow> => ({
-          key: a.field,
-          // "Grooming & Appearance" → "Grooming"; the full name is the spoken label and tooltip.
-          header: a.label.replace(/ (& .*|Skill)$/, ""),
-          label: a.label,
-          group: "Skor coaching (0 sampai 100)",
-          width: 132,
-          editor: "number",
-          min: 0,
-          max: 100,
-          decimals: 2,
-        }),
-      ),
-      {
-        key: "avg",
-        header: "Rata-rata",
-        group: result,
-        width: 84,
-        editor: "readonly",
-        align: "end",
-        derive: (_row, value) => avgOf(value),
-        render: (value) => <span className="font-semibold">{formatScore(numberOrNull(value))}</span>,
+      gap_topic: {
+        key: "gap_topic",
+        header: "Topik Gap",
+        group: MORE_GROUP,
+        width: 168,
+        editor: "select",
+        options: GAP_TOPICS.map((value) => ({ value })),
       },
-      {
-        key: "status",
-        header: `Status ≥${pass}`,
-        label: `Status coaching, lulus bila rata-rata ${pass} atau lebih`,
-        group: result,
-        width: 120,
-        editor: "readonly",
-        derive: (_row, value) => coachingStatus(avgOf(value), settings),
-        render: (value) => {
-          const label = textOrNull(value);
-          return <StatusChip label={label} emptyLabel="Belum dinilai" />;
-        },
+      observer: { key: "observer", header: "Observer", group: MORE_GROUP, width: 160, editor: "text", maxLength: 200 },
+      coaching_notes: {
+        key: "coaching_notes",
+        header: "Catatan",
+        group: MORE_GROUP,
+        width: 240,
+        editor: "longtext",
+        maxLength: 4000,
       },
-      {
+      delta: {
         key: "delta",
         header: "Δ Final Result",
         label: "Selisih rata-rata minggu ini dengan Final Result training",
-        group: result,
-        width: 104,
+        group: MORE_GROUP,
+        width: 112,
         editor: "readonly",
         align: "end",
         derive: (row, value) => deltaVsBaseline(avgOf(value), row.finalResult),
         render: (value) => formatSignedScore(numberOrNull(value)),
       },
-      {
-        key: "gap_topic",
-        header: "Topik Gap",
-        width: 168,
-        editor: "select",
-        options: GAP_TOPICS.map((value) => ({ value })),
+      changed: {
+        key: "changed",
+        header: "Terakhir diubah",
+        group: MORE_GROUP,
+        width: 232,
+        editor: "readonly",
+        get: (r) => r.changedLabel,
       },
-      { key: "observer", header: "Observer", width: 160, editor: "text", maxLength: 200 },
-      { key: "coaching_notes", header: "Catatan", width: 240, editor: "longtext", maxLength: 4000 },
-      { key: "changed", header: "Terakhir diubah", width: 232, editor: "readonly", get: (r) => r.changedLabel },
-    ];
-  }, [settings, showStation]);
+    };
+    for (const a of ASPECT_FIELDS) {
+      byKey[a.field] = {
+        key: a.field,
+        // "Grooming & Appearance" → "Grooming"; the full name is the spoken label.
+        header: a.label.replace(/ (& .*|Skill)$/, ""),
+        label: a.label,
+        group: "Skor (0 sampai 100)",
+        width: 120,
+        editor: "number",
+        min: 0,
+        max: 100,
+        decimals: 2,
+      };
+    }
+    return scoreColumnKeys({ showStation, more }).map((key) => byKey[key]);
+  }, [settings, showStation, more]);
 
   const confirmClear = useMemo(
     () => ({
-      fields: INPUT_KEYS,
+      fields: SCORE_INPUT_KEYS,
       message: (r: ScoreGridRow) => `Hapus nilai Minggu ke-${week} untuk ${r.name}?`,
+      description: "Isian yang dikosongkan ikut terhapus.",
       confirmLabel: "Hapus nilai",
     }),
     [week],
@@ -184,6 +198,7 @@ export function ScoreGrid(props: ScoreGridProps) {
 
   const onSaveRow = useCallback(
     async (_key: string, changes: Record<string, CellValue>, row: ScoreGridRow): Promise<SaveRowResult> => {
+      // The RPC writes every field: hidden columns keep their stored value.
       const pick = (field: string): CellValue =>
         field in changes ? changes[field] : (row[field as keyof ScoreGridRow] as CellValue);
       const scores = SCORE_KEYS.map((k) => numberOrNull(pick(k)));
@@ -191,7 +206,7 @@ export function ScoreGrid(props: ScoreGridProps) {
       const observer = textOrNull(pick("observer"));
       const coachingNotes = textOrNull(pick("coaching_notes"));
       const hasContent = scores.some((s) => s !== null) || gapTopic !== null || observer !== null || coachingNotes !== null;
-      // A scored row without a touch point takes the one from Master SDM (shown greyed in the cell).
+      // A scored row without a touch point takes the one from Data SDM (shown greyed in the cell).
       const touchPoint = textOrNull(pick("touch_point")) ?? (hasContent ? row.defaultTouchPoint : null);
       const result = await saveAction(accessKey, {
         staffCode: row.code,
@@ -224,6 +239,11 @@ export function ScoreGrid(props: ScoreGridProps) {
       search={SEARCH}
       toolbar={props.toolbar}
       summary={props.summary}
+      actions={
+        <Button size="sm" variant="secondary" onClick={() => setMore((m) => !m)}>
+          {more ? "Sembunyikan kolom lainnya" : "Kolom lainnya"}
+        </Button>
+      }
       emptyState={props.emptyState}
       phone={props.phone}
     />

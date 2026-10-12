@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_SETTINGS } from "@/lib/rules";
 import type { WorkspaceStaff } from "@/lib/workspace";
-import { MATCHES, parseCheck, parseProgram, toRows } from "./rows";
+import { MATCHES, parseCheck, parseProgram, reasonsFor, staffColumnKeys, toRows } from "./rows";
 
 function staff(code: string, fields: Partial<WorkspaceStaff>): WorkspaceStaff {
   return {
@@ -72,6 +72,9 @@ describe("toRows", () => {
     expect(rows.filter(MATCHES.beda).map((r) => r.code)).toEqual(["IULS-02"]);
     expect(rows.filter(MATCHES.failed).map((r) => r.code)).toEqual(["IULS-02", "RUST-003"]);
     expect(rows.filter(MATCHES.absen).map((r) => r.code)).toEqual(["IULS-02"]);
+    expect(rows.filter(MATCHES.perlu).map((r) => r.code)).toEqual(["IULS-02", "RUST-003"]);
+    expect(reasonsFor(absent)).toEqual(["beda", "failed", "absen"]);
+    expect(reasonsFor(passed)).toEqual([]);
   });
 });
 
@@ -80,5 +83,25 @@ test("query params", () => {
   expect(parseProgram(["IULS"])).toBe("IULS");
   expect(parseProgram("JOUMPA")).toBeNull();
   expect(parseCheck("absen")).toBe("absen");
+  expect(parseCheck("perlu")).toBe("perlu");
   expect(parseCheck("nipp-ganda")).toBeNull();
+});
+
+test("Data SDM columns: extras follow the core ones, so collapsing never shifts a core column (paste stays put)", () => {
+  for (const isKps of [false, true]) {
+    const core = staffColumnKeys({ isKps, more: false });
+    const all = staffColumnKeys({ isKps, more: true });
+    expect(all.slice(0, core.length)).toEqual(core);
+    expect(core).not.toContain("role_play");
+  }
+  expect(staffColumnKeys({ isKps: false, more: false })).toEqual([
+    "code",
+    "name",
+    "program",
+    "touch_point",
+    "final_result",
+    "status",
+    "assignment_status",
+  ]);
+  expect(staffColumnKeys({ isKps: true, more: false })).toContain("station");
 });

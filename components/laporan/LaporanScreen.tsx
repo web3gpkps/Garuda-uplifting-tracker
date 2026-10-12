@@ -11,7 +11,7 @@ export function LaporanLoading() {
   return <PageLoading title="Laporan Mingguan" label="Memuat laporan mingguan" />;
 }
 
-/** Workbook sheet "Laporan Mingguan": pick a week, check, add findings, print A4 landscape. */
+/** Laporan Mingguan: pick a week (and a station for KPS), add findings, print A4 landscape. */
 export function LaporanScreen({ access, ws, searchParams }: ScreenProps) {
   const today = todayInJakarta();
   const settings = ruleSettings(ws.settings);

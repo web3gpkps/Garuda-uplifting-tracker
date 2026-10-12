@@ -1,6 +1,6 @@
 /*
- * Pure view helpers for the Remedial screen (PDF slide 27 "Fase Remidiasi"): who is on the
- * list, the derived columns, the filters and the summary counts. No React, no server code,
+ * Pure view helpers for the Remedial screen: who is on the list, the derived columns, the
+ * filters, the order and the counts. No React, no server code,
  * so they are unit tested in rows.test.ts. Formulas stay in lib/rules.
  */
 import {
@@ -14,7 +14,6 @@ import {
   type RemedialRow,
 } from "@/lib/rules";
 import { formatDecimal } from "@/lib/format";
-import type { StatusTone } from "@/components/ui/StatusChip";
 
 export const REMEDIAL_STATUSES = ["Belum dijadwalkan", "Menunggu hasil", "Lulus", "Belum Lulus"] as const satisfies
   ReadonlyArray<RemedialStatus>;
@@ -164,13 +163,25 @@ export type RemedialCounts = {
   absentRolePlay: number;
   /** Results already reported (Dilaporkan = Ya). */
   reported: number;
+  /** Status "Belum dijadwalkan". */
+  unscheduled: number;
 };
 
 export function remedialCounts(rows: readonly RemedialListRow[]): RemedialCounts {
-  const c: RemedialCounts = { failed: 0, scheduled: 0, passed: 0, notPassed: 0, waiting: 0, absentRolePlay: 0, reported: 0 };
+  const c: RemedialCounts = {
+    failed: 0,
+    scheduled: 0,
+    passed: 0,
+    notPassed: 0,
+    waiting: 0,
+    absentRolePlay: 0,
+    reported: 0,
+    unscheduled: 0,
+  };
   for (const r of rows) {
     if (r.failed) c.failed += 1;
     if (r.status !== "Belum dijadwalkan") c.scheduled += 1;
+    else c.unscheduled += 1;
     if (r.status === "Lulus") c.passed += 1;
     if (r.status === "Belum Lulus") c.notPassed += 1;
     if (r.status === "Menunggu hasil") c.waiting += 1;
@@ -188,12 +199,25 @@ export function shortCause(cause: FailureCause | null): string | null {
   return "Performa role play";
 }
 
-/** Tone of a remedial status (explicit, so it never depends on the shared label table). */
-export function remedialTone(status: string | null | undefined): StatusTone {
-  if (status === "Lulus") return "good";
-  if (status === "Belum Lulus") return "critical";
-  if (status === "Menunggu hasil") return "progress";
-  return "neutral";
+const STATUS_ORDER: Record<RemedialStatus, number> = {
+  "Belum dijadwalkan": 0,
+  "Belum Lulus": 1,
+  "Menunggu hasil": 2,
+  Lulus: 3,
+};
+
+/** "Belum dijadwalkan" first, then Belum Lulus, Menunggu hasil, Lulus; staff order inside each. */
+export function byStatus<T extends Pick<RemedialListRow, "status">>(rows: readonly T[]): T[] {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => STATUS_ORDER[a.row.status] - STATUS_ORDER[b.row.status] || a.index - b.index)
+    .map((x) => x.row);
+}
+
+/** The row's one action: schedule it, enter the result, or change a stored result. */
+export function rowAction(row: Pick<RemedialListRow, "remedial" | "finalResult">): "Jadwalkan" | "Isi hasil" | "Ubah" {
+  if (!row.remedial?.action) return "Jadwalkan";
+  return row.finalResult === null ? "Isi hasil" : "Ubah";
 }
 
 /** Score with up to one decimal: "82", "82,5". */

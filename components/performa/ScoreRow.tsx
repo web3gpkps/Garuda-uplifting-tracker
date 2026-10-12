@@ -2,9 +2,9 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { GAP_TOPICS, TOUCH_POINTS, coachingAvg, coachingStatus, deltaVsBaseline, type Settings } from "@/lib/rules";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
-import { Input, NumberInput, Select } from "@/components/ui/Field";
+import { Field, Input, NumberInput, Select } from "@/components/ui/Field";
 import { SaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { StatusChip } from "@/components/ui/StatusChip";
 import type { WeeklyScoreResult } from "@/components/performa/actions";
@@ -25,9 +25,9 @@ export type EntryStaff = {
   code: string;
   name: string;
   assignmentStatus: string;
-  /** Master SDM Final Result, for Δ vs Final Result. */
+  /** Data SDM Final Result, for the difference line. */
   finalResult: number | null;
-  /** Master SDM touch point, the default for a new row. */
+  /** Data SDM touch point, the default for a new row. */
   defaultTouchPoint: string | null;
   /** This week's saved row, or null. */
   saved: SavedScore | null;
@@ -38,6 +38,9 @@ export type EntryStaff = {
 export type SaveScoreAction = (accessKey: string, input: WeeklyScoreInput) => Promise<WeeklyScoreResult>;
 
 type Draft = { touchPoint: string; scores: string[]; gapTopic: string; observer: string; notes: string };
+
+/** Fields inside "Lainnya": a server error on one of them opens it. */
+const MORE_FIELDS = new Set(["touch_point", "gap_topic", "observer", "coaching_notes"]);
 
 function draftFrom(saved: SavedScore | null): Draft {
   return {
@@ -76,6 +79,11 @@ function isEmpty(d: Draft): boolean {
   return n.touchPoint === "" && n.gapTopic === "" && n.observer === "" && n.notes === "" && n.scores.every((s) => s === "");
 }
 
+/** True when the saved row has an average (the person counts as "dinilai"). */
+export function isScored(saved: SavedScore | null): boolean {
+  return saved !== null && coachingAvg(saved.scores) !== null;
+}
+
 type ScoreRowProps = {
   accessKey: string;
   week: number;
@@ -84,15 +92,17 @@ type ScoreRowProps = {
   /** Observer name filled into an empty Observer field when scoring starts. */
   defaultObserver: string;
   saveAction: SaveScoreAction;
+  /** After a successful save: move to the next card without a score. */
+  onSaved: (code: string) => void;
 };
 
 /**
- * One staff member's Log Performa card for one week (phones): touch point, the four
- * aspects 0 to 100, live Rata-rata / Status / Δ vs Final Result (lib/rules), topik gap,
- * observer, catatan, and a save button. Clearing every field of a saved row deletes it
- * after a confirmation. Typed input survives a failed save.
+ * One person's card on phones: the four aspects 0 to 100, live Rata-rata and Status,
+ * "Simpan & berikutnya". Touch Point, Topik Gap, Observer, Catatan sit behind "Lainnya".
+ * Clearing every field of a saved card deletes it after a confirmation. Typed input
+ * survives a failed save.
  */
-export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, saveAction }: ScoreRowProps) {
+export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, saveAction, onSaved }: ScoreRowProps) {
   const id = useId();
   const messageId = `${id}-message`;
 
@@ -101,6 +111,7 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
   const [saveState, setSaveState] = useState<SaveState>({ status: "idle" });
   const [serverField, setServerField] = useState<{ field: string; message: string } | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // New server data after refresh(): adopt it unless the person is still editing this card.
   if (prevSaved !== staff.saved) {
@@ -120,7 +131,7 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
   const delta = deltaVsBaseline(avg, staff.finalResult);
 
   let message: string | null = null;
-  if (invalidLabels.length > 0) message = `Skor ${invalidLabels.join(", ")} harus angka 0 sampai 100.`;
+  if (invalidLabels.length > 0) message = `${invalidLabels.join(", ")}: isi angka 0 sampai 100.`;
   else if (serverField) message = serverField.message;
 
   function edit(next: Draft) {
@@ -159,13 +170,17 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
       });
       if (!result.ok) {
         setSaveState({ status: "error", message: result.error.message });
-        if (result.error.field) setServerField({ field: result.error.field, message: result.error.message });
+        if (result.error.field) {
+          setServerField({ field: result.error.field, message: result.error.message });
+          if (MORE_FIELDS.has(result.error.field)) setMoreOpen(true);
+        }
         return;
       }
       setDraft((current) => (current === toSave ? n : current));
       setSaveState({ status: result.deleted ? "deleted" : "saved", at: result.savedAt });
+      if (!result.deleted) onSaved(staff.code);
     } catch {
-      setSaveState({ status: "error", message: "koneksi ke server terputus. Nilai yang Anda ketik masih ada; simpan lagi." });
+      setSaveState({ status: "error", message: "koneksi terputus. Isian masih ada; simpan lagi." });
     }
   }
 
@@ -183,106 +198,115 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
   const fieldInvalid = (field: string) => serverField?.field === field || undefined;
 
   return (
-    <li className="border-b border-line px-4 py-4 focus-within:bg-brand-tint sm:px-6">
+    <li
+      data-entry-card=""
+      data-code={staff.code}
+      data-scored={isScored(staff.saved) ? "true" : "false"}
+      className="scroll-mt-20 border-b border-line px-4 py-4 last:border-b-0"
+    >
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-3" aria-labelledby={`${id}-name`}>
-        <div>
-          <p id={`${id}-name`} className="text-base font-semibold text-ink">
-            {staff.name}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p id={`${id}-name`} className="text-base font-semibold text-ink">
+              {staff.name}
+            </p>
+            <p className="flex flex-wrap items-center gap-x-2 text-xs text-ink-muted">
+              <span className="tabular-nums">{staff.code}</span>
+              {notActive ? <StatusChip label={staff.assignmentStatus} /> : null}
+            </p>
+          </div>
+          <p className="flex shrink-0 flex-col items-end text-right" aria-live="polite">
+            <span className="text-base font-semibold text-ink tabular-nums">
+              {avg !== null ? formatScore(avg) : "–"}
+              <span className="sr-only"> rata-rata</span>
+            </span>
+            <StatusChip label={status} emptyLabel="Belum dinilai" />
           </p>
-          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
-            <span className="tabular-nums">{staff.code}</span>
-            {notActive ? <StatusChip label={staff.assignmentStatus} /> : null}
-          </p>
-          {staff.changedLabel ? <p className="text-xs text-ink-muted">{staff.changedLabel}</p> : null}
         </div>
-
-        <label className="flex flex-col gap-1 text-xs font-semibold text-ink">
-          Touch Point
-          <Select
-            value={draft.touchPoint}
-            onChange={(e) => edit({ ...draft, touchPoint: e.target.value })}
-            aria-invalid={fieldInvalid("touch_point")}
-          >
-            <option value="">Belum diisi</option>
-            {TOUCH_POINTS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </Select>
-        </label>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {ASPECT_FIELDS.map((aspect, i) => {
             const bad = parsed[i] === "invalid" || serverField?.field === aspect.field;
             return (
-              <label key={aspect.field} className="flex flex-col justify-end gap-1 text-xs font-semibold text-ink">
-                {aspect.label}
+              <Field key={aspect.field} label={aspect.label} className="justify-end">
                 <NumberInput
                   decimal
+                  data-score-input={i === 0 ? "" : undefined}
                   value={draft.scores[i]}
                   onChange={(event) => editScore(i, event.target.value)}
                   aria-invalid={bad || undefined}
                   aria-describedby={bad && message ? messageId : undefined}
                 />
-              </label>
+              </Field>
             );
           })}
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1" aria-live="polite">
-          {avg !== null ? (
-            <p className="text-sm tabular-nums">
-              <span className="text-ink-muted">Rata-rata </span>
-              <span className="font-semibold text-ink">{formatScore(avg)}</span>
-              {delta !== null ? (
-                <span className="ml-2 text-xs text-ink-muted">Δ Final Result {formatSignedScore(delta)}</span>
-              ) : null}
-            </p>
-          ) : null}
-          <StatusChip label={status} emptyLabel="Belum dinilai" />
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-xs font-semibold text-ink">
-            Topik Gap
-            <Select
-              value={draft.gapTopic}
-              onChange={(e) => edit({ ...draft, gapTopic: e.target.value })}
-              aria-invalid={fieldInvalid("gap_topic")}
-            >
-              <option value="">Belum diisi</option>
-              {draft.gapTopic && !(GAP_TOPICS as readonly string[]).includes(draft.gapTopic) ? (
-                <option value={draft.gapTopic}>{draft.gapTopic}</option>
-              ) : null}
-              {GAP_TOPICS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-ink">
-            Observer
-            <Input
-              value={draft.observer}
-              onChange={(e) => edit({ ...draft, observer: e.target.value })}
-              maxLength={200}
-              autoComplete="off"
-              aria-invalid={fieldInvalid("observer")}
-            />
-          </label>
-        </div>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-ink">
-          Catatan
-          <Input
-            value={draft.notes}
-            onChange={(e) => edit({ ...draft, notes: e.target.value })}
-            maxLength={4000}
-            autoComplete="off"
-            aria-invalid={fieldInvalid("coaching_notes")}
-          />
-        </label>
+        <details open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+          <summary className={buttonClasses({ variant: "ghost", size: "sm" }) + " -ml-3 w-fit cursor-pointer list-none [&::-webkit-details-marker]:hidden"}>
+            {moreOpen ? "Tutup lainnya" : "Lainnya"}
+          </summary>
+          <div className="mt-3 flex flex-col gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Touch Point">
+                <Select
+                  value={draft.touchPoint}
+                  onChange={(e) => edit({ ...draft, touchPoint: e.target.value })}
+                  aria-invalid={fieldInvalid("touch_point")}
+                >
+                  <option value="">Belum diisi</option>
+                  {TOUCH_POINTS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Topik Gap">
+                <Select
+                  value={draft.gapTopic}
+                  onChange={(e) => edit({ ...draft, gapTopic: e.target.value })}
+                  aria-invalid={fieldInvalid("gap_topic")}
+                >
+                  <option value="">Belum diisi</option>
+                  {draft.gapTopic && !(GAP_TOPICS as readonly string[]).includes(draft.gapTopic) ? (
+                    <option value={draft.gapTopic}>{draft.gapTopic}</option>
+                  ) : null}
+                  {GAP_TOPICS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Observer">
+                <Input
+                  value={draft.observer}
+                  onChange={(e) => edit({ ...draft, observer: e.target.value })}
+                  maxLength={200}
+                  autoComplete="off"
+                  aria-invalid={fieldInvalid("observer")}
+                />
+              </Field>
+              <Field label="Catatan">
+                <Input
+                  value={draft.notes}
+                  onChange={(e) => edit({ ...draft, notes: e.target.value })}
+                  maxLength={4000}
+                  autoComplete="off"
+                  aria-invalid={fieldInvalid("coaching_notes")}
+                />
+              </Field>
+            </div>
+            {delta !== null || staff.changedLabel ? (
+              <p className="text-xs text-ink-muted tabular-nums">
+                {delta !== null ? `Δ Final Result ${formatSignedScore(delta)}` : null}
+                {delta !== null && staff.changedLabel ? " · " : null}
+                {staff.changedLabel}
+              </p>
+            ) : null}
+          </div>
+        </details>
 
         {message ? (
           <p id={messageId} className="text-sm font-semibold text-critical">
@@ -298,7 +322,7 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
             loading={saving}
             loadingText="Menyimpan…"
           >
-            {willDelete ? "Hapus nilai" : "Simpan nilai"}
+            {willDelete ? "Hapus nilai" : "Simpan & berikutnya"}
           </Button>
           {dirty && !saving && saveState.status !== "error" ? (
             <span className="text-xs font-semibold text-warning">Belum disimpan</span>
@@ -311,7 +335,7 @@ export function ScoreRow({ accessKey, week, settings, staff, defaultObserver, sa
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         title={`Hapus nilai Minggu ke-${week} untuk ${staff.name}?`}
-        description="Touch point, skor keempat aspek, topik gap, observer dan catatan minggu ini dikosongkan. Nilai minggu lain tidak berubah."
+        description="Nilai minggu lain tidak berubah."
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirmOpen(false)}>

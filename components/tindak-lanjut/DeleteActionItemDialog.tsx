@@ -60,8 +60,8 @@ export function DeleteActionItemDialog({ accessKey, item, onClose, onDeleted }: 
       {item ? (
         <div className="flex flex-col gap-2">
           <p>
-            Butir ini beserta Status ({item.status}, {item.progress}%), Realisasi / Bukti, dan Catatan Garuda / KPS-nya hilang dari
-            aplikasi, dan dari Google Sheet pada sinkronisasi berikutnya. Penghapusan tidak bisa dibatalkan.
+            Status ({item.status}, {item.progress}%), realisasi, dan catatan butir ini ikut terhapus dan tidak bisa
+            dikembalikan.
           </p>
           {error ? (
             <p role="alert" className="font-semibold text-critical">

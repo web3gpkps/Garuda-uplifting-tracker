@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { DataTable, DataTableEmpty, Td, Th, Tr } from "@/components/ui/DataTable";
-import { Dialog } from "@/components/ui/Dialog";
+import { Dialog, DialogActions } from "@/components/ui/Dialog";
 import { Field, Input, Select } from "@/components/ui/Field";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { CopyFeedback, CopyLinkField, copyText } from "./CopyLinkField";
@@ -13,6 +14,7 @@ import { createShareLink, revokeShareLink, rotateShareLink } from "./link-action
 import { KPS_SCOPE, scopeDescription, scopeName, type LinkRow, type NewLink } from "./link-types";
 
 type LinksManagerProps = {
+  title: string;
   links: LinkRow[];
   /** "KPS" then every station code from public.stations, in sort order (linkScopes()). */
   scopes: string[];
@@ -20,64 +22,34 @@ type LinksManagerProps = {
 
 type Confirm = { mode: "revoke" | "rotate"; link: LinkRow } | null;
 
-/** "…/s/3f9a12…c21b": enough to tell links apart without putting the secret on screen. */
-function maskedUrl(url: string): string {
-  const i = url.indexOf("/s/");
-  if (i < 0) return "tautan";
-  const token = url.slice(i + 3);
-  return `/s/${token.slice(0, 6)}…${token.slice(-4)}`;
+function scopeOption(scope: string): string {
+  return scope === KPS_SCOPE ? "KPS (semua stasiun)" : `Stasiun ${scope}`;
+}
+
+function linkName(l: LinkRow): string {
+  return `${l.scope}${l.label ? `, ${l.label}` : ""}`;
 }
 
 /**
- * Tautan stasiun: who holds a working link per scope, create / copy / rotate / revoke.
- * A new link's full URL is shown once, right after it is made, with "Salin tautan".
+ * Tautan Akses: one table of working links (Lingkup, Label, Terakhir dipakai, row menu),
+ * "Buat tautan" in a dialog, the new URL shown once in its own dialog, revoked links
+ * behind a toggle.
  */
-export function LinksManager({ links, scopes }: LinksManagerProps) {
+export function LinksManager({ title, links, scopes }: LinksManagerProps) {
   const active = links.filter((l) => !l.revokedAt);
   const revoked = links.filter((l) => l.revokedAt);
-  const isKnownScope = (value: string) => scopes.includes(value);
-  const realCount = (s: string) => active.filter((l) => l.scope === s && !l.isQa).length;
-  const qaCount = (s: string) => active.filter((l) => l.scope === s && l.isQa).length;
   const stationScopes = scopes.filter((s) => s !== KPS_SCOPE);
-  const withoutLink = stationScopes.filter((s) => realCount(s) === 0);
+  const withoutLink = stationScopes.filter((s) => !active.some((l) => l.scope === s && !l.isQa)).length;
 
-  const [scope, setScope] = useState<string>("");
-  const [label, setLabel] = useState("");
-  const [formErrors, setFormErrors] = useState<{ scope?: string; label?: string }>({});
-  const [formMessage, setFormMessage] = useState<string | null>(null);
-  const [fresh, setFresh] = useState<(NewLink & { note: string }) | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createRound, setCreateRound] = useState(0);
+  const [fresh, setFresh] = useState<NewLink | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState<{ id: string; state: "copied" | "manual" } | null>(null);
-  const [creating, startCreate] = useTransition();
+  const [showRevoked, setShowRevoked] = useState(false);
   const [confirming, startConfirm] = useTransition();
-
-  function submitCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setFormMessage(null);
-    const errors: { scope?: string; label?: string } = {};
-    if (!isKnownScope(scope)) errors.scope = "Pilih lingkup tautan.";
-    if (label.trim() === "") errors.label = "Isi label, misalnya nama atau jabatan pemegang tautan.";
-    setFormErrors(errors);
-    if (errors.scope || errors.label) return;
-    startCreate(async () => {
-      try {
-        const result = await createShareLink(scope, label);
-        if (result.ok && result.link) {
-          setFresh({ ...result.link, note: result.message });
-          setNotice(null);
-          setScope("");
-          setLabel("");
-        } else if (!result.ok) {
-          setFormErrors(result.fieldErrors ?? {});
-          setFormMessage(result.message);
-        }
-      } catch {
-        setFormMessage("Server tidak menjawab. Periksa koneksi, lalu coba lagi.");
-      }
-    });
-  }
 
   function runConfirm() {
     if (!confirm) return;
@@ -91,217 +63,105 @@ export function LinksManager({ links, scopes }: LinksManagerProps) {
           return;
         }
         setConfirm(null);
-        if (result.link) {
-          setFresh({ ...result.link, note: result.message });
-          setNotice(null);
-        } else {
-          setNotice(result.message);
-        }
+        setNotice(result.message);
+        if (result.link) setFresh(result.link);
       } catch {
-        setConfirmError("Server tidak menjawab. Periksa koneksi, lalu coba lagi.");
+        setConfirmError("Server tidak menjawab. Coba lagi.");
       }
     });
   }
 
-  const scopeHelp = isKnownScope(scope)
-    ? scopeDescription(scope)
-    : `KPS (semua stasiun) atau salah satu dari ${stationScopes.length} stasiun.`;
+  async function copy(l: LinkRow) {
+    if (!l.url) return;
+    const state = await copyText(l.url);
+    setCopied({ id: l.id, state: state === "copied" ? "copied" : "manual" });
+  }
+
+  const meta =
+    stationScopes.length === 0
+      ? `${active.length} tautan aktif · belum ada stasiun`
+      : `${active.length} tautan aktif · ${withoutLink} stasiun belum punya tautan`;
 
   return (
     <div className="flex flex-col gap-6">
-      <section aria-labelledby="cakupan-tautan" className="flex flex-col gap-2">
-        <h2 id="cakupan-tautan" className="section-label">
-          Tautan aktif per lingkup
-        </h2>
-        <p className="text-sm text-ink">
-          {stationScopes.length === 0
-            ? "Daftar stasiun kosong. Tambahkan stasiun di tabel stations sebelum membuat tautan stasiun."
-            : withoutLink.length === 0
-              ? `Semua ${stationScopes.length} stasiun sudah punya tautan aktif.`
-              : `${withoutLink.length} dari ${stationScopes.length} stasiun belum punya tautan aktif.`}
-        </p>
-        <ul className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8">
-          {scopes.map((s) => {
-            const real = realCount(s);
-            const qa = qaCount(s);
-            return (
-              <li
-                key={s}
-                className={
-                  s === KPS_SCOPE
-                    ? "col-span-3 rounded-control border border-line bg-surface px-2.5 py-1.5 sm:col-span-2"
-                    : "rounded-control border border-line bg-surface px-2.5 py-1.5"
-                }
-              >
-                <p className="text-sm font-semibold text-ink">
-                  {s === KPS_SCOPE ? "KPS (semua stasiun)" : s}
-                </p>
-                <p className={real === 0 ? "text-xs font-semibold text-warning" : "text-xs text-ink"}>
-                  {real === 0 ? "Belum ada" : `${real} aktif`}
-                  {qa > 0 ? <span className="font-normal text-ink-muted">, + {qa} uji QA</span> : null}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+      <PageHeader
+        title={title}
+        meta={meta}
+        actions={
+          <Button
+            onClick={() => {
+              setCreateRound((n) => n + 1);
+              setCreateOpen(true);
+            }}
+          >
+            Buat tautan
+          </Button>
+        }
+      />
 
-      {fresh ? (
-        <section
-          aria-labelledby="tautan-baru"
-          className="flex flex-col gap-3 rounded-panel border border-brand bg-brand-tint p-4 sm:p-6"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 id="tautan-baru" className="text-lg font-semibold text-ink">
-                Tautan baru: {scopeName(fresh.scope)}
-                {fresh.label ? `, ${fresh.label}` : ""}
-              </h2>
-              <p className="mt-1 text-sm text-ink">{fresh.note}</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => setFresh(null)}>
-              Tutup
-            </Button>
-          </div>
-          <CopyLinkField url={fresh.url} label={`Tautan baru ${fresh.scope}`} />
-          <p className="text-sm text-ink">
-            Tautan ini berlaku seperti kata sandi: siapa pun yang memegangnya bisa membuka dan mengubah data{" "}
-            {fresh.scope === KPS_SCOPE ? "semua stasiun" : `stasiun ${fresh.scope}`} tanpa login. Kirim lewat pesan
-            pribadi, jangan di grup.
-          </p>
-        </section>
-      ) : null}
+      <p role="status" aria-live="polite" className="text-sm font-semibold text-good empty:hidden">
+        {notice}
+      </p>
 
-      {notice ? (
-        <p role="status" className="text-sm font-semibold text-good">
-          {notice}
-        </p>
-      ) : null}
-
-      <Panel
-        title="Buat tautan"
-      >
-        <form onSubmit={submitCreate} noValidate className="flex flex-col gap-4">
-          <div className="grid gap-4 md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-            <Field label="Lingkup" help={scopeHelp} error={formErrors.scope} required>
-              <Select value={scope} onChange={(e) => setScope(e.target.value)}>
-                <option value="">Pilih lingkup</option>
-                {scopes.map((s) => (
-                  <option key={s} value={s}>
-                    {s === KPS_SCOPE ? "KPS (semua stasiun)" : `Stasiun ${s}`}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Label" help="Maksimal 80 karakter." error={formErrors.label} required>
-              <Input value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} autoComplete="off" />
-            </Field>
-          </div>
-          <div className="flex flex-col sm:flex-row">
-            <Button type="submit" loading={creating} loadingText="Membuat tautan…">
-              Buat tautan
-            </Button>
-          </div>
-          {formMessage ? (
-            <p role="alert" className="text-sm font-semibold text-critical">
-              {formMessage}
-            </p>
-          ) : null}
-        </form>
-      </Panel>
-
-      <Panel
-        title="Tautan aktif"
-        padding="flush"
-      >
-        <DataTable caption="Tautan aktif" hideCaption minWidth="980px" stickyHeader={false}>
+      <Panel padding="flush">
+        <DataTable caption="Tautan aktif" minWidth="640px" stickyHeader={false}>
           <thead>
             <tr>
               <Th>Lingkup</Th>
               <Th>Label</Th>
-              <Th>Dibuat</Th>
               <Th>Terakhir dipakai</Th>
-              <Th>Status</Th>
-              <Th>Tindakan</Th>
+              <Th>
+                <span className="sr-only">Aksi</span>
+              </Th>
             </tr>
           </thead>
           <tbody>
             {active.length === 0 ? (
-              <DataTableEmpty colSpan={6} title="Belum ada tautan aktif">
-                Stasiun dan KPS belum bisa mengisi data. Buat tautan pertama lewat formulir di atas.
-              </DataTableEmpty>
+              <DataTableEmpty colSpan={4} title="Belum ada tautan aktif" />
             ) : (
               active.map((l) => (
                 <Tr key={l.id}>
-                  <Th scope="row" className="align-top">
-                    <span className="block font-semibold text-ink">{l.scope}</span>
-                    <span className="block text-xs font-normal whitespace-nowrap text-ink-muted">{l.url ? maskedUrl(l.url) : ""}</span>
+                  <Th scope="row">
+                    <span className="station-code">{l.scope}</span>
                   </Th>
-                  <Td className="min-w-56 align-top">
-                    <span className="block">{l.label ?? <span className="text-ink-muted">Tanpa label</span>}</span>
-                    {l.isQa ? (
-                      <span className="mt-1 block text-xs font-semibold text-warning">
-                        Tautan uji QA, bukan milik stasiun. Cabut sebelum serah terima.
-                      </span>
-                    ) : null}
-                  </Td>
-                  <Td className="align-top whitespace-nowrap">{formatWaktu(l.createdAt)}</Td>
-                  <Td className="align-top whitespace-nowrap">
-                    {formatWaktu(l.lastUsedAt) ?? <span className="text-ink-muted">Belum pernah dipakai</span>}
-                  </Td>
-                  <Td className="align-top">
-                    <StatusChip label="Aktif" tone="good" />
-                  </Td>
-                  <Td className="align-top">
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        aria-label={`Salin tautan ${l.scope}${l.label ? `, ${l.label}` : ""}`}
-                        onClick={async () => {
-                          if (!l.url) return;
-                          const state = await copyText(l.url);
-                          setCopied({ id: l.id, state: state === "copied" ? "copied" : "manual" });
-                        }}
-                      >
-                        Salin tautan
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        aria-label={`Ganti tautan ${l.scope}${l.label ? `, ${l.label}` : ""}`}
-                        onClick={() => {
-                          setConfirmError(null);
-                          setConfirm({ mode: "rotate", link: l });
-                        }}
-                      >
-                        Ganti tautan
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        aria-label={`Cabut tautan ${l.scope}${l.label ? `, ${l.label}` : ""}`}
-                        onClick={() => {
-                          setConfirmError(null);
-                          setConfirm({ mode: "revoke", link: l });
-                        }}
-                      >
-                        Cabut tautan
-                      </Button>
-                    </div>
+                  <Td className="min-w-48 whitespace-normal">
+                    {l.label ?? <span className="text-ink-muted">Tanpa label</span>}
+                    {l.isQa ? <StatusChip label="Uji" tone="warning" className="ml-2" /> : null}
                     {copied?.id === l.id ? (
                       copied.state === "copied" ? (
-                        <CopyFeedback state="copied" className="mt-1 block" />
+                        <CopyFeedback state="copied" className="block" />
                       ) : l.url ? (
                         <div className="mt-2 max-w-xl">
-                          <p className="mb-1 text-sm text-warning">
-                            Browser menolak menyalin otomatis. Salin dari kotak ini:
-                          </p>
                           <CopyLinkField url={l.url} label={`Tautan ${l.scope} lengkap`} />
                         </div>
                       ) : null
                     ) : null}
                   </Td>
+                  <Td className="tabular">
+                    {formatWaktu(l.lastUsedAt) ?? <span className="text-ink-muted">Belum pernah</span>}
+                  </Td>
+                  <Td className="w-0">
+                    <RowMenu
+                      name={linkName(l)}
+                      items={[
+                        { label: "Salin tautan", onSelect: () => void copy(l) },
+                        {
+                          label: "Ganti tautan",
+                          onSelect: () => {
+                            setConfirmError(null);
+                            setConfirm({ mode: "rotate", link: l });
+                          },
+                        },
+                        {
+                          label: "Cabut tautan",
+                          onSelect: () => {
+                            setConfirmError(null);
+                            setConfirm({ mode: "revoke", link: l });
+                          },
+                        },
+                      ]}
+                    />
+                  </Td>
                 </Tr>
               ))
             )}
@@ -309,43 +169,69 @@ export function LinksManager({ links, scopes }: LinksManagerProps) {
         </DataTable>
       </Panel>
 
-      <Panel
-        title="Tautan dicabut"
-        padding="flush"
+      {revoked.length > 0 ? (
+        <div className="flex flex-col gap-3">
+          <div>
+            <Button variant="ghost" aria-expanded={showRevoked} onClick={() => setShowRevoked((v) => !v)}>
+              {showRevoked ? "Sembunyikan tautan dicabut" : `Tampilkan tautan dicabut (${revoked.length})`}
+            </Button>
+          </div>
+          {showRevoked ? (
+            <Panel padding="flush">
+              <DataTable caption="Tautan dicabut" minWidth="560px" stickyHeader={false}>
+                <thead>
+                  <tr>
+                    <Th>Lingkup</Th>
+                    <Th>Label</Th>
+                    <Th>Dicabut</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revoked.map((l) => (
+                    <Tr key={l.id}>
+                      <Th scope="row">
+                        <span className="station-code text-ink-muted">{l.scope}</span>
+                      </Th>
+                      <Td className="whitespace-normal text-ink-muted">{l.label ?? "Tanpa label"}</Td>
+                      <Td className="tabular text-ink-muted">{formatWaktu(l.revokedAt)}</Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </DataTable>
+            </Panel>
+          ) : null}
+        </div>
+      ) : null}
+
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} size="md" title="Buat tautan">
+        {createOpen ? (
+          <CreateForm
+            key={createRound}
+            scopes={scopes}
+            onCancel={() => setCreateOpen(false)}
+            onCreated={(link) => {
+              setCreateOpen(false);
+              setNotice(`Tautan ${link.scope} dibuat.`);
+              setFresh(link);
+            }}
+          />
+        ) : null}
+      </Dialog>
+
+      <Dialog
+        open={fresh !== null}
+        onClose={() => setFresh(null)}
+        size="md"
+        title={fresh ? `Tautan baru ${scopeName(fresh.scope)}` : "Tautan baru"}
+        description="Siapa pun yang memegang tautan ini bisa mengubah data tanpa login. Kirim lewat pesan pribadi."
+        footer={
+          <Button variant="secondary" onClick={() => setFresh(null)}>
+            Selesai
+          </Button>
+        }
       >
-        <DataTable caption="Tautan dicabut" hideCaption minWidth="760px" stickyHeader={false}>
-          <thead>
-            <tr>
-              <Th>Lingkup</Th>
-              <Th>Label</Th>
-              <Th>Dibuat</Th>
-              <Th>Dicabut</Th>
-              <Th>Terakhir dipakai</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {revoked.length === 0 ? (
-              <DataTableEmpty colSpan={5} title="Belum ada tautan yang dicabut" />
-            ) : (
-              revoked.map((l) => (
-                <Tr key={l.id}>
-                  <Th scope="row" className="font-semibold text-ink">
-                    {l.scope}
-                  </Th>
-                  <Td className="min-w-56">{l.label ?? <span className="text-ink-muted">Tanpa label</span>}</Td>
-                  <Td className="whitespace-nowrap">{formatWaktu(l.createdAt)}</Td>
-                  <Td className="whitespace-nowrap">
-                    <StatusChip label={`Dicabut ${formatWaktu(l.revokedAt) ?? ""}`} tone="neutral" />
-                  </Td>
-                  <Td className="whitespace-nowrap">
-                    {formatWaktu(l.lastUsedAt) ?? <span className="text-ink-muted">Belum pernah dipakai</span>}
-                  </Td>
-                </Tr>
-              ))
-            )}
-          </tbody>
-        </DataTable>
-      </Panel>
+        {fresh ? <CopyLinkField url={fresh.url} label={`Tautan baru ${fresh.scope}`} /> : null}
+      </Dialog>
 
       <Dialog
         open={confirm !== null}
@@ -354,13 +240,9 @@ export function LinksManager({ links, scopes }: LinksManagerProps) {
         }}
         dismissible={!confirming}
         title={
-          confirm
-            ? confirm.mode === "revoke"
-              ? `Cabut tautan ${confirm.link.scope}?`
-              : `Ganti tautan ${confirm.link.scope}?`
-            : ""
+          confirm ? (confirm.mode === "revoke" ? `Cabut tautan ${confirm.link.scope}?` : `Ganti tautan ${confirm.link.scope}?`) : ""
         }
-        description={confirm?.link.label ? `Label: ${confirm.link.label}` : undefined}
+        description={confirm?.link.label ?? undefined}
         footer={
           confirm ? (
             <>
@@ -382,17 +264,11 @@ export function LinksManager({ links, scopes }: LinksManagerProps) {
       >
         {confirm ? (
           <div className="flex flex-col gap-2">
-            {confirm.mode === "revoke" ? (
-              <p>
-                Pemegang tautan ini langsung tidak bisa membuka ruang kerja {scopeName(confirm.link.scope)}. Data
-                yang sudah diisi tetap tersimpan. Tautan yang dicabut tidak bisa diaktifkan lagi.
-              </p>
-            ) : (
-              <p>
-                Tautan baru dibuat dengan lingkup dan label yang sama, lalu tautan lama langsung tidak berlaku.
-                Kirim tautan baru ke pemegangnya setelah ini.
-              </p>
-            )}
+            <p>
+              {confirm.mode === "revoke"
+                ? "Tautan ini langsung tidak berlaku. Data yang sudah diisi tetap tersimpan."
+                : "Tautan lama langsung tidak berlaku. Kirim tautan baru ke pemegangnya."}
+            </p>
             {confirmError ? (
               <p role="alert" className="font-semibold text-critical">
                 {confirmError}
@@ -401,6 +277,174 @@ export function LinksManager({ links, scopes }: LinksManagerProps) {
           </div>
         ) : null}
       </Dialog>
+    </div>
+  );
+}
+
+function CreateForm({
+  scopes,
+  onCancel,
+  onCreated,
+}: {
+  scopes: string[];
+  onCancel: () => void;
+  onCreated: (link: NewLink) => void;
+}) {
+  const [scope, setScope] = useState("");
+  const [label, setLabel] = useState("");
+  const [errors, setErrors] = useState<{ scope?: string; label?: string }>({});
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    const next: { scope?: string; label?: string } = {};
+    if (!scopes.includes(scope)) next.scope = "Pilih lingkup tautan.";
+    if (label.trim() === "") next.label = "Isi label, misalnya nama pemegang tautan.";
+    setErrors(next);
+    if (next.scope || next.label) return;
+    startTransition(async () => {
+      try {
+        const result = await createShareLink(scope, label);
+        if (result.ok && result.link) onCreated(result.link);
+        else if (!result.ok) {
+          setErrors(result.fieldErrors ?? {});
+          setMessage(result.message);
+        }
+      } catch {
+        setMessage("Server tidak menjawab. Coba lagi.");
+      }
+    });
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+      <Field label="Lingkup" help={scope ? scopeDescription(scope) : undefined} error={errors.scope} required>
+        <Select value={scope} onChange={(e) => setScope(e.target.value)}>
+          <option value="">Pilih lingkup</option>
+          {scopes.map((s) => (
+            <option key={s} value={s}>
+              {scopeOption(s)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Label" help="Nama atau jabatan pemegang, maksimal 80 karakter" error={errors.label} required>
+        <Input value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} autoComplete="off" />
+      </Field>
+      {message ? (
+        <p role="alert" className="text-sm font-semibold text-critical">
+          {message}
+        </p>
+      ) : null}
+      <DialogActions>
+        <Button variant="secondary" onClick={onCancel} disabled={pending}>
+          Batal
+        </Button>
+        <Button type="submit" loading={pending} loadingText="Membuat tautan…">
+          Buat tautan
+        </Button>
+      </DialogActions>
+    </form>
+  );
+}
+
+type MenuItem = { label: string; onSelect: () => void };
+
+/**
+ * "Aksi" button with a small menu of row actions. The menu is fixed-positioned so the
+ * table's scroll box never clips it; Escape, a click elsewhere or scrolling closes it.
+ */
+function RowMenu({ name, items }: { name: string; items: MenuItem[] }) {
+  const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
+  const open = position !== null;
+  const menuId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    rootRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const close = () => setPosition(null);
+    const onPointer = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) close();
+    };
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+        buttonRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  function toggle() {
+    if (open) {
+      setPosition(null);
+      return;
+    }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) setPosition({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+  }
+
+  function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const list = [...(rootRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+    const i = list.indexOf(document.activeElement as HTMLElement);
+    const next = event.key === "ArrowDown" ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
+    list[next]?.focus();
+  }
+
+  return (
+    <div ref={rootRef}>
+      <Button
+        ref={buttonRef}
+        size="sm"
+        variant="secondary"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={toggle}
+      >
+        Aksi<span className="sr-only"> tautan {name}</span>
+      </Button>
+      {position ? (
+        <div
+          id={menuId}
+          role="menu"
+          aria-label={`Aksi tautan ${name}`}
+          onKeyDown={moveFocus}
+          style={{ top: position.top, right: position.right }}
+          className="fixed z-30 flex min-w-44 flex-col rounded-control border border-line bg-surface py-1 shadow-float"
+        >
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              className="min-h-11 px-3 text-left text-sm text-ink hover:bg-bg focus-visible:bg-bg lg:min-h-9"
+              onClick={() => {
+                setPosition(null);
+                item.onSelect();
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

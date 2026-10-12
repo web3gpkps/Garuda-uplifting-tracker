@@ -32,7 +32,7 @@ type StaffDialogProps = {
 /**
  * Add or edit one staff member. Every link edits the profile (program, provider, name,
  * employee number, L/P, touch point, status penugasan, catatan); KPS and the owner also
- * pick the unit and edit the training result (Role Play, Post-Test, Remark, Feedback).
+ * pick the station and edit the training result (Role Play, Post-Test, Remark, Feedback).
  * Client component.
  */
 export function StaffDialog(props: StaffDialogProps) {
@@ -49,11 +49,7 @@ export function StaffDialog(props: StaffDialogProps) {
       dismissible={!saving}
       size="md"
       title={adding ? "Tambah SDM" : `Ubah data ${row.name}`}
-      description={
-        adding
-          ? "Untuk SDM pengganti atau SDM yang belum tercatat. Kode TMB dibuat otomatis saat disimpan."
-          : `${row.code}, Unit ${row.station}. ${row.changedLabel}.`
-      }
+      description={adding ? "Kode TMB dibuat otomatis." : `${row.code} · ${row.station} · ${row.changedLabel}`}
     >
       {open ? <StaffForm key={props.formKey} {...props} onSavingChange={setSaving} /> : null}
     </Dialog>
@@ -133,7 +129,7 @@ function StaffForm({
 
   function validate(): { errors: Errors; baselineInput: StaffBaselineInput | null } {
     const next: Errors = {};
-    if (isKps && !station) next.station = "Pilih unit SDM ini.";
+    if (isKps && !station) next.station = "Pilih stasiun.";
     if (name.trim() === "") next.name = "Nama wajib diisi.";
     if (employeeNo.trim().length > 50) next.employee_no = "Employee Number paling panjang 50 karakter.";
     let baselineInput: StaffBaselineInput | null = null;
@@ -190,7 +186,7 @@ function StaffForm({
         return;
       }
       const message = result.saved
-        ? `Data profil tersimpan, tetapi hasil training gagal disimpan: ${result.error.message}`
+        ? `Profil tersimpan, hasil training gagal: ${result.error.message}`
         : result.error.message;
       if (result.error.field) {
         setErrors({ [result.error.field]: result.error.message });
@@ -198,7 +194,7 @@ function StaffForm({
       }
       setFormError(message);
     } catch {
-      setFormError("Koneksi ke server terputus. Isian Anda masih ada; coba simpan lagi.");
+      setFormError("Koneksi terputus. Isian masih ada; coba simpan lagi.");
     }
     setBusy(false);
   }
@@ -213,9 +209,9 @@ function StaffForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         {isKps ? (
-          <Field label="Unit (stasiun)" required error={errors.station}>
+          <Field label="Stasiun" required error={errors.station}>
             <Select value={station} onChange={(e) => setStation(e.target.value)}>
-              <option value="">Pilih unit</option>
+              <option value="">Pilih stasiun</option>
               {stations.map((code) => (
                 <option key={code} value={code}>
                   {code}
@@ -225,7 +221,7 @@ function StaffForm({
           </Field>
         ) : (
           <p className="self-end text-sm text-ink">
-            <span className="font-semibold">Unit:</span> {row?.station ?? ownStation}
+            <span className="font-semibold">Stasiun</span> <span className="station-code">{row?.station ?? ownStation}</span>
           </p>
         )}
         <Field label="Program" error={errors.program}>
@@ -251,7 +247,7 @@ function StaffForm({
         <Field label="Provider" error={errors.provider}>
           <Input value={provider} onChange={(e) => setProvider(e.target.value)} maxLength={100} autoComplete="off" />
         </Field>
-        <Field label="L/P" help="Dipakai untuk kategori BMI." error={errors.gender}>
+        <Field label="L/P" help="Untuk kategori BMI" error={errors.gender}>
           <Select value={gender} onChange={(e) => setGender(e.target.value)}>
             <option value="">Belum diisi</option>
             <option value="L">L (laki-laki)</option>
@@ -270,7 +266,7 @@ function StaffForm({
         </Field>
       </div>
 
-      <Field label="Status Penugasan" error={errors.assignment_status}>
+      <Field label="Status penugasan" error={errors.assignment_status}>
         <Select value={status} onChange={(e) => setStatus(e.target.value)}>
           {ASSIGNMENT_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -286,16 +282,16 @@ function StaffForm({
 
       {isKps ? (
         <fieldset className="flex flex-col gap-4 rounded-panel border border-line p-4">
-          <legend className="px-1 text-sm font-semibold text-ink">Hasil training (hanya KPS)</legend>
+          <legend className="px-1 text-sm font-semibold text-ink">Hasil training</legend>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Role Play" error={errors.role_play} help="Angka 0 sampai 100.">
+            <Field label="Role Play" error={errors.role_play} help="0 sampai 100">
               <NumberInput
                 decimal
                 value={baseline.rolePlay}
                 onChange={(e) => setBaseline({ ...baseline, rolePlay: e.target.value })}
               />
             </Field>
-            <Field label="Post-Test" error={errors.post_test} help="Angka 0 sampai 100.">
+            <Field label="Post-Test" error={errors.post_test} help="0 sampai 100">
               <NumberInput
                 decimal
                 value={baseline.postTest}
@@ -303,7 +299,7 @@ function StaffForm({
               />
             </Field>
           </div>
-          <Field label="Remark di Laporan" error={errors.report_remark}>
+          <Field label="Remark di laporan" error={errors.report_remark}>
             <Select
               value={baseline.reportRemark}
               onChange={(e) => setBaseline({ ...baseline, reportRemark: e.target.value })}
@@ -336,7 +332,7 @@ function StaffForm({
               </dd>
             </div>
             <div>
-              <dt className="section-label">Cek Konsistensi</dt>
+              <dt className="section-label">Cek konsistensi</dt>
               <dd>
                 <StatusChip label={preview.consistency} emptyLabel="Belum bisa dicek" />
               </dd>
@@ -345,9 +341,7 @@ function StaffForm({
           {preview.failureCause ? <p className="text-sm text-warning">Penyebab utama: {preview.failureCause}.</p> : null}
         </fieldset>
       ) : !adding ? (
-        <p className="text-sm text-ink-muted">
-          Hasil training (Role Play, Post-Test, Remark di Laporan, Feedback) hanya bisa diubah lewat tautan KPS.
-        </p>
+        <p className="text-sm text-ink-muted">Hasil training diisi oleh KPS.</p>
       ) : null}
 
       <DialogActions>

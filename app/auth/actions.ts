@@ -38,14 +38,14 @@ export async function signIn(_prev: SignInState, formData: FormData): Promise<Si
   const fields: { email?: string; password?: string } = {};
   if (!email) fields.email = "Isi email akun Anda.";
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    fields.email = "Format email belum benar. Periksa tanda @ dan nama domainnya.";
+    fields.email = "Format email belum benar.";
   }
   if (!password) fields.password = "Isi kata sandi.";
   if (fields.email || fields.password) {
     return {
       status: "error",
       code: "missing-fields",
-      message: "Lengkapi kolom yang ditandai, lalu masuk lagi.",
+      message: "Lengkapi isian yang ditandai.",
       fields,
       email,
     };
@@ -55,8 +55,7 @@ export async function signIn(_prev: SignInState, formData: FormData): Promise<Si
     return {
       status: "error",
       code: "not-configured",
-      message:
-        "Aplikasi belum terhubung ke database, jadi belum bisa dipakai masuk. Hubungi pengelola aplikasi.",
+      message: "Tidak bisa masuk. Hubungi pengelola aplikasi.",
       email,
     };
   }
@@ -69,7 +68,7 @@ export async function signIn(_prev: SignInState, formData: FormData): Promise<Si
       return {
         status: "error",
         code: "invalid-credentials",
-        message: "Email atau kata sandi salah. Periksa lagi, lalu coba masuk.",
+        message: "Email atau kata sandi salah.",
         email,
       };
     }
@@ -77,7 +76,7 @@ export async function signIn(_prev: SignInState, formData: FormData): Promise<Si
       return {
         status: "error",
         code: "email-not-confirmed",
-        message: "Email ini belum dikonfirmasi. Minta pengelola aplikasi mengonfirmasi akun Anda.",
+        message: "Akun belum dikonfirmasi. Hubungi pengelola aplikasi.",
         email,
       };
     }
@@ -85,7 +84,7 @@ export async function signIn(_prev: SignInState, formData: FormData): Promise<Si
       return {
         status: "error",
         code: "rate-limited",
-        message: "Terlalu banyak percobaan masuk. Tunggu beberapa menit, lalu coba lagi.",
+        message: "Terlalu banyak percobaan. Tunggu beberapa menit, lalu coba lagi.",
         email,
       };
     }
@@ -93,14 +92,14 @@ export async function signIn(_prev: SignInState, formData: FormData): Promise<Si
       return {
         status: "error",
         code: "auth-unreachable",
-        message: "Server login sedang tidak bisa dihubungi. Coba lagi beberapa saat lagi.",
+        message: "Tidak bisa masuk. Coba lagi.",
         email,
       };
     }
     return {
       status: "error",
       code: "unknown",
-      message: `Belum bisa masuk (${error.message}). Coba lagi, atau hubungi pengelola aplikasi.`,
+      message: "Tidak bisa masuk. Coba lagi.",
       email,
     };
   }

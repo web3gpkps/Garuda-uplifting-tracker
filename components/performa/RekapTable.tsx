@@ -15,21 +15,20 @@ type RekapTableProps = {
   caption: string;
   rows: RekapRow[];
   weeks: number;
-  /** Current programme week (column gets the --brand-tint the rail uses), or null outside the programme. */
+  /** Current programme week (its header is marked in the accent), or null outside the programme. */
   currentWeek: number | null;
   /** Show the Unit column (KPS / owner looking at several stations). */
   showStation: boolean;
 };
 
 /**
- * Rekap Performa: staff × Mg 1..N weekly coaching averages, the Final Result baseline,
+ * Rekap penilaian: staff × Mg 1..N weekly coaching averages, the Final Result baseline,
  * latest score, gain, weeks assessed, current status and trend (lib/rules staffRekap).
  * Weeks without a score stay blank (never 0). Server component.
  */
 export function RekapTable({ caption, rows, weeks, currentWeek, showStation }: RekapTableProps) {
   const weekNumbers = Array.from({ length: weeks }, (_, i) => i + 1);
   const columns = 3 + (showStation ? 1 : 0) + weeks + 5;
-  const currentCell = "bg-brand-tint";
 
   return (
     <DataTable caption={caption} hideCaption density="dense" minWidth={`${52 + weeks * 4}rem`}>
@@ -38,9 +37,9 @@ export function RekapTable({ caption, rows, weeks, currentWeek, showStation }: R
           <Th>SDM</Th>
           <Th>Program</Th>
           {showStation ? <Th>Unit</Th> : null}
-          <Th numeric>Final Result (baseline)</Th>
+          <Th numeric>Final Result</Th>
           {weekNumbers.map((w) => (
-            <Th key={w} numeric className={w === currentWeek ? currentCell : undefined}>
+            <Th key={w} numeric className={w === currentWeek ? "text-accent" : undefined}>
               <span aria-hidden="true">Mg {w}</span>
               <span className="sr-only">
                 Minggu ke-{w}
@@ -58,7 +57,7 @@ export function RekapTable({ caption, rows, weeks, currentWeek, showStation }: R
       <tbody>
         {rows.length === 0 ? (
           <DataTableEmpty colSpan={columns} title="Belum ada SDM di lingkup ini">
-            Tambahkan SDM di halaman Master SDM; rekap terisi setelah nilai mingguan mereka disimpan.
+            SDM ditambahkan di Data SDM.
           </DataTableEmpty>
         ) : (
           rows.map(({ code, name, program, station, rekap }) => (
@@ -71,7 +70,7 @@ export function RekapTable({ caption, rows, weeks, currentWeek, showStation }: R
               {showStation ? <Td>{station}</Td> : null}
               <Td numeric>{formatDecimal(rekap.baseline, 1)}</Td>
               {rekap.weekly.map((value, i) => (
-                <Td key={i} numeric className={i + 1 === currentWeek ? currentCell : undefined}>
+                <Td key={i} numeric>
                   {formatScore(value)}
                 </Td>
               ))}

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_SETTINGS, bmiSummary, type BmiCheckRow, type Settings } from "@/lib/rules";
-import { checkRhythm, defaultPeriod, hasNoteLabel, parseHasNote, scheduleTone, slotCounts } from "./summary";
+import { checkRhythm, defaultPeriod, dueFirst, hasNoteLabel, parseHasNote, slotCounts, slotStatusLine } from "./summary";
 
 const s: Settings = { ...DEFAULT_SETTINGS, bmiFirstCheck: "2026-10-12", bmiIntervalDays: 14, bmiPeriods: 6 };
 
@@ -27,7 +27,7 @@ describe("slotCounts", () => {
     weightKg,
     checkDate,
   });
-  // Dummy A: normal in slot 1. Dummy B: obese in slot 1. Dummy C: not checked yet.
+  // A: normal in slot 1. B: obese in slot 1. C: not checked yet.
   const a = bmiSummary([check(1, 170, 60, "2026-10-12")], true, s, today);
   const b = bmiSummary([check(1, 160, 90, "2026-10-12")], false, s, today);
   const c = bmiSummary([], null, s, today);
@@ -73,9 +73,43 @@ describe("Ada catatan BMI", () => {
     expect(checkRhythm(false, s)).toBe("tiap bulan");
   });
 
-  test("schedule tones", () => {
-    expect(scheduleTone("Terlambat cek")).toBe("critical");
-    expect(scheduleTone("Cek ≤ 7 hari")).toBe("warning");
-    expect(scheduleTone("Terjadwal")).toBe("good");
+});
+
+describe("slot status line and order", () => {
+  const today = "2026-10-20";
+  const row = (period: number, checkDate: string): BmiCheckRow => ({
+    staffCode: "X",
+    period,
+    heightCm: 170,
+    weightKg: 60,
+    checkDate,
+  });
+  const checked = bmiSummary([row(1, "2026-10-12")], true, s, today);
+  const never = bmiSummary([], null, s, today);
+  const monthly = bmiSummary([row(1, "2026-10-12")], false, s, today);
+
+  test("checked in the slot", () => {
+    expect(slotStatusLine(checked.periods[0], checked, today)).toEqual({ text: "Sudah dicek · 12 Okt", tone: "good" });
+  });
+
+  test("late, due soon and scheduled", () => {
+    expect(slotStatusLine(never.periods[1], never, today)).toEqual({ text: "Belum dicek · terlambat 8 hari", tone: "critical" });
+    expect(slotStatusLine(checked.periods[1], checked, today)).toEqual({
+      text: "Belum dicek · jatuh tempo 6 hari lagi",
+      tone: "warning",
+    });
+    expect(slotStatusLine(monthly.periods[1], monthly, today)).toEqual({
+      text: "Belum dicek · cek berikutnya 12 Nov",
+      tone: "neutral",
+    });
+  });
+
+  test("late first, then due soon, then the rest", () => {
+    const items = [
+      { id: "monthly", s: monthly },
+      { id: "checked", s: checked },
+      { id: "never", s: never },
+    ];
+    expect(dueFirst(items, (i) => i.s, 2).map((i) => i.id)).toEqual(["never", "checked", "monthly"]);
   });
 });

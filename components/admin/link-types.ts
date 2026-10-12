@@ -1,5 +1,5 @@
 /**
- * Share-link scopes and the shapes the Tautan stasiun screen passes around.
+ * Share-link scopes and the shapes the Tautan Akses screen passes around.
  * A scope is "KPS" (head office, every station) or a station code from public.stations;
  * the list of stations comes from the database, never from this file.
  */
@@ -18,12 +18,10 @@ export function linkScopes(stationCodes: readonly string[]): string[] {
   return [KPS_SCOPE, ...stationCodes.filter((code) => code !== KPS_SCOPE)];
 }
 
-/** What a scope opens, in the words the share page itself uses (lib/workspace scopeLabel). */
+/** What a scope opens, as short field help. */
 export function scopeDescription(scope: string): string {
-  if (scope === KPS_SCOPE) {
-    return "KPS: semua stasiun, termasuk baseline training SDM dan pembaruan Tindak Lanjut nasional.";
-  }
-  return `Stasiun ${scope}: SDM, nilai mingguan, cek BMI, remedial, penggantian, dan temuan ${scope} saja. Tindak Lanjut hanya dibaca.`;
+  if (scope === KPS_SCOPE) return "Akses semua stasiun dan pembaruan Tindak Lanjut";
+  return `Data stasiun ${scope} saja`;
 }
 
 export function scopeName(scope: string): string {

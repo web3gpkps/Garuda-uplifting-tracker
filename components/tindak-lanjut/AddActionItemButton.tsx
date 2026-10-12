@@ -37,6 +37,7 @@ export function AddActionItemButton({ accessKey, existing, defaultGroup }: AddAc
   return (
     <>
       <Button
+        variant="secondary"
         onClick={() => {
           setRound((n) => n + 1);
           setOpen(true);
@@ -108,10 +109,6 @@ function AddForm({
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-      <p className="text-sm text-ink-muted">
-        Butir baru mulai dengan status Belum Mulai dan progres 0%. Semua tautan langsung melihatnya; hanya KPS dan pemilik
-        yang bisa memperbaruinya.
-      </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Kelompok" error={errors.groupName} required>
           <Select value={group} onChange={(e) => setGroup(e.target.value)}>
@@ -123,7 +120,7 @@ function AddForm({
             ))}
           </Select>
         </Field>
-        <Field label="ID" help="Diusulkan otomatis: nomor GA-TL berikutnya." error={errors.code} required>
+        <Field label="ID" help="Diusulkan otomatis" error={errors.code} required>
           <Input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" />
         </Field>
         <Field label="Aspek" error={errors.aspect} required>
@@ -136,7 +133,7 @@ function AddForm({
             ))}
           </Select>
         </Field>
-        <Field label="Sumber" help="Asal butir ini, misalnya hasil evaluasi." error={errors.source}>
+        <Field label="Sumber" help="Dokumen asal, misalnya laporan evaluasi" error={errors.source}>
           <Input value={values.source} onChange={(e) => set("source")(e.target.value)} />
         </Field>
       </div>

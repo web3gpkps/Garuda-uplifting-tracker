@@ -61,7 +61,7 @@ type FieldKey =
 type Errors = Partial<Record<FieldKey, string>>;
 
 const DATE_INVALID = "Tanggal belum lengkap atau tidak valid.";
-const CONNECTION_LOST = "koneksi ke server terputus. Isian Anda masih ada; simpan lagi.";
+const CONNECTION_LOST = "koneksi terputus. Isian masih ada, simpan lagi.";
 
 const SERVER_FIELD: Record<string, FieldKey> = {
   program: "program",
@@ -238,7 +238,7 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
               </Select>
             </Field>
           )}
-          <Field label="Program" error={errors.program} help="Terisi dari SDM yang dipilih. Bisa diubah.">
+          <Field label="Program" error={errors.program} help="Terisi dari SDM yang dipilih">
             <Select value={program} onChange={(e) => setProgram(e.target.value)}>
               <option value="">Belum diisi</option>
               {PROGRAMS.map((p) => (
@@ -251,7 +251,7 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
           <Field
             label="Pilih dari daftar SDM"
             error={errors.staff}
-            help={station === "" ? "Pilih stasiun dulu." : undefined}
+            help={station === "" ? "Pilih stasiun dulu" : undefined}
           >
             <Select
               value={staffChoice}
@@ -270,7 +270,7 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
             label="Nama SDM diganti"
             required
             error={errors.replacedName}
-            help="Terisi saat memilih dari daftar. Bisa diubah."
+            help="Terisi saat memilih dari daftar"
             className="sm:col-span-2"
           >
             <Input value={replacedName} maxLength={200} onChange={(e) => setReplacedName(e.target.value)} />
@@ -286,32 +286,28 @@ function ReplacementForm({ ctx, row, formId, pending, onSubmit, errors, setError
 
       <fieldset className="flex flex-col gap-4">
         <legend className="mb-1 text-base font-semibold text-ink">Pengganti</legend>
-        <p className="text-sm text-ink-muted">
-          Tgl efektif paling lambat {formatTanggal(s.replacementDeadline)}. Pengganti boleh bertugas setelah lulus
-          training: post-test dan nilai akhir masing-masing minimal {formatDecimal(s.passGrade, 0, 2)}.
-        </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="SDM pengganti" error={errors.replacementName} className="sm:col-span-2">
             <Input value={replacementName} maxLength={200} onChange={(e) => setReplacementName(e.target.value)} />
           </Field>
-          <Field label="Tgl efektif" error={errors.effectiveOn}>
+          <Field label="Tgl efektif" help={`Paling lambat ${formatTanggal(s.replacementDeadline)}`} error={errors.effectiveOn}>
             <Input type="date" value={effectiveOn} onChange={(e) => setEffectiveOn(e.target.value)} />
           </Field>
           <Field label="Tgl training" error={errors.trainingOn}>
             <Input type="date" value={trainingOn} onChange={(e) => setTrainingOn(e.target.value)} />
           </Field>
-          <Field label="Post-test" error={errors.postTest} help={`0 sampai 100, syarat minimal ${formatDecimal(s.passGrade, 0, 2)}.`}>
+          <Field label="Post-test" error={errors.postTest} help={`0 sampai 100, minimal ${formatDecimal(s.passGrade, 0, 2)}`}>
             <NumberInput decimal value={postTest} onChange={(e) => setPostTest(e.target.value)} />
           </Field>
           <Field
             label="Nilai akhir"
             error={errors.finalResult}
-            help={`0 sampai 100, syarat minimal ${formatDecimal(s.passGrade, 0, 2)}.`}
+            help={`0 sampai 100, minimal ${formatDecimal(s.passGrade, 0, 2)}`}
           >
             <NumberInput decimal value={finalResult} onChange={(e) => setFinalResult(e.target.value)} />
           </Field>
         </div>
-        <dl className="flex flex-wrap gap-x-6 gap-y-2 rounded-control bg-paper px-3 py-2">
+        <dl className="flex flex-wrap gap-x-6 gap-y-2 rounded-control bg-surface-sunken px-3 py-2">
           <div className="flex flex-col gap-1">
             <dt className="section-label">Status kelulusan</dt>
             <dd>
@@ -397,12 +393,8 @@ function ReplacementFormDialog({ ctx, row, open, onClose, onSaved }: FormDialogP
       onClose={close}
       dismissible={false}
       size="md"
-      title={row ? `Ubah penggantian ${row.replacedName}` : "Tambah penggantian SDM"}
-      description={
-        ctx.fixedStation
-          ? `Untuk Stasiun ${ctx.fixedStation}. Kolom selain nama SDM diganti boleh diisi belakangan.`
-          : "Kolom selain stasiun dan nama SDM diganti boleh diisi belakangan."
-      }
+      title={row ? `Penggantian ${row.replacedName}` : "Tambah penggantian"}
+      description={ctx.fixedStation ? `Stasiun ${ctx.fixedStation}` : undefined}
       footer={
         <>
           <SaveStatus state={status} className="sm:mr-auto" />
@@ -512,7 +504,7 @@ export function ReplacementDeleteButton({ ctx, id, name }: { ctx: ReplacementCon
         onClose={() => !pending && setOpen(false)}
         dismissible={!pending}
         title={`Hapus penggantian ${name}?`}
-        description="Baris ini dihapus dari daftar penggantian. Data SDM-nya sendiri tidak berubah."
+        description="Data SDM-nya sendiri tidak berubah."
         footer={
           <>
             <Button variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
@@ -534,7 +526,7 @@ export function ReplacementDeleteButton({ ctx, id, name }: { ctx: ReplacementCon
   );
 }
 
-/** Card footer: "Ubah" (edit dialog) and "Hapus" (confirmation), with save feedback. */
+/** Card footer: "Detail" (every field, editable) and "Hapus" (confirmation), with save feedback. */
 export function ReplacementRowActions({ ctx, row }: { ctx: ReplacementContext; row: ReplacementFormRow }) {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -565,10 +557,10 @@ export function ReplacementRowActions({ ctx, row }: { ctx: ReplacementContext; r
       <SaveStatus state={status} />
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
-          Ubah
+          Detail<span className="sr-only"> penggantian {row.replacedName}</span>
         </Button>
         <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)}>
-          Hapus
+          Hapus<span className="sr-only"> penggantian {row.replacedName}</span>
         </Button>
       </div>
       <ReplacementFormDialog
@@ -586,7 +578,7 @@ export function ReplacementRowActions({ ctx, row }: { ctx: ReplacementContext; r
         onClose={() => !pending && setDeleteOpen(false)}
         dismissible={!pending}
         title={`Hapus penggantian ${row.replacedName}?`}
-        description="Baris ini dihapus dari daftar penggantian. Data SDM-nya sendiri tidak berubah."
+        description="Data SDM-nya sendiri tidak berubah."
         footer={
           <>
             <Button variant="secondary" onClick={() => setDeleteOpen(false)} disabled={pending}>
