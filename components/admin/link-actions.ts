@@ -1,6 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
+import { requestOrigin } from "@/lib/request-origin";
 import { refresh } from "next/cache";
 import { requireAdmin } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -9,15 +9,6 @@ import { linkAccess } from "@/lib/workspace/access";
 
 const MAX_LABEL = 80;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** `<proto>://<host>` of this request, so the copied link opens the same deployment. */
-async function requestOrigin(): Promise<string> {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host);
-  const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim() ?? (local ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 function cleanLabel(raw: string): string | null {
   const text = raw.trim().replace(/\s+/g, " ");

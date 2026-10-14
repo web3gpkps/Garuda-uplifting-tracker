@@ -2,18 +2,20 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabasePublicEnv } from "./env";
 
-/** The owner area. Everything else this helper sees (/login, /auth, unknown paths) is public. */
-function isOwnerArea(pathname: string): boolean {
-  return pathname === "/admin" || pathname.startsWith("/admin/");
+/** The owner area (/admin) and the branch-account area (/cabang). Everything else this helper sees (/login, /register, /auth, unknown paths) is public. */
+function isSignedInArea(pathname: string): boolean {
+  return pathname === "/admin" || pathname.startsWith("/admin/") || pathname === "/cabang" || pathname.startsWith("/cabang/");
 }
 
 /**
- * Runs in proxy.ts for the owner area and auth routes (never for /s/* station links):
+ * Runs in proxy.ts for the owner area, the branch area and auth routes (never for /s/* station links):
  * 1. refreshes the Supabase session and writes rotated cookies to the response;
- * 2. optimistic redirect: no valid session on /admin/* → /login?next=<path>;
- *    a signed-in visitor on /login → /admin.
- * This is a convenience, not the security boundary: app/(admin)/layout.tsx and every
- * Server Action re-check with requireAdmin(), and RLS enforces it in the database.
+ * 2. optimistic redirect: no valid session on /admin/* or /cabang/* → /login?next=<path>.
+ * Which area a signed-in visitor belongs to (owner, approved branch account, pending) needs the
+ * database, so /login itself decides that and forwards.
+ * This is a convenience, not the security boundary: the /admin and /cabang layouts and every Server
+ * Action re-check with requireAdmin() / requireActiveAccount(), and RLS and the share_* functions
+ * enforce it in the database.
  */
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request });
@@ -54,18 +56,11 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
   // If Supabase Auth cannot be reached, do not bounce people to /login: the page
   // shows the connection problem instead.
-  if (!signedIn && !authUnreachable && isOwnerArea(pathname)) {
+  if (!signedIn && !authUnreachable && isSignedInArea(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
-    if (pathname !== "/admin") url.searchParams.set("next", `${pathname}${search}`);
-    return redirectWithCookies(url);
-  }
-
-  if (signedIn && pathname === "/login") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/admin";
-    url.search = "";
+    if (pathname !== "/admin" && pathname !== "/cabang") url.searchParams.set("next", `${pathname}${search}`);
     return redirectWithCookies(url);
   }
 

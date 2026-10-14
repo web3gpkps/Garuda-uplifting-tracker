@@ -5,9 +5,10 @@ import { updateSession } from "@/lib/supabase/proxy";
  * - /s/* (station workspaces, no account): never touches Supabase Auth; adds
  *   Referrer-Policy: no-referrer and X-Robots-Tag: noindex so the token in the URL is
  *   not leaked to other sites or indexed.
- * - /: no public page; redirect to /admin (the owner area).
- * - /admin, /login, /auth: refresh the owner's Supabase session cookie and redirect a
- *   signed-out visitor away from /admin (see lib/supabase/proxy.ts).
+ * - /: no public page; redirect to /login, which forwards a signed-in owner to /admin and an
+ *   approved branch account to /cabang.
+ * - /admin, /cabang, /login, /register, /auth and the password pages: refresh the Supabase session
+ *   cookie and redirect a signed-out visitor away from /admin and /cabang (see lib/supabase/proxy.ts).
  */
 export async function proxy(request: NextRequest) {
   return harden(await route(request));
@@ -24,7 +25,7 @@ async function route(request: NextRequest): Promise<NextResponse> {
   }
 
   if (pathname === "/") {
-    return NextResponse.redirect(new URL("/admin", request.url));
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   return updateSession(request);

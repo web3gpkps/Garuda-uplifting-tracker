@@ -5,10 +5,13 @@ import { connection } from "next/server";
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "@/lib/database.types";
 import { camelize, type Camelize } from "@/lib/rules";
+import { getAccountSession, requireActiveAccount } from "@/lib/supabase/account";
 import { getAdminSession, requireAdmin } from "@/lib/supabase/auth";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { createClient as createSessionClient } from "@/lib/supabase/server";
 import {
+  ACCOUNT_ACCESS,
+  ACCOUNT_ACCESS_KEY,
   OWNER_ACCESS,
   OWNER_ACCESS_KEY,
   linkAccess,
@@ -21,6 +24,8 @@ import { toLinkError, type LinkError } from "./errors";
 export { createLinkClient } from "./client";
 export { toLinkError, type LinkError, type LinkErrorCode } from "./errors";
 export {
+  ACCOUNT_ACCESS,
+  ACCOUNT_ACCESS_KEY,
   OWNER_ACCESS,
   OWNER_ACCESS_KEY,
   OWNER_PAGES,
@@ -75,7 +80,7 @@ type ShareOpenPayload = {
 /** The settings columns the programme calendar needs. */
 export type WorkspaceSchedule = Pick<
   Tables<"settings">,
-  "week1_start" | "weeks" | "bmi_first_check" | "bmi_interval_days" | "bmi_interval_months" | "bmi_periods"
+  "week1_start" | "weeks" | "bmi_first_check" | "bmi_interval_days" | "bmi_periods"
 >;
 
 export type WorkspaceStaff = Camelize<Tables<"staff">>;
@@ -141,11 +146,11 @@ export function scopeLabel(scope: WorkspaceScope, owner = false): string {
 
 function toSchedule(settings: Tables<"settings"> | null): WorkspaceSchedule | null {
   if (!settings) return null;
-  const { week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_interval_months, bmi_periods } = settings;
-  if (!week1_start || !weeks || !bmi_first_check || !bmi_interval_days || !bmi_interval_months || !bmi_periods) {
+  const { week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_periods } = settings;
+  if (!week1_start || !weeks || !bmi_first_check || !bmi_interval_days || !bmi_periods) {
     return null;
   }
-  return { week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_interval_months, bmi_periods };
+  return { week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_periods };
 }
 
 function toWorkspace(raw: ShareOpenPayload, owner: boolean): Workspace {
@@ -228,20 +233,43 @@ const getOwnerWorkspace = cache(async (): Promise<WorkspaceResult> => {
   return toResult(await openShare(await createSessionClient(), ""), true);
 });
 
-/** The workspace for any access: a link (share_open(token)) or the owner (share_open('')). */
+/**
+ * A signed-in, approved branch account's workspace: share_open('') with the session, which the
+ * database scopes to the account's branch (a station, or KPS) with the account's name as label.
+ * Returns "unavailable" for anyone else; pages gate with requireWorkspaceFor(ACCOUNT_ACCESS).
+ */
+const getAccountWorkspace = cache(async (): Promise<WorkspaceResult> => {
+  const session = await getAccountSession();
+  if (session.status !== "active") {
+    return { ok: false, reason: "unavailable", detail: "Masuk dengan akun cabang yang sudah disetujui." };
+  }
+  return toResult(await openShare(await createSessionClient(), ""), false);
+});
+
+/** The workspace for any access: a link, a branch account or the owner. */
 export function getWorkspaceFor(access: WorkspaceAccess): Promise<WorkspaceResult> {
-  return access.kind === "owner" ? getOwnerWorkspace() : getWorkspace(access.token);
+  if (access.kind === "owner") return getOwnerWorkspace();
+  if (access.kind === "account") return getAccountWorkspace();
+  return getWorkspace(access.token);
 }
 
 /**
- * For pages: the workspace or a thrown error. The owner path calls requireAdmin() first,
- * so a signed-out visitor is redirected to /login and a non-admin gets an error.
+ * For pages: the workspace or a thrown error. The owner path calls requireAdmin() first and the
+ * account path requireActiveAccount(), so a signed-out visitor is redirected to /login and an
+ * account that is not approved is sent back there with the reason.
  */
 export async function requireWorkspaceFor(access: WorkspaceAccess): Promise<Workspace> {
   if (access.kind === "owner") await requireAdmin();
+  if (access.kind === "account") await requireActiveAccount();
   const result = await getWorkspaceFor(access);
   if (result.ok) return result.workspace;
-  if (result.reason === "invalid-link") throw new Error("Tautan tidak berlaku atau sudah dicabut.");
+  if (result.reason === "invalid-link") {
+    throw new Error(
+      access.kind === "account"
+        ? "Cabang akun ini tidak dikenali. Hubungi pengelola aplikasi."
+        : "Tautan tidak berlaku atau sudah dicabut.",
+    );
+  }
   throw new Error(`Ruang kerja tidak bisa dibuka: ${result.detail}`);
 }
 
@@ -319,6 +347,23 @@ export async function resolveAccess(accessKey: unknown): Promise<ResolvedAccess>
     }
     const client = await createSessionClient();
     return { ok: true, access: OWNER_ACCESS, rpc: bindRpc(client, ""), ownerClient: client };
+  }
+  if (accessKey === ACCOUNT_ACCESS_KEY) {
+    try {
+      await requireActiveAccount();
+    } catch (error) {
+      unstable_rethrow(error);
+      return {
+        ok: false,
+        error: {
+          code: "unauthorized",
+          message: "Sesi akun tidak bisa diperiksa atau akun ini belum aktif. Masuk lagi, lalu ulangi.",
+        },
+      };
+    }
+    // The cookie client carries the account's JWT; the share_* functions map the blank token to its
+    // branch. No owner client: direct table writes stay owner-only (RLS).
+    return { ok: true, access: ACCOUNT_ACCESS, rpc: bindRpc(await createSessionClient(), ""), ownerClient: null };
   }
   if (typeof accessKey !== "string" || !isWellFormedToken(accessKey)) {
     return { ok: false, error: toLinkError({ message: "invalid_link" }) };

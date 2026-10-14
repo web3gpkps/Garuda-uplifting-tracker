@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  ACCOUNT_ACCESS,
   OWNER_ACCESS,
   linkAccess,
   requireWorkspaceFor,
@@ -60,4 +61,17 @@ export async function OwnerScreenRoute({
   const query = await searchParams;
   const ws = await requireWorkspaceFor(OWNER_ACCESS);
   return <Screen access={OWNER_ACCESS} ws={ws} searchParams={query} />;
+}
+
+/** Branch-account route: requireActiveAccount(), then share_open('') with the session (scope = the account's branch). */
+export async function AccountScreenRoute({
+  searchParams,
+  screen: Screen,
+}: {
+  searchParams: Promise<SearchParams>;
+  screen: WorkbookScreen;
+}) {
+  const query = await searchParams;
+  const ws = await requireWorkspaceFor(ACCOUNT_ACCESS);
+  return <Screen access={ACCOUNT_ACCESS} ws={ws} searchParams={query} />;
 }

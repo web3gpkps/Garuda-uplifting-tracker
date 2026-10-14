@@ -1,22 +1,28 @@
+import { ButtonLink } from "@/components/ui/Button";
 import { ReloadButton } from "@/components/ui/ReloadButton";
 import { AuthFrame } from "./AuthFrame";
 import { SignOutButton } from "./SignOutButton";
 
-/** Signed in, but the account is not in public.admins. */
+/** Signed in, but the account is not in public.admins. A branch account is pointed at its own area. */
 export function NotAdminScreen({ email }: { email: string }) {
   return (
     <AuthFrame
-      title="Akun ini belum terdaftar sebagai admin"
+      title="Halaman ini khusus pengelola"
       intro={
         <p>
-          Anda masuk sebagai <span className="font-semibold text-ink">{email || "akun tanpa email"}</span>. Minta
-          pengelola aplikasi menambahkan akun ini, lalu masuk lagi.
+          Anda masuk sebagai <span className="font-semibold text-ink">{email || "akun tanpa email"}</span>. Akun cabang
+          membuka halaman cabangnya sendiri; akses pengelola hanya diberikan oleh pengelola aplikasi.
         </p>
       }
     >
-      <SignOutButton variant="primary" fullWidth>
-        Keluar
-      </SignOutButton>
+      <div className="flex flex-col gap-3">
+        <ButtonLink href="/cabang" variant="primary" fullWidth>
+          Buka halaman cabang
+        </ButtonLink>
+        <SignOutButton variant="secondary" fullWidth>
+          Keluar
+        </SignOutButton>
+      </div>
     </AuthFrame>
   );
 }
@@ -56,6 +62,20 @@ export function InvalidLinkScreen() {
       title="Tautan tidak berlaku"
       intro={<p>Tautan ini tidak dikenali atau sudah dicabut. Minta tautan baru kepada pengelola aplikasi.</p>}
     />
+  );
+}
+
+/** An approved account whose branch is no longer in the station list. */
+export function BranchUnknownScreen() {
+  return (
+    <AuthFrame
+      title="Cabang akun ini tidak dikenali"
+      intro={<p>Cabang yang terdaftar pada akun Anda sudah tidak ada di daftar. Hubungi pengelola aplikasi untuk mengganti cabang.</p>}
+    >
+      <SignOutButton variant="primary" fullWidth>
+        Keluar
+      </SignOutButton>
+    </AuthFrame>
   );
 }
 

@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  ACCOUNT_ACCESS,
+  ACCOUNT_ACCESS_KEY,
   OWNER_ACCESS,
   OWNER_ACCESS_KEY,
   SHEETS,
@@ -20,6 +22,16 @@ describe('workspace access', () => {
     expect(OWNER_ACCESS).toEqual({ kind: 'owner', key: OWNER_ACCESS_KEY, basePath: '/admin' });
     // The owner key can never be mistaken for a token.
     expect(/^[0-9a-f]{48}$/i.test(OWNER_ACCESS_KEY)).toBe(false);
+  });
+
+  test('a branch account has its own base path and an action key that is never a token', () => {
+    expect(ACCOUNT_ACCESS).toEqual({ kind: 'account', key: ACCOUNT_ACCESS_KEY, basePath: '/cabang' });
+    expect(/^[0-9a-f]{48}$/i.test(ACCOUNT_ACCESS_KEY)).toBe(false);
+    expect(ACCOUNT_ACCESS_KEY).not.toBe(OWNER_ACCESS_KEY);
+    const links = hrefs(ACCOUNT_ACCESS);
+    expect(links.dashboard).toBe('/cabang');
+    expect(links.bmi).toBe('/cabang/bmi');
+    expect(links.to('bmi', { periode: 2 })).toBe('/cabang/bmi?periode=2');
   });
 
   test('every sheet path hangs off the base path', () => {
@@ -61,7 +73,12 @@ describe('workspace access', () => {
       ['Penilaian Mingguan', 'Cek BMI', 'Remedial', 'Tindak Lanjut'],
     ]);
     const owner = navSections(OWNER_ACCESS, true);
-    expect(shape(owner).at(-1)).toEqual(['Pengelolaan', ['Tautan Akses', 'Parameter', 'Sinkronisasi']]);
+    expect(shape(owner).at(-1)).toEqual(['Pengelolaan', ['Tautan Akses', 'Akun Cabang', 'Parameter', 'Sinkronisasi']]);
+    expect(owner.flatMap((s) => s.items).find((i) => i.key === 'akun')?.href).toBe('/admin/akun');
+    // A branch account gets the same pages as a station link, never the owner's Pengelolaan group.
+    expect(shape(navSections(ACCOUNT_ACCESS, false))).toEqual(shape(navSections(linkAccess(TOKEN), false)).map(([label, items]) => [label, items]));
+    expect(navSections(ACCOUNT_ACCESS, true).some((s) => s.label === 'Pengelolaan')).toBe(false);
+    expect(navSections(ACCOUNT_ACCESS, true)[0].items[0].href).toBe('/cabang');
     expect(owner.flatMap((s) => s.items).find((i) => i.key === 'tautan')?.href).toBe('/admin/tautan');
     const home = owner[0].items[0];
     expect(home).toMatchObject({ href: '/admin', exact: true, label: 'Beranda' });

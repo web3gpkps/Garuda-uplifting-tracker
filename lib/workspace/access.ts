@@ -2,9 +2,11 @@
  * Who is looking at a workspace, and where its pages live. Pure and client-safe: no
  * server-only import, so client components may build links with hrefs(access).
  *
- * Two kinds of access, one set of screens (docs/UX.md §1):
- *   link  : /s/<token>, no account; scope comes from the link (a station code, or KPS).
- *   owner : /admin, the signed-in owner; scope "KPS" with label "Pemilik" in SQL.
+ * Three kinds of access, one set of screens (docs/UX.md §1):
+ *   link    : /s/<token>, no account; scope comes from the link (a station code, or KPS).
+ *   account : /cabang, a signed-in branch account approved by the owner; scope comes from the
+ *             account's branch (a station code; PUSAT = KPS) in SQL, label = the account's name.
+ *   owner   : /admin, the signed-in owner; scope "KPS" with label "Pemilik" in SQL.
  *
  * Server code turns an access into data with getWorkspaceFor(access) and, in Server
  * Actions, turns the serialisable accessKey back into a client with resolveAccess(key)
@@ -21,6 +23,11 @@ export type WorkspaceAccess =
       basePath: string;
     }
   | {
+      kind: "account";
+      key: typeof ACCOUNT_ACCESS_KEY;
+      basePath: "/cabang";
+    }
+  | {
       kind: "owner";
       key: typeof OWNER_ACCESS_KEY;
       basePath: "/admin";
@@ -29,9 +36,18 @@ export type WorkspaceAccess =
 /** The accessKey a Server Action receives for the owner. Never a valid token (not 48 hex). */
 export const OWNER_ACCESS_KEY = "owner";
 
+/** The accessKey a Server Action receives for a signed-in branch account. Never a valid token. */
+export const ACCOUNT_ACCESS_KEY = "account";
+
 export function linkAccess(token: string): WorkspaceAccess {
   return { kind: "link", token, key: token, basePath: `/s/${token}` };
 }
+
+export const ACCOUNT_ACCESS: WorkspaceAccess = {
+  kind: "account",
+  key: ACCOUNT_ACCESS_KEY,
+  basePath: "/cabang",
+};
 
 export const OWNER_ACCESS: WorkspaceAccess = {
   kind: "owner",
@@ -82,6 +98,7 @@ export type SheetKey = (typeof SHEETS)[number]["key"];
 /** Owner-only pages (no station link ever reaches them), group "Pengelolaan". */
 export const OWNER_PAGES = [
   { key: "tautan", label: "Tautan Akses", path: "/admin/tautan", group: "pengelolaan" },
+  { key: "akun", label: "Akun Cabang", path: "/admin/akun", group: "pengelolaan" },
   { key: "pengaturan", label: "Parameter", path: "/admin/pengaturan", group: "pengelolaan" },
   { key: "sinkronisasi", label: "Sinkronisasi", path: "/admin/sinkronisasi", group: "pengelolaan" },
 ] as const;

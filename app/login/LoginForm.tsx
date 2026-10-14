@@ -3,13 +3,15 @@
 import { useActionState, useSyncExternalStore } from "react";
 import { catchError, type ErrorInfo } from "next/error";
 import { signIn, type SignInState } from "@/app/auth/actions";
+import { AuthMessage } from "@/components/auth/AuthMessage";
+import { PasswordField } from "@/components/auth/PasswordField";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 
 const initialState: SignInState = { status: "idle" };
 
 const subscribeToNothing = () => () => {};
-const readNextParam = () => new URLSearchParams(window.location.search).get("next") ?? "/admin";
+const readNextParam = () => new URLSearchParams(window.location.search).get("next") ?? "";
 
 /**
  * An action that never reaches the server rejects, and useActionState rethrows it during
@@ -43,14 +45,14 @@ export function LoginForm() {
 }
 
 /**
- * Email + password sign-in. The server action is passed straight to useActionState,
- * so the form also works before JavaScript has loaded (progressive enhancement).
+ * Email + password sign-in for the owner and for branch accounts. The server action is passed
+ * straight to useActionState, so the form also works before JavaScript has loaded.
  */
 function LoginFormFields() {
   const [state, formAction, pending] = useActionState(signIn, initialState);
-  // ?next= from the proxy redirect, read without useSearchParams (no Suspense on this
-  // prerendered page). The server action accepts only /admin paths.
-  const next = useSyncExternalStore(subscribeToNothing, readNextParam, () => "/admin");
+  // ?next= from the proxy redirect, read without useSearchParams (no Suspense needed). The server
+  // action keeps only a path inside the signed-in role's own area.
+  const next = useSyncExternalStore(subscribeToNothing, readNextParam, () => "");
 
   const error = state.status === "error" ? state : null;
   const fieldErrors = error?.fields;
@@ -59,14 +61,7 @@ function LoginFormFields() {
     <form action={formAction} noValidate className="flex flex-col">
       <input type="hidden" name="next" value={next} />
 
-      {/* Always mounted so screen readers announce the message when it appears. */}
-      <div role="alert" aria-live="assertive" className="not-empty:mb-5">
-        {error ? (
-          <p className="rounded-control bg-critical-tint px-3 py-2.5 text-sm font-semibold text-critical">
-            {error.message}
-          </p>
-        ) : null}
-      </div>
+      <AuthMessage tone="error">{error?.message}</AuthMessage>
 
       <div className="flex flex-col gap-5">
         <Field label="Email" error={fieldErrors?.email}>
@@ -80,9 +75,7 @@ function LoginFormFields() {
           />
         </Field>
 
-        <Field label="Kata sandi" error={fieldErrors?.password}>
-          <Input name="password" type="password" autoComplete="current-password" />
-        </Field>
+        <PasswordField name="password" label="Kata sandi" autoComplete="current-password" error={fieldErrors?.password} />
 
         <Button type="submit" fullWidth loading={pending} loadingText="Memeriksa akun…">
           Masuk
