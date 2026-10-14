@@ -40,7 +40,23 @@ Tests: `bun test` for pure TS logic; SQL tests in `tests/sql` for RLS/RPC securi
 - **KPS-only**: action items, staff training baseline (role play, post-test, remark, feedback),
   every station.
 - **Owner** signs in (Supabase Auth, `public.admins`). `/admin` is the full workbook with CRUD,
-  link management, settings and sync. Owner calls `share_*` with `p_token = ''` (scope KPS).
+  link management, settings, sync and the approval of branch accounts (`/admin/akun`). Owner calls
+  `share_*` with `p_token = ''` (scope KPS).
+- **Branch accounts** (`/cabang`): anyone can register at `/register` with a name, e-mail, password and a
+  branch (a station code, or KPS for head office). The account is created `pending` by a trigger on
+  `auth.users` (role and status in the sign-up metadata are ignored); it cannot open data until the owner
+  sets it `active` in `/admin/akun`. An active account calls `share_*` with `p_token = ''` and its own JWT:
+  `private.share_resolve_link` maps it to scope = its branch (station code, or KPS), label = its name, no
+  link id. Same pages and permissions as a station link of that scope (KPS accounts see every station and
+  may update action items; nobody except the owner deletes staff or creates action items). Writes are
+  attributed to the account (`updated_by`, `updated_by_user`). A pending, inactive or deleted account, or one
+  whose branch is no longer in `stations`, gets `invalid_link`. The owner is decided by `public.admins` first,
+  so an owner who also has a profile row is still the owner.
+  `public.profiles (id, email, full_name, branch_code, status pending|active|inactive, created_at,
+  decided_at, decided_by)`; RLS: own row readable, owner reads and updates (status, branch_code, full_name
+  only); no insert or delete from the API. `public.admin_delete_account(uuid)` (owner only) removes the login.
+  `public.registration_branches()` (anon) returns the station codes for the sign-up form.
+  Password recovery: `/forgot-password` then the e-mailed link through `/auth/callback` to `/reset-password`.
 - Enforcement in the database: RLS on every table (admins only), no table privileges for `anon`,
   link access only via `SECURITY DEFINER` `share_*` RPCs that check the token and scope.
 
@@ -51,17 +67,18 @@ Stored data is raw input only; everything derived is computed in `lib/rules.ts`.
 ```
 stations        code text PK (e.g. 'CGK'; ^[A-Z0-9]{2,5}$, never 'KPS'), sort smallint
 settings        id=1. week1_start date, weeks smallint,
-                bmi_first_check date, bmi_interval_days smallint (with note, 14),
-                bmi_interval_months smallint (without note, 1), bmi_periods smallint (slots, 6),
+                bmi_first_check date, bmi_interval_days smallint (every staff member, 14 = once per two weeks),
+                bmi_periods smallint (number of checks, 1..52; the sheet tab follows it, see docs/SYNC.md),
+                (bmi_interval_months stays in the table, unused),
                 bmi_underweight_below, bmi_normal_max, bmi_overweight_max numeric,
                 pass_grade numeric (85), weight_role_play numeric (0.4), weight_post_test numeric (0.6),
                 target_overweight_max numeric (0.20), target_overweight_months smallint (6),
                 target_knowledge numeric (0.90), target_interactive numeric (0.92),
                 target_coverage integer (812), coverage_done integer (795),
                 target_pass_rate numeric (1.0), replacement_deadline date, updated_at
-staff           code text PK ('IULS-01', 'RUST-018', added 'TMB-01'), program text ('IULS'|'RUST'),
+staff           code text PK ('GA-RPT-0001' from the cleaned sheet, added 'TMB-01'), program text ('IULS'|'RUST'|NULL; blank in the cleaned sheet),
                 provider text, station FK, name, employee_no, gender ('L'|'P'|NULL),
-                touch_point text (5 values), role_play numeric 0–100, post_test numeric 0–100,
+                touch_point text (one of 5 values or free text "Other", max 60), role_play numeric 0–100, post_test numeric 0–100,
                 report_remark text ('Passed'|'Failed'|NULL),
                 assignment_status ('Aktif'|'Remedial'|'Individual Coaching'|'Ditarik dari layanan'),
                 feedback text, notes text, bmi_has_note boolean NULL, bmi_note text,
@@ -116,7 +133,8 @@ report_remark, feedback), `share_kps_update_action_item` (progress fields + defi
 | rekap | Rekap | per-week avg, latest, gain vs final, weeks assessed, status, trend |
 | bmi, bmiCategory | BMI | as JOUMPA (Kemenkes thresholds from settings) |
 | bmiCheckDate(p) | BMI header | bmi_first_check + 14·(p−1) |
-| nextBmiCheck | BMI AQ | no check → bmi_first_check; has_note = false → EDATE(last, months); else last + days |
+| nextBmiCheck | BMI AS | no check → bmi_first_check; else last check date + bmi_interval_days, for everyone (the "Ada Catatan BMI" flag does not change it) |
+| bmiCheckLabel | BMI row 4 | "BMI Cek ke-N (Periode d-d Mon yyyy)": from the planned date of check N through the day before check N+1 (lib/bmi-periods.ts); the same text is the group header in the sheet |
 | bmiScheduleStatus | BMI AR | next < today → Terlambat cek; ≤ 7 days → Cek ≤ 7 hari; else Terjadwal |
 | bmiPeriodForWeek(w) | Laporan C6 | max(1, min(periods, floor((weekStart(w) − first)/14) + 1)) |
 | actionFlag | TL R | Selesai; no due → Batas waktu belum ditetapkan; <0 OVERDUE; ≤7 Jatuh tempo ≤ 7 hari; Rutin → Rutin – pantau; else On Track |
@@ -136,8 +154,8 @@ Tabs and input columns of the Garuda workbook (header row 4 unless noted):
 
 | Table | Tab | Key | Input columns |
 |---|---|---|---|
-| staff | Master SDM (data 5..304) | B ID SDM | C Program, D Provider, E Unit, F Nama, G Employee Number, H L/P, I Touch Point, J Role Play, K Post-Test, M Remark, Q Status Penugasan, R Feedback, S Catatan; Cek BMI G (Ada Catatan BMI) → bmi_has_note, Cek BMI AS → bmi_note |
-| bmi_checks | Cek BMI 2 Mingguan (data 6..305, row = Master row + 1) | B (formula) + slot | slot k (1..6): Tgl/Tinggi/Berat at H/I/J, M/N/O, R/S/T, W/X/Y, AB/AC/AD, AG/AH/AI |
+| staff | Master SDM (data 5..1089) | B ID SDM | C Program, D Provider, E Unit, F Nama, G Employee Number, H L/P, I Touch Point, J Role Play, K Post-Test, M Remark, Q Status Penugasan, R Feedback, S Catatan; Cek BMI I (Ada Catatan BMI) → bmi_has_note, Cek BMI AU (Catatan Program Kebugaran) → bmi_note |
+| bmi_checks | Cek BMI 2 Mingguan (data 6..1090, row = Master row + 1) | B (formula) + slot | slot k (1..6): Tgl/Tinggi/Berat at J/K/L, O/P/Q, T/U/V, Y/Z/AA, AD/AE/AF, AI/AJ/AK |
 | weekly_scores | Log Performa Mingguan (data 5..) | A Minggu Ke + C ID SDM | G Touch Point, H–K scores, O Topik Gap, P Observer, Q Catatan |
 | action_items | Tindak Lanjut (data 5..54) | B ID | C Kelompok, D Aspek, E Akar Masalah, F Tindakan, G Target, H Jenis, I Jadwal, J Batas Waktu (literal only), K PIC, L Status, M % Progres (fraction), N Tgl Update, O Bukti, P Catatan, S Sumber |
 | remedials | Remedial (data 5..154) | B ID SDM | H Tindakan, I Tgl, J Role Play Ulang, K Post-Test Ulang, O Dilaporkan, P Catatan |

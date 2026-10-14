@@ -71,8 +71,8 @@ PARAMETER_LABELS = {
     "Batas waktu penggantian SDM": ("replacement_deadline", "date"),
 }
 
-BMI_FIRST_COL = 8  # H: Tgl Cek of slot 1; 5 columns per slot (date, height, weight, BMI, category)
-BMI_NOTE_COL = 45  # AS: Catatan Program Kebugaran
+BMI_FIRST_COL = 10  # J: Tgl Cek of slot 1; 5 columns per slot (date, height, weight, BMI, category)
+BMI_NOTE_COL = 47  # AU: Catatan Program Kebugaran
 
 
 class ImportFailure(Exception):
@@ -204,7 +204,7 @@ def read_staff(wb) -> list[dict]:
         if code in seen:
             fail(where, f"duplicate ID {code}")
         seen.add(code)
-        has_note = text(bm.cell(r + 1, 7).value)
+        has_note = text(bm.cell(r + 1, 9).value)
         rows.append({
             "code": code,
             "program": choice(ws.cell(r, 3).value, PROGRAMS, where + " Program"),

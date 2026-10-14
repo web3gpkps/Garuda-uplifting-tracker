@@ -7,13 +7,13 @@
  * the form ("92"), as the workbook formats them ("0%").
  */
 import { parseDecimal } from "@/components/ui/Field";
+import { MAX_BMI_INTERVAL_DAYS, MAX_BMI_PERIODS } from "@/lib/bmi-periods";
 
 export type SettingKey =
   | "week1_start"
   | "weeks"
   | "bmi_first_check"
   | "bmi_interval_days"
-  | "bmi_interval_months"
   | "bmi_periods"
   | "bmi_underweight_below"
   | "bmi_normal_max"
@@ -58,22 +58,21 @@ export const SETTING_SECTIONS: SettingSection[] = [
     id: "cek-bmi",
     title: "Cek BMI",
     fields: [
-      { key: "bmi_first_check", kind: "date", label: "Tanggal cek BMI ke-1", help: "Cek berikutnya dijadwalkan dari tanggal ini" },
+      { key: "bmi_first_check", kind: "date", label: "Tanggal BMI Cek ke-1", help: "Cek berikutnya dijadwalkan dari tanggal ini" },
       {
         key: "bmi_interval_days",
         kind: "int",
-        label: "Interval cek, ada catatan BMI",
-        help: "1 sampai 90 hari",
+        label: "Interval antar cek BMI",
+        help: `Semua SDM, 1 sampai ${MAX_BMI_INTERVAL_DAYS} hari. 14 hari = tiap dua minggu`,
         unit: "hari",
       },
       {
-        key: "bmi_interval_months",
+        key: "bmi_periods",
         kind: "int",
-        label: "Interval cek, tanpa catatan BMI",
-        help: "1 sampai 12 bulan",
-        unit: "bulan",
+        label: "Jumlah cek BMI",
+        help: `1 sampai ${MAX_BMI_PERIODS}. Kolom di Google Sheet ikut bertambah atau berkurang`,
+        unit: "kali",
       },
-      { key: "bmi_periods", kind: "int", label: "Jumlah cek BMI", help: "1 sampai 12", unit: "kali" },
     ],
   },
   {
@@ -285,9 +284,8 @@ export function validateSettings(values: SettingsValues): { errors: SettingsErro
   };
 
   check("weeks", between(num("weeks") ?? 0, 1, 20), "Isi 1 sampai 20 minggu.");
-  check("bmi_interval_days", between(num("bmi_interval_days") ?? 0, 1, 90), "Isi 1 sampai 90 hari.");
-  check("bmi_interval_months", between(num("bmi_interval_months") ?? 0, 1, 12), "Isi 1 sampai 12 bulan.");
-  check("bmi_periods", between(num("bmi_periods") ?? 0, 1, 12), "Isi 1 sampai 12 slot.");
+  check("bmi_interval_days", between(num("bmi_interval_days") ?? 0, 1, MAX_BMI_INTERVAL_DAYS), `Isi 1 sampai ${MAX_BMI_INTERVAL_DAYS} hari.`);
+  check("bmi_periods", between(num("bmi_periods") ?? 0, 1, MAX_BMI_PERIODS), `Isi 1 sampai ${MAX_BMI_PERIODS} cek.`);
 
   const under = num("bmi_underweight_below");
   const normal = num("bmi_normal_max");

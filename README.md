@@ -15,7 +15,8 @@ remedial bagi peserta yang belum lulus, penggantian SDM, dan target KPI dari sli
 |---|---|---|
 | Stasiun (kode dari tabel `stations`, misalnya CGK) | tautan ruang kerja `/s/<token>`, tanpa akun | data stasiun sendiri; Tindak Lanjut hanya dibaca |
 | KPS | tautan ruang kerja dengan lingkup KPS, tanpa akun | semua stasiun, baseline training SDM, pembaruan Tindak Lanjut |
-| Pemilik | masuk di `/login`, area `/admin` | semua stasiun, termasuk tautan, Parameter dan sinkronisasi |
+| Akun cabang | daftar di `/register`, disetujui pemilik, masuk di `/login`, area `/cabang` | cabang akun itu (stasiun atau KPS) |
+| Pemilik | masuk di `/login`, area `/admin` | semua stasiun, termasuk tautan, akun cabang, Parameter dan sinkronisasi |
 
 Halaman: Beranda, Laporan Mingguan (bisa dicetak A4), Penilaian Mingguan, Cek BMI, Remedial,
 Tindak Lanjut (KPS dan pemilik), Data SDM dan Penggantian SDM. Di desktop pengisian memakai
@@ -81,6 +82,49 @@ Aplikasi ini memakai **project Supabase baru**, terpisah dari tracker lain.
    `supabase/production-setup.sql`.
 
 ## Database
+
+### Cek BMI
+
+Cek BMI mengikuti prototype `CGK_BMI_Tracker_Prototype_Interaktif.html`: banner, empat angka ringkasan, tabel
+bergaya spreadsheet dengan kolom identitas beku, enam kelompok cek (Tgl Cek, Tinggi, Berat, BMI,
+Kategori) dan kolom ringkasan, pilihan periode, filter status, tombol Semua periode / Fokus periode,
+panel profil, dialog ubah isian, Tambah SDM dan Ekspor CSV. Di bawah 561px layar memakai kartu per
+orang. Teks panjang (Coaching Evaluation Feedback, Result/Remarks, Catatan Program Kebugaran) dipotong
+satu baris dan bisa dibuka penuh dengan tombol di sel. Warna prototype dipakai; hanya warna teks yang
+kurang dari 4,5:1 yang digelapkan (dijaga `components/bmi/palette.test.ts`). Catatan arah desain ada di
+bagian akhir `DESIGN.md`.
+
+Tautan stasiun CGK tetap hanya menampilkan menu Cek BMI. Tambah SDM tersedia untuk tautan atau akun
+satu stasiun (stasiun diambil dari lingkup di server, bukan dari form); pemilik dan KPS memilih
+stasiun. ID SDM dibuat otomatis oleh `share_save_staff`. Penyimpanan bertahap
+(`saveStaff`, lalu `saveBmiProfile`, lalu `saveBmiCheck`) bukan transaksi atomik: bila langkah akhir gagal,
+form menampilkan hasil parsial dan mengulang dengan ID yang sama.
+
+Struktur tab `Cek BMI 2 Mingguan` di Google Sheet saat ini: A sampai I identitas (No, ID SDM, Nama, Unit,
+Program, L/P, Coaching Evaluation Feedback, Result/Remarks, Ada Catatan BMI), enam cek mulai kolom J (lima
+kolom tiap cek), ringkasan AN sampai AU dan dua kolom Laporan AV dan AW. Mesin sinkronisasi membaca posisi
+dari judul kolom, jadi menggeser kolom tidak merusaknya; lihat `docs/SYNC.md`.
+
+### Akun cabang: daftar, persetujuan, masuk
+
+Selain tautan, setiap cabang bisa punya akun sendiri (pola yang sama dengan IAP Monitoring):
+
+1. Orang mendaftar di `/register` (nama, email, kata sandi, cabang: kode stasiun atau KPS). Akun dibuat
+   `pending` oleh trigger di `auth.users`; peran dan status dari form tidak pernah dipakai.
+2. Pemilik membuka **Akun Cabang** (`/admin/akun`), memilih cabang bila perlu, lalu Setujui, Tolak
+   (Nonaktifkan), mengganti cabang, atau menghapus akun.
+3. Akun yang disetujui masuk di `/login` dan dikirim ke `/cabang`: halaman yang sama dengan tautan stasiun,
+   lingkupnya cabang akun itu (KPS = semua stasiun), ditentukan di database, bukan dari URL. Akun
+   `pending` atau `inactive` ditolak dengan alasan dan tidak memegang sesi.
+4. Lupa kata sandi: `/forgot-password`, tautan email ke `/auth/callback`, lalu `/reset-password`.
+
+Pengaturan di dashboard Supabase (tidak bisa diubah dari migrasi): Authentication, URL Configuration:
+**Site URL** = alamat aplikasi, dan **Redirect URLs** memuat `<alamat aplikasi>/auth/callback` (serta
+`http://localhost:3000/auth/callback` untuk pengembangan). Konfirmasi email saat ini aktif di project;
+pengirim email bawaan Supabase dibatasi jumlahnya, jadi pasang SMTP sendiri bila pendaftar banyak.
+Tabel `public.profiles`, fungsi `admin_delete_account` dan `registration_branches` ada di
+`supabase/migrations/20261014090000_branch_accounts.sql` dan `20261014090200_registration_branches.sql`; tes
+keamanannya di `tests/sql/08_accounts.test.sql`.
 
 Skema, RLS dan fungsi `share_*` ada di `supabase/migrations/`. Setelah mengubah migrasi, bangun
 ulang tipe TypeScript tanpa Docker (PGlite):

@@ -287,7 +287,7 @@ export function staffDerived(data: TrackerData, today: DateInput): StaffDerived[
       staff: st,
       baseline: staffBaseline(st, s),
       rekap: hasText(st.name) ? staffRekap(st, scoresByStaff.get(st.code) ?? [], s) : null,
-      bmi: bmiSummary(checksByStaff.get(st.code) ?? [], st.bmiHasNote, s, today),
+      bmi: bmiSummary(checksByStaff.get(st.code) ?? [], s, today),
       remedial: rem ? { row: rem, ...remedialResult(rem, s) } : null,
     };
   });

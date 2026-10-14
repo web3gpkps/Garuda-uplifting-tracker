@@ -333,7 +333,7 @@ export function stationTodo(
     });
     items.push({
       key: "bmi",
-      title: "Cek BMI ke-1",
+      title: "BMI Cek ke-1",
       detail: `Mulai ${formatHariTanggal(s.bmiFirstCheck)}`,
       state: "later",
       late: 0,
@@ -361,7 +361,7 @@ export function stationTodo(
   if (summary.bmiPeriod === null || row.bmiChecked === null) {
     items.push({
       key: "bmi",
-      title: "Cek BMI ke-1",
+      title: "BMI Cek ke-1",
       detail: `Mulai ${formatHariTanggal(s.bmiFirstCheck)}`,
       state: "later",
       late: row.lateBmi,
@@ -372,7 +372,7 @@ export function stationTodo(
     const done = row.bmiChecked >= row.onDuty && row.lateBmi === 0;
     items.push({
       key: "bmi",
-      title: `Cek BMI ke-${summary.bmiPeriod}`,
+      title: `BMI Cek ke-${summary.bmiPeriod}`,
       detail: `${row.bmiChecked} dari ${row.onDuty} SDM sudah dicek`,
       state: done ? "done" : "todo",
       late: row.lateBmi,

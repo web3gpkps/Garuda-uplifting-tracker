@@ -8,11 +8,13 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input, NumberInput, parseDecimal } from "@/components/ui/Field";
 import { SaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { StatusChip, type StatusTone } from "@/components/ui/StatusChip";
+import { bmiCheckName } from "@/lib/bmi-periods";
 import { bmi, bmiCategory, type Settings } from "@/lib/rules";
-import type { LinkError } from "@/lib/workspace/errors";
 import { formatDecimal, toInputText } from "@/lib/format";
+import { CategoryBadge } from "./badges";
 import { BmiPersonSheet, CLOSED_SHEET, closeSheet, openSheet, profileIncomplete, type BmiPerson } from "./BmiPersonSheet";
-import { hasMoreThanOneDecimal, isPlausibleDate } from "./format";
+import { heightError, serverCheckErrors, weightError, type CheckErrors } from "./entry";
+import { isPlausibleDate } from "./format";
 
 export type BmiCardSaved = {
   checkDate: string | null;
@@ -26,6 +28,8 @@ export type BmiCardProps = {
   /** Date a new check gets unless changed: today once the slot has started, else its planned date. */
   defaultDate: string;
   plannedDates: string[];
+  /** "BMI Cek ke-3 (Periode 9-22 Nov 2026)" for every period. */
+  labels: string[];
   settings: Settings;
   person: BmiPerson;
   saved: BmiCardSaved | null;
@@ -34,11 +38,7 @@ export type BmiCardProps = {
   showStation: boolean;
 };
 
-type CheckErrors = { date?: string; height?: string; weight?: string };
-
 const CONNECTION_LOST = "Koneksi ke server terputus. Isian masih ada; simpan lagi.";
-const HEIGHT_RANGE = "Tinggi 120 sampai 210 cm.";
-const WEIGHT_RANGE = "Berat 30 sampai 200 kg.";
 
 const STATUS_TEXT: Record<StatusTone, string> = {
   good: "text-good",
@@ -47,30 +47,6 @@ const STATUS_TEXT: Record<StatusTone, string> = {
   critical: "text-critical",
   progress: "text-progress",
 };
-
-function heightError(raw: string, value: number | null): string | undefined {
-  if (value === null) return undefined;
-  if (Number.isNaN(value)) return "Tulis angka, misalnya 165,5.";
-  if (hasMoreThanOneDecimal(raw)) return "Cukup satu angka di belakang koma.";
-  if (value < 120 || value > 210) return HEIGHT_RANGE;
-  return undefined;
-}
-
-function weightError(raw: string, value: number | null): string | undefined {
-  if (value === null) return undefined;
-  if (Number.isNaN(value)) return "Tulis angka, misalnya 62,5.";
-  if (hasMoreThanOneDecimal(raw)) return "Cukup satu angka di belakang koma.";
-  if (value < 30 || value > 200) return WEIGHT_RANGE;
-  return undefined;
-}
-
-function serverErrors(error: LinkError): CheckErrors {
-  if (error.code !== "invalid_input") return {};
-  if (error.field === "height_cm") return { height: HEIGHT_RANGE };
-  if (error.field === "weight_kg") return { weight: WEIGHT_RANGE };
-  if (error.field === "check_date") return { date: "Tanggal cek tidak valid." };
-  return {};
-}
 
 /**
  * One person on a phone for the chosen slot: name (opens the profile and history sheet),
@@ -81,6 +57,7 @@ export function BmiCard({
   period,
   defaultDate,
   plannedDates,
+  labels,
   settings,
   person,
   saved,
@@ -95,24 +72,25 @@ export function BmiCard({
   const [save, setSave] = useState<SaveState>({ status: "idle" });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  const [allDone, setAllDone] = useState(false);
+  const [endNote, setEndNote] = useState("");
   const [sheet, setSheet] = useState(CLOSED_SHEET);
   const formRef = useRef<HTMLFormElement>(null);
 
   const heightValue = parseDecimal(height);
   const weightValue = parseDecimal(weight);
   const liveBmi =
-    heightError(height, heightValue) === undefined && weightError(weight, weightValue) === undefined
-      ? bmi(heightValue, weightValue)
-      : null;
+    heightError(height) === undefined && weightError(weight) === undefined ? bmi(heightValue, weightValue) : null;
   const liveCategory = bmiCategory(liveBmi, settings);
 
   /** Moves to the next person without a check in this slot. */
   function jumpToNext() {
-    let next = formRef.current?.closest("li[data-bmi-row]")?.nextElementSibling ?? null;
+    const item = formRef.current?.closest("li[data-bmi-row]");
+    let next = item?.nextElementSibling ?? null;
     while (next && next.getAttribute("data-checked") !== "false") next = next.nextElementSibling;
     if (!next) {
-      setAllDone(true);
+      // The list shows a page at a time: more people may wait below the "Tampilkan" button.
+      const more = item?.parentElement?.getAttribute("data-more") === "true";
+      setEndNote(more ? "Ujung daftar yang tampil. Tampilkan berikutnya di bawah." : "Semua sudah dicek");
       return;
     }
     next.scrollIntoView({ block: "start" });
@@ -121,7 +99,7 @@ export function BmiCard({
 
   function run(values: { checkDate: string | null; heightCm: number | null; weightKg: number | null }, goNext = false) {
     setSave({ status: "saving" });
-    setAllDone(false);
+    setEndNote("");
     startTransition(async () => {
       let result: Awaited<ReturnType<typeof saveBmiCheck>>;
       try {
@@ -139,7 +117,7 @@ export function BmiCard({
         else if (goNext) jumpToNext();
         return;
       }
-      setErrors(serverErrors(result.error));
+      setErrors(serverCheckErrors(result.error));
       setSave({ status: "error", message: result.error.message });
     });
   }
@@ -150,8 +128,8 @@ export function BmiCard({
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null;
     const goNext = submitter ? submitter.dataset.next === "true" : true;
     const next: CheckErrors = {
-      height: heightError(height, heightValue),
-      weight: weightError(weight, weightValue),
+      height: heightError(height),
+      weight: weightError(weight),
     };
     const bothEmpty = heightValue === null && weightValue === null;
     if (bothEmpty && !saved) {
@@ -200,7 +178,7 @@ export function BmiCard({
         ref={formRef}
         onSubmit={onSubmit}
         noValidate
-        aria-label={`Cek BMI ke-${period}, ${person.name}`}
+        aria-label={`${bmiCheckName(period)}, ${person.name}`}
         className="grid grid-cols-2 gap-3 px-4 py-4"
       >
         <div className="col-span-2 flex min-w-0 flex-col gap-0.5">
@@ -255,7 +233,7 @@ export function BmiCard({
             {liveBmi !== null ? (
               <>
                 <span className="text-base font-semibold text-ink tabular-nums">{formatDecimal(liveBmi, 1)}</span>
-                <StatusChip label={liveCategory} />
+                <CategoryBadge category={liveCategory} />
               </>
             ) : (
               <span className="text-sm text-ink-muted">–</span>
@@ -273,7 +251,7 @@ export function BmiCard({
             </Button>
           </div>
           <SaveStatus state={save} />
-          {allDone ? <span className="text-xs font-semibold text-ink">Semua sudah dicek</span> : null}
+          {endNote ? <span className="text-xs font-semibold text-ink">{endNote}</span> : null}
         </div>
       </form>
 
@@ -284,6 +262,7 @@ export function BmiCard({
         accessKey={accessKey}
         person={person}
         plannedDates={plannedDates}
+        labels={labels}
         period={period}
         settings={settings}
       />
@@ -292,8 +271,8 @@ export function BmiCard({
         open={confirmOpen}
         onClose={cancelDelete}
         dismissible={!pending}
-        title={`Hapus cek BMI ke-${period}?`}
-        description={`TB dan BB ${person.name} pada cek ke-${period} dihapus. Cek lain tidak berubah.`}
+        title={`Hapus ${bmiCheckName(period)}?`}
+        description={`TB dan BB ${person.name} pada ${bmiCheckName(period)} dihapus. Cek lain tidak berubah.`}
         footer={
           <>
             <Button variant="secondary" onClick={cancelDelete} disabled={pending}>
@@ -305,7 +284,7 @@ export function BmiCard({
               loadingText="Menghapus…"
               onClick={() => run({ checkDate: null, heightCm: null, weightKg: null })}
             >
-              Hapus cek ke-{period}
+              Hapus {bmiCheckName(period)}
             </Button>
           </>
         }

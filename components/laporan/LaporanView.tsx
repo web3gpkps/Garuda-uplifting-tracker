@@ -225,11 +225,11 @@ export function LaporanView({
 
         <Section
           id="bagian-c"
-          title={`C. Cek BMI ke-${report.bmiPeriod}`}
+          title={`C. BMI Cek ke-${report.bmiPeriod}`}
           note={
             totalBmi && totalBmi.checked === 0 ? (
               <>
-                Belum ada cek BMI ke-{report.bmiPeriod}.{" "}
+                Belum ada BMI Cek ke-{report.bmiPeriod}.{" "}
                 {report.bmiPlannedDate <= today ? (
                   <Link
                     href={links.to("bmi", { periode: report.bmiPeriod, stasiun: station })}
@@ -245,7 +245,7 @@ export function LaporanView({
           caption={`Rencana ${formatTanggal(report.bmiPlannedDate)}. Target overweight + obesitas < ${formatPercent(s.targetOverweightMax)} dalam ${s.targetOverweightMonths} bulan. Terlambat cek mengikuti jadwal tiap SDM.`}
         >
           <TableFrame>
-            <BmiSlotTable caption={`Cek BMI ke-${report.bmiPeriod}`} rows={report.bmi} />
+            <BmiSlotTable caption={`BMI Cek ke-${report.bmiPeriod}`} rows={report.bmi} />
           </TableFrame>
         </Section>
 

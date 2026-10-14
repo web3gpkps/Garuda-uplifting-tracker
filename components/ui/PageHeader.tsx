@@ -10,6 +10,8 @@ type PageHeaderProps = {
    * e.g. "CGK · Minggu ke-2 · 31 dari 45 dinilai".
    */
   meta?: ReactNode;
+  /** Small caps line above the title (programme or scope), e.g. "Health & Vitality Campaign". */
+  eyebrow?: ReactNode;
   /** Page actions on the right (wrap below the title on phones). At most one primary. */
   actions?: ReactNode;
   /** Optional row under the title, e.g. a <Toolbar>. Prefer placing the Toolbar right after the header. */
@@ -18,16 +20,17 @@ type PageHeaderProps = {
 };
 
 /** Page title block (DESIGN.md PageHeader). No description. Server-component friendly. */
-export function PageHeader({ title, meta, actions, children, className }: PageHeaderProps) {
+export function PageHeader({ title, eyebrow, meta, actions, children, className }: PageHeaderProps) {
   return (
     <header className={cx("flex flex-col gap-4", className)}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-ink">{title}</h1>
-          {meta ? <p className="mt-0.5 text-xs text-ink-muted">{meta}</p> : null}
+      <div className="hero flex flex-col gap-4 px-5 py-6 sm:min-h-32 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-8 sm:py-7">
+        <div className="relative z-10 min-w-0">
+          {eyebrow ? <p className="hero-eyebrow mb-2">{eyebrow}</p> : null}
+          <h1 className="text-xl font-semibold text-white sm:text-[28px] sm:leading-9">{title}</h1>
+          {meta ? <p className="mt-1.5 text-sm text-[#cfe3e5]">{meta}</p> : null}
         </div>
         {actions ? (
-          <div className="flex shrink-0 flex-wrap gap-2" data-print="hide">
+          <div className="hero-actions relative z-10 flex shrink-0 flex-wrap gap-2 sm:justify-end" data-print="hide">
             {actions}
           </div>
         ) : null}

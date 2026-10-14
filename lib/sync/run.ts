@@ -13,6 +13,7 @@
 import { countOps, projectAll, tabsToRead, translate, type RealOps } from "./layouts";
 import { countPlan, finalizeBaseline, merge, type TableCounts } from "./merge";
 import { needsSheetSetup, type SheetsPort } from "./sheets";
+import { reconcileBmiStructure, structureEnabled, structureSettings, type StructureSummary } from "./structure";
 import { conflictToLog, issueToLog, type SyncStore } from "./supabase";
 import { SYNC_TABLES } from "./tables";
 import { DEFAULT_CONFLICT_POLICY, type Baseline, type ConflictPolicy, type Plan, type SyncTable, type TableSpec } from "./types";
@@ -38,6 +39,8 @@ export interface RunSummary {
   policy: ConflictPolicy;
   tables?: Record<string, TableCounts & { dbFailed?: boolean }>;
   sheet?: ReturnType<typeof countOps> & { setLocale: boolean };
+  /** The Cek BMI tab: columns per check follow Parameter (lib/sync/structure.ts). */
+  structure?: StructureSummary;
   errors?: string[];
 }
 
@@ -77,7 +80,9 @@ export async function runSync(deps: RunDeps, opts: RunOptions = {}): Promise<Run
     try {
       const { plan, sheetSummary } = await prepare();
       const errors = plan.tables.filter((t) => t.error).map((t) => t.error!);
-      return { status: "dry-run", durationMs: elapsed(), policy, tables: summarize(plan), sheet: sheetSummary, errors };
+      const settings = structureEnabled() ? structureSettings(finalizeBaseline(plan, new Map(), specs)) : null;
+      const structure = settings ? ((await reconcileBmiStructure(deps.sheets, settings, { dryRun: true })) ?? undefined) : undefined;
+      return { status: "dry-run", durationMs: elapsed(), policy, tables: summarize(plan), sheet: sheetSummary, structure, errors };
     } catch (e) {
       return { status: "error", durationMs: elapsed(), policy, errors: [safeMessage(e)] };
     }
@@ -116,9 +121,23 @@ export async function runSync(deps: RunDeps, opts: RunOptions = {}): Promise<Run
       for (const [id, sig] of Object.entries(previous?.issues ?? {})) if (id.startsWith(`${table}::`)) next.issues![id] = sig;
     }
 
+    // The Cek BMI tab follows the settings this run ended with (more or fewer checks, new interval).
+    let structure: StructureSummary | undefined;
+    let structureError: string | undefined;
+    const structureOf = structureEnabled() ? structureSettings(next) : null;
+    if (structureOf) {
+      try {
+        structure = (await reconcileBmiStructure(deps.sheets, structureOf)) ?? undefined;
+      } catch (e) {
+        structureError = `Struktur tab Cek BMI: ${safeMessage(e)}`;
+      }
+    }
+
     const errors = [
       ...plan.tables.filter((t) => t.error).map((t) => t.error!),
       ...[...failed].map(([t, m]) => `DB ${t}: ${m}`),
+      ...(structure?.blockers ?? []),
+      ...(structureError ? [structureError] : []),
     ];
     const released = await deps.store.releaseLease(token, next, errors.length ? errors.join(" | ").slice(0, 2000) : null);
     if (!released) errors.push("Lease expired before the run finished; baseline not stored.");
@@ -128,6 +147,7 @@ export async function runSync(deps: RunDeps, opts: RunOptions = {}): Promise<Run
       policy,
       tables: summarize(plan, failed),
       sheet: sheetSummary,
+      structure,
       errors: errors.length ? errors : undefined,
     };
   } catch (e) {

@@ -317,18 +317,18 @@ export function buildWorkbook(db: DbSnapshot, opts: WorkbookOptions = {}): FakeW
     for (const [c, v] of cols) put(MS, `${c}${r}`, v);
   }
 
-  // ---- Cek BMI 2 Mingguan (header rows 4-5, data 6.., row = Master row + 1, 6 slots from H)
+  // ---- Cek BMI 2 Mingguan (header rows 4-5, data 6.., row = Master row + 1, 6 slots from J)
   const BMI = "Cek BMI 2 Mingguan";
   b.addTab(BMI);
   b.set(BMI, "A1", "CEK BMI, TINGGI BADAN & BERAT BADAN");
-  headers(BMI, 4, ["No", "ID SDM", "Nama Petugas", "Unit", "Program", "L/P", "Ada Catatan BMI"]);
+  headers(BMI, 4, ["No", "ID SDM", "Nama Petugas", "Unit", "Program", "L/P", "Coaching Evaluation Feedback", "Result/Remarks", "Ada Catatan BMI"]);
   for (let k = 0; k < 6; k++) {
-    const start = 7 + k * 5;
+    const start = 9 + k * 5;
     b.setAt(BMI, 4, start, `Cek ke-${k + 1}`, `="Cek ke-${k + 1} (rencana "&TEXT(Parameter!$C$7+14*${k},"dd/mm/yyyy")&")"`);
     headers(BMI, 5, ["Tgl Cek", "Tinggi (cm)", "Berat (kg)", "BMI", "Kategori"], start);
   }
   headers(BMI, 4, ["Jumlah Cek", "Tgl Cek Terakhir", "BMI Terakhir", "Kategori Terakhir", "Δ Berat (kg)", "Cek Berikutnya", "Status Jadwal",
-    "Catatan Program Kebugaran", "BMI (slot Laporan Mingguan)", "Kategori (slot Laporan Mingguan)"], 37);
+    "Catatan Program Kebugaran", "BMI (slot Laporan Mingguan)", "Kategori (slot Laporan Mingguan)"], 39);
   const checks = (db.bmi_checks ?? []) as Row[];
   for (let i = 0; i < masterRows; i++) {
     const mr = 5 + i;
@@ -340,10 +340,12 @@ export function buildWorkbook(db: DbSnapshot, opts: WorkbookOptions = {}): FakeW
     b.set(BMI, `D${r}`, s?.station ?? "", mirror(MS, `E${mr}`));
     b.set(BMI, `E${r}`, s?.program ?? "", mirror(MS, `C${mr}`));
     b.set(BMI, `F${r}`, s?.gender ?? "", mirror(MS, `H${mr}`));
-    if (s?.bmi_has_note === true) b.set(BMI, `G${r}`, "Ya");
-    if (s?.bmi_has_note === false) b.set(BMI, `G${r}`, "Tidak");
+    b.set(BMI, `G${r}`, s?.feedback ?? "", mirror(MS, `R${mr}`));
+    b.set(BMI, `H${r}`, s?.notes ?? "", mirror(MS, `S${mr}`));
+    if (s?.bmi_has_note === true) b.set(BMI, `I${r}`, "Ya");
+    if (s?.bmi_has_note === false) b.set(BMI, `I${r}`, "Tidak");
     for (let k = 0; k < 6; k++) {
-      const start = 7 + k * 5;
+      const start = 9 + k * 5;
       const c = s && checks.find((x) => x.staff_code === s.code && x.period === k + 1);
       if (c) {
         if (c.check_date) b.setAt(BMI, r, start, serial(c.check_date));
@@ -354,8 +356,8 @@ export function buildWorkbook(db: DbSnapshot, opts: WorkbookOptions = {}): FakeW
       b.setAt(BMI, r, start + 3, "", `=IF(OR(${h}="",${w}=""),"",ROUND(${w}/(${h}/100)^2,1))`);
       b.setAt(BMI, r, start + 4, "", `=IF(${a1Column(start + 3)}${r}="","",IF(${a1Column(start + 3)}${r}<Parameter!$C$12,"Kurus","Normal"))`);
     }
-    for (const col of ["AL", "AM", "AN", "AO", "AP", "AQ", "AR", "AT", "AU"]) b.set(BMI, `${col}${r}`, "", `=IF(B${r}="","",0)`);
-    put(BMI, `AS${r}`, s?.bmi_note);
+    for (const col of ["AN", "AO", "AP", "AQ", "AR", "AS", "AT", "AV", "AW"]) b.set(BMI, `${col}${r}`, "", `=IF(B${r}="","",0)`);
+    put(BMI, `AU${r}`, s?.bmi_note);
   }
 
   // ---- Log Performa Mingguan (header row 4, pre-made rows per week and staff, spare formula rows)
@@ -467,6 +469,11 @@ export function buildWorkbook(db: DbSnapshot, opts: WorkbookOptions = {}): FakeW
     const rr = 5 + i;
     if (key === null) return;
     if (key.startsWith("#")) return b.set(PAR, `B${rr}`, key.slice(1));
+    if (key === "bmi_interval_months") {
+      // No longer a synced setting: the real workbook still has the row, untouched by the engine.
+      b.set(PAR, `B${rr}`, "Interval cek BMI – tanpa catatan (bulan)");
+      return b.set(PAR, `C${rr}`, 1);
+    }
     const e = SETTINGS_ENTRIES.find((x) => x.key === key)!;
     b.set(PAR, `B${rr}`, e.label);
     put(PAR, `C${rr}`, e.type.kind === "date" ? serial(settings[key]) : settings[key]);

@@ -48,7 +48,7 @@ const NOT_OWNER: LinkError = {
 const FAILED: DeleteStaffResult = { ok: false, error: { code: "unknown", message: "Tidak bisa dihapus. Coba lagi." } };
 
 export async function deleteStaffAs(
-  access: { kind: "owner" | "link" },
+  access: { kind: "owner" | "link" | "account" },
   client: StaffDeleteClient | null,
   code: unknown,
 ): Promise<DeleteStaffResult> {

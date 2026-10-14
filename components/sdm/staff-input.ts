@@ -2,7 +2,7 @@
  * Master SDM input checks and RPC arguments (share_save_staff, share_kps_save_staff_baseline).
  * Pure, so the Server Action and the tests share it. The database re-checks everything.
  */
-import { ASSIGNMENT_STATUSES, PROGRAMS, TOUCH_POINTS } from "@/lib/rules";
+import { ASSIGNMENT_STATUSES, PROGRAMS } from "@/lib/rules";
 import type { LinkError } from "@/lib/workspace/errors";
 
 export const REMARKS = ["Passed", "Failed"] as const;
@@ -59,7 +59,8 @@ export function checkProfile(input: StaffProfileInput): LinkError | null {
     return invalid("employee_no", "Employee Number paling panjang 50 karakter.");
   }
   if (!oneOf(blankToNull(input.gender), ["L", "P"])) return invalid("gender", "Pilih L, P, atau kosongkan.");
-  if (!oneOf(blankToNull(input.touchPoint), TOUCH_POINTS)) return invalid("touch_point", "Pilih touch point dari daftar.");
+  // The five listed touch points or free text ("Other"), as the database allows.
+  if ((blankToNull(input.touchPoint) ?? "").length > 60) return invalid("touch_point", "Touch point maksimal 60 karakter.");
   if (!(ASSIGNMENT_STATUSES as readonly string[]).includes(input.assignmentStatus)) {
     return invalid("assignment_status", "Pilih status penugasan dari daftar.");
   }
@@ -119,7 +120,7 @@ export function staffFieldMessage(error: LinkError): LinkError {
     station: "Pilih unit (stasiun) yang ada di daftar.",
     name: "Nama wajib diisi, paling panjang 200 karakter.",
     program: "Pilih program IULS atau RUST.",
-    touch_point: "Pilih touch point dari daftar.",
+    touch_point: "Touch point maksimal 60 karakter.",
     employee_no: "Employee Number paling panjang 50 karakter.",
     provider: "Provider paling panjang 100 karakter.",
   };

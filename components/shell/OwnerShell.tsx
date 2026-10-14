@@ -16,7 +16,7 @@ const readSchedule = cache(async () => {
   const supabase = await createClient();
   const { data } = await supabase
     .from("settings")
-    .select("week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_interval_months, bmi_periods")
+    .select("week1_start, weeks, bmi_first_check, bmi_interval_days, bmi_periods")
     .eq("id", 1)
     .maybeSingle();
   return data;
@@ -49,7 +49,7 @@ export function OwnerShell({ email, children }: { email: string; children: React
       }
       footer={
         <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-xs text-ink-muted" title={email}>
+          <span className="min-w-0 truncate text-xs text-[#b6ced4]" title={email}>
             {email}
           </span>
           <SignOutButton variant="ghost" size="sm" />

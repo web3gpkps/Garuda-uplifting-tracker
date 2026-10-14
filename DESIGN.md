@@ -151,4 +151,68 @@ Sentence case everywhere. No uppercase tracking. No em dash. No exclamation mark
   "Cetak laporan". Station links see the Temuan editor first.
 - **Admin.** Tautan: one table + "Buat tautan" dialog, revoked behind a toggle, one coverage line.
   Parameter: grouped form, plain help. Sinkronisasi: status line + open conflicts table.
-- **Login.** Logos, title, email, password, "Masuk". One footnote line.
+- **Login.** Logos, title, email, password (with a "Tampilkan" toggle), "Masuk". Footnote: "Daftar" and
+  "Lupa kata sandi?". The same form serves the owner (to /admin) and approved branch accounts (to /cabang).
+- **Register, forgot and reset password.** Same frame as login, one column, the form only: no marketing copy,
+  the single intro sentence says the account needs the owner's approval. Errors sit under their field.
+- **Akun Cabang (/admin/akun).** Tabs Menunggu / Aktif / Dinonaktifkan with counts, one table per tab, the
+  branch chosen per row, "Setujui" disabled until the row has a real branch. Waiting accounts open first.
+
+
+## Theme revision (14 Okt 2026): CGK BMI prototype look
+
+Applied across every screen from the tokens in `app/globals.css`; logos and CRUD behaviour unchanged.
+- Sidebar and phone menu sheet are Garuda navy (`--navy` #123346) with the co-brand logos on a white chip
+  (logos are never recoloured). Active item: white/10 fill, white 600 text, 3px mint stripe.
+- Primary colour is Garuda green (`--brand` #0a7a63, white on it 5.3:1); page `--bg` #f5f8fa.
+- Every page opens with the `.hero` banner (PageHeader): navy-to-green gradient, optional eyebrow,
+  title, one meta line, actions (buttons restyled for dark via `.hero-actions`). Plain in print.
+- `MetricCards` (components/ui) gives four-up summaries; Cek BMI shows Total SDM, Sudah diperiksa,
+  Terlambat cek, BMI di atas normal.
+- Radii 10 controls, 14 panels, 6 status labels; panels carry `--shadow-card`; good status labels are tinted too.
+This supersedes the earlier "no gradient", "navy", "4px radius" and "borders only" rules for the shell, hero and panels.
+
+
+## Cek BMI follows the CGK BMI prototype (14 Okt 2026)
+
+Owner direction: the main content of Cek BMI is rebuilt to match `CGK_BMI_Tracker_Prototype_Interaktif.html`
+(same patterns, colours and behaviour); the shell, logos and navigation are unchanged. It applies to every access
+kind (station link, branch account, owner). **Dial: ENERGY 2 / RHYTHM 1 / MOTION 1.** It is a data tool: motion is
+only the profile panel sliding in, the toast and hover colour; the layout repeats one pattern (banner, four counts,
+one workspace).
+
+- **Structure:** `.hero` banner (eyebrow, title, one line, station chip, "Ekspor CSV", "Tambah SDM"), four counts
+  (Total SDM, Sudah diperiksa with bar, Terlambat cek, BMI di atas normal; green / red / amber), one workspace panel:
+  filters (search, period, station for KPS and owner, status, touch point only when someone has one, "Lihat Cek",
+  "Semua periode" / "Fokus periode"), legend and result count, then the table.
+- **Table:** two header rows, the first three columns frozen, 9 identity columns, 5 columns per period (the period
+  count comes from Parameter), 8 summary columns; yellow cells are inputs, green-tint cells are computed, grey is
+  identity from Master SDM. 100 rows at a time ("Tampilkan 100 berikutnya"), search and filters run over everything.
+  Below 561px the table is replaced by one card per person (44px targets).
+- **Behaviour:** a yellow cell opens a dialog "Ubah <isian>" (Enter saves, Escape closes, focus returns to the
+  cell); a saved change shows at once and a toast confirms it; a name opens the right-hand profile panel; CSV
+  export downloads the rows in view. Free text (Coaching Evaluation Feedback, Result/Remarks, Catatan Program
+  Kebugaran) stays on one line and gets an expand toggle only when it is really clipped; the toggle and the edit
+  click are separate targets, Escape collapses.
+- **Scope:** the palette is custom properties on `.bmi-tracker` in `app/globals.css`; other screens are untouched.
+  `components/bmi/palette.test.ts` checks every text colour against its backgrounds.
+- **Contrast (WCAG AA, 4.5:1):** the prototype fails in a few places, so only those text colours were darkened
+  (same hue): muted text #718091 to #62707f, Feedback and Remarks text #768793 to #63727d, the "+ isi" hint
+  #c0a66f to #7f6838, grey switch text #758695 to #62707f, amber count #b67922 to #9e691e, badges "Cek <= 7 hari"
+  #a36b10 to #95620f, "Terjadwal" #198369 to #177a62, "Belum diperiksa" #778b96 to #5d6e78, banner text #cfe3e5
+  to #dcebed, profile overline #b6ecd5 to #c8f2e0. Controls use the app's 3.8:1 `--line-strong` border instead of
+  the prototype's pale one.
+- **Deliberate differences from the prototype:** weights are 400 and 600 (the only loaded weights); panel section
+  headings are sentence case (no tracked uppercase); the "+ isi" hint shows on hover and keyboard focus; text is
+  12px minimum. Not carried over: demo data, "DATA SIMULASI", "Reset demo", the prototype notice strip.
+- **Data source (15 Okt 2026):** Cek BMI shows only what the Google Sheet tab "Cek BMI 2 Mingguan" holds: `staff` identity
+  columns, Feedback, Result/Remarks, Ada Catatan BMI and Catatan Program Kebugaran, `bmi_checks`, the schedule settings and the
+  station list. No scores, remedials, replacements, action items, reports or baseline; `components/bmi/data-source.test.ts` guards it.
+- **One interval for everyone:** every staff member is checked every `bmiIntervalDays`; "Ada Catatan BMI" is a note and does not
+  change the rhythm. The number of checks is `bmiPeriods` (1 to 52) and nothing on the screen assumes six.
+- **Check names:** a check is "BMI Cek ke-N (Periode 9-22 Nov 2026)" in table group headers, the period select, history rows, CSV
+  headers and the phone list heading; the short "BMI Cek ke-N" where space is tight (dialog titles, toasts, aria-labels, count foot).
+  Both come from `lib/bmi-periods.ts`. The group header is not set in capitals, so the owner's wording survives.
+- **Touch Point replaces Program on this screen** (column after Unit, filter, profile, cards, CSV, Tambah SDM). The filter lists the
+  five standard values plus any other value in the data and appears once someone has one. Tambah SDM offers the five and "Other";
+  "Other" reveals a required text field (60 characters) and that text is saved, never the word "Other". Program is unchanged elsewhere.

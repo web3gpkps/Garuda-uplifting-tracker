@@ -18,6 +18,19 @@ export async function saveSettings(values: SettingsValues): Promise<SaveSettings
   const supabase = await createClient();
   const { data, error } = await supabase.from("settings").update(update).eq("id", 1).select("updated_at").maybeSingle();
   if (error) {
+    // private.settings_guard_bmi_periods: a check that already has data would lose its column.
+    if (error.message === "bmi_periods_below_used") {
+      const used = /check (\d+)/.exec(error.details ?? "")?.[1];
+      return {
+        ok: false,
+        message: "Jumlah cek belum diubah.",
+        errors: {
+          bmi_periods: used
+            ? `BMI Cek ke-${used} sudah berisi data. Jumlah cek minimal ${used}.`
+            : "Ada cek yang sudah berisi data di atas jumlah ini.",
+        },
+      };
+    }
     return { ok: false, message: "Parameter belum tersimpan. Periksa isian, lalu coba lagi." };
   }
   if (!data) {

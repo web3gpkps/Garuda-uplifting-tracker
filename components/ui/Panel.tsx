@@ -29,7 +29,7 @@ export function Panel({ title, actions, headingLevel = 2, padding = "default", i
     <section
       id={id}
       aria-labelledby={title && headingId ? headingId : undefined}
-      className={cx("min-w-0 rounded-panel border border-line bg-surface", className)}
+      className={cx("min-w-0 rounded-panel border border-line bg-surface shadow-card", className)}
     >
       {hasHeader ? (
         <div

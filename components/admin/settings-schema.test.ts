@@ -6,7 +6,6 @@ const row = {
   weeks: 10,
   bmi_first_check: "2026-10-12",
   bmi_interval_days: 14,
-  bmi_interval_months: 1,
   bmi_periods: 6,
   bmi_underweight_below: 18.5,
   bmi_normal_max: 25,
@@ -53,8 +52,7 @@ describe("settings form", () => {
     const values: SettingsValues = {
       ...settingsToFormValues(row),
       weeks: "21",
-      bmi_interval_months: "0",
-      bmi_periods: "13",
+      bmi_periods: "53",
       bmi_normal_max: "30",
       pass_grade: "101",
       weight_post_test: "120",
@@ -67,7 +65,6 @@ describe("settings form", () => {
     expect(update).toBeNull();
     expect(Object.keys(errors).sort()).toEqual(
       [
-        "bmi_interval_months",
         "bmi_normal_max",
         "bmi_periods",
         "coverage_done",

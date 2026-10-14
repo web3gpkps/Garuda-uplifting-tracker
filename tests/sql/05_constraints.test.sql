@@ -12,7 +12,9 @@ select throws_ok($$update public.staff set program = 'ABC' where code = 'TST-SUB
 select throws_ok($$update public.staff set role_play = 101 where code = 'TST-SUB'$$, '23514', null, 'role_play is 0..100');
 select throws_ok($$update public.staff set post_test = -1 where code = 'TST-SUB'$$, '23514', null, 'post_test is 0..100');
 select throws_ok($$update public.staff set report_remark = 'Bagus' where code = 'TST-SUB'$$, '23514', null, 'report_remark is Passed/Failed');
-select throws_ok($$update public.staff set touch_point = 'Lounge' where code = 'TST-SUB'$$, '23514', null, 'touch_point is one of the five touch points');
+select lives_ok($$update public.staff set touch_point = 'Lounge' where code = 'TST-SUB'$$, 'touch_point accepts free text ("Other")');
+select throws_ok($$update public.staff set touch_point = '   ' where code = 'TST-SUB'$$, '23514', null, 'touch_point is not blank');
+select throws_ok($$update public.staff set touch_point = repeat('x', 61) where code = 'TST-SUB'$$, '23514', null, 'touch_point is at most 60 characters');
 select throws_ok($$update public.staff set assignment_status = 'Cuti' where code = 'TST-SUB'$$, '23514', null, 'assignment_status is enumerated');
 select throws_ok($$update public.staff set name = '  ' where code = 'TST-SUB'$$, '23514', null, 'staff name is not blank');
 select throws_ok($$insert into public.staff (code, station, name) values ('TST-X', 'XXX', 'x')$$, '23503', null, 'staff.station must be a known station');
@@ -29,7 +31,9 @@ select lives_ok($$insert into public.weekly_scores (staff_code, week, score_know
 select throws_ok($$insert into public.weekly_scores (staff_code, week) values ('TST-SUB', 1)$$, '23505', null, 'one row per staff x week');
 
 -- bmi_checks
-select throws_ok($$insert into public.bmi_checks (staff_code, period, height_cm, weight_kg) values ('TST-SUB', 13, 170, 60)$$, '23514', null, 'slot is 1..12');
+select throws_ok($$insert into public.bmi_checks (staff_code, period, height_cm, weight_kg) values ('TST-SUB', 53, 170, 60)$$, '23514', null, 'slot is 1..52');
+select lives_ok($$insert into public.bmi_checks (staff_code, period, height_cm, weight_kg) values ('TST-SUB', 52, 170, 60)$$, 'slot 52 is accepted');
+select lives_ok($$delete from public.bmi_checks where staff_code = 'TST-SUB' and period = 52$$, 'slot 52 removed again');
 select throws_ok($$insert into public.bmi_checks (staff_code, period, height_cm, weight_kg) values ('TST-SUB', 1, null, 60)$$, '23502', null, 'height is required on a stored check');
 select lives_ok($$insert into public.bmi_checks (staff_code, period, height_cm, weight_kg) values ('TST-SUB', 6, 170, 60)$$, 'slot 6 is accepted');
 
@@ -73,7 +77,15 @@ select is((select row(staff_code, replaced_name)::text from public.replacements 
 select is((select count(*) from public.remedials where staff_code = 'TST-SUB-R'), 0::bigint, 'deleting the staff record deletes its remedial');
 
 -- settings
-select throws_ok($$update public.settings set bmi_periods = 13$$, '23514', null, 'bmi_periods is 1..12');
+select throws_ok($$update public.settings set bmi_periods = 53$$, '23514', null, 'bmi_periods is 1..52');
+select throws_ok($$update public.settings set bmi_periods = 0$$, '23514', null, 'bmi_periods is at least 1');
+select lives_ok($$update public.settings set bmi_periods = 8$$, 'the number of checks can be raised');
+select lives_ok($$update public.settings set bmi_periods = 6$$, 'and lowered again while no check uses the dropped slots');
+insert into public.staff (code, station, name) values ('TST-GRD', 'SUB', 'Guard');
+insert into public.bmi_checks (staff_code, period, height_cm, weight_kg) values ('TST-GRD', 6, 170, 60);
+select throws_ok($$update public.settings set bmi_periods = 5$$, '23514', 'bmi_periods_below_used', 'the number of checks cannot drop below a check that has data (slot 6 is stored)');
+select is((select bmi_periods from public.settings), 6::smallint, 'the refused change left the number of checks as it was');
+delete from public.staff where code = 'TST-GRD';
 select throws_ok($$update public.settings set bmi_interval_months = 0$$, '23514', null, 'bmi_interval_months is 1..12');
 select throws_ok($$update public.settings set bmi_normal_max = 30$$, '23514', null, 'BMI thresholds stay ordered');
 select throws_ok($$update public.settings set pass_grade = 101$$, '23514', null, 'pass_grade is 0..100');
@@ -101,7 +113,7 @@ select is(
 );
 
 -- stations
-select is((select count(*) from public.stations), 22::bigint, 'the 22 station codes from sheet Parameter');
+select is((select count(*) from public.stations), 34::bigint, 'the 22 station codes from sheet Parameter plus the 12 from the cleaned sheet');
 select throws_ok($$insert into public.stations (code, sort) values ('KPS', 99)$$, '23514', null, 'KPS is a scope, never a station');
 select throws_ok($$insert into public.stations (code, sort) values ('cgk2', 99)$$, '23514', null, 'station codes are 2..5 upper-case letters/digits');
 

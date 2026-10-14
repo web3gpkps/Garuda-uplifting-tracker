@@ -79,6 +79,7 @@ export function Button({
       type={type}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
+      data-variant={variant}
       className={cx(buttonClasses({ variant, size, fullWidth }), className)}
       {...rest}
     >
@@ -95,5 +96,5 @@ type ButtonLinkProps = ComponentProps<typeof Link> & {
 
 /** A next/link styled as a button, for actions that navigate. Defaults to secondary. */
 export function ButtonLink({ variant = "secondary", size = "md", fullWidth, className, ...rest }: ButtonLinkProps) {
-  return <Link className={cx(buttonClasses({ variant, size, fullWidth }), className)} {...rest} />;
+  return <Link data-variant={variant} className={cx(buttonClasses({ variant, size, fullWidth }), className)} {...rest} />;
 }

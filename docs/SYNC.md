@@ -46,14 +46,14 @@ Garuda workbook, adapters with mocked HTTP, orchestrator failure paths).
 ## Where each table lives
 
 Every workbook tab has its header on row 4 and a **fixed block** of pre-made rows: from the first data row
-to the last row that holds a formula (Master SDM 5..304, Cek BMI 6..305, Log 5..2774, Tindak Lanjut 5..54,
+to the last row that holds a formula (Master SDM 5..1089, Cek BMI 6..1090, Log 5..2774, Tindak Lanjut 5..54,
 Remedial 5..154, Penggantian 5..44). Dashboard, Laporan, Rekap and Cek BMI read those ranges, so the engine
 never writes below a block and never inserts or deletes rows in it.
 
 | Table | Tab (layout) | Key | Synced input columns | Notes |
 |---|---|---|---|---|
-| staff | `Master SDM` | B `ID SDM` | C Program, D Provider, E Unit, F Nama Petugas, G Employee Number, H L/P, I Touch Point, J Role Play, K Post-Test, M Remark di Laporan, Q Status Penugasan, R Evaluation Feedback, S Catatan; **bmi_has_note = `Cek BMI 2 Mingguan` G** (`Ya`/`Tidak` ↔ true/false), **bmi_note = `Cek BMI 2 Mingguan` AS** | No name = absent. A free row has B and F empty: new staff from the DB fill the first one (No in A kept); none left → `rejected:no_sheet_row` ("Master SDM penuh"). A deleted staff member's row is cleared **including B**, so it is free again. G/AS are written on the Cek BMI row = Master row + 1, only if that row's B still mirrors the Master row (`='Master SDM'!B<n>` or the same ID) |
-| bmi_checks | `Cek BMI 2 Mingguan`, header rows 4–5, data 6.. (wide) | B (formula, computed value) + slot | slot k = 1..6: Tgl Cek / Tinggi (cm) / Berat (kg) at H/I/J, M/N/O, R/S/T, W/X/Y, AB/AC/AD, AG/AH/AI | Long in the DB (`period` = slot). Tinggi and Berat both empty = absent; a date alone is noted; periods > 6 are reported. BMI/Kategori and the AL..AU summary (except AS) are formulas. A check for a staff member placed in Master SDM in the same run lands in Cek BMI on the next run (once B shows the ID) |
+| staff | `Master SDM` | B `ID SDM` | C Program, D Provider, E Unit, F Nama Petugas, G Employee Number, H L/P, I Touch Point, J Role Play, K Post-Test, M Remark di Laporan, Q Status Penugasan, R Evaluation Feedback, S Catatan; **bmi_has_note = `Cek BMI 2 Mingguan` I** (`Ya`/`Tidak` ↔ true/false), **bmi_note = `Cek BMI 2 Mingguan` AU** | No name = absent. A free row has B and F empty: new staff from the DB fill the first one (No in A kept); none left → `rejected:no_sheet_row` ("Master SDM penuh"). A deleted staff member's row is cleared **including B**, so it is free again. I/AU are written on the Cek BMI row = Master row + 1, only if that row's B still mirrors the Master row (`='Master SDM'!B<n>` or the same ID) |
+| bmi_checks | `Cek BMI 2 Mingguan`, header rows 4–5, data 6.. (wide) | B (formula, computed value) + slot | slot k = 1..6: Tgl Cek / Tinggi (cm) / Berat (kg) at J/K/L, O/P/Q, T/U/V, Y/Z/AA, AD/AE/AF, AI/AJ/AK (each slot is 5 columns: Tgl, Tinggi, Berat, BMI, Kategori; slot headers read `Cek ke-N (rencana dd/mm/yyyy)`) | Long in the DB (`period` = slot). Tinggi and Berat both empty = absent; a date alone is noted; periods > 6 are reported. BMI/Kategori and the AN..AW summary (except AU) are formulas; G/H (Coaching Evaluation Feedback, Result/Remarks) mirror Master SDM R/S. A check for a staff member placed in Master SDM in the same run lands in Cek BMI on the next run (once B shows the ID) |
 | weekly_scores | `Log Performa Mingguan`, data 5..2774 | A `Minggu Ke` + C `ID SDM` | G Touch Point, H–K scores (0–100), O Topik Gap Utama, P Observer / Coach, Q Catatan Coaching | Empty inputs = absent. Rows 5..2714 are pre-made (week + ID); new records go to the first row whose A, C and inputs are empty (2715..2774). B/D/E/F/L/M/N are formulas |
 | action_items | `Tindak Lanjut`, data 5..54 | B `ID` | C Kelompok, D Aspek, E Akar Masalah / Temuan, F Tindakan / Inisiatif, G Target / KPI, H Jenis, I Jadwal, J Batas Waktu (literal only), K PIC, L Status, M % Progres, N Tgl Update, O Realisasi / Bukti, P Catatan Garuda / KPS, S Sumber | **% Progres is a fraction in the sheet (0.5 = 50%) and 0..100 in the DB.** J is a formula for some items (GA-TL01: `EDATE`): skipped for those rows. New items fill the next numbered free row. Q/R are formulas |
 | remedials | `Remedial`, data 5..154 | B `ID SDM` | H Tindakan Remedial, I Tgl Remedial, J Role Play Ulang, K Post-Test Ulang, O Dilaporkan ke Garuda, P Catatan | One row per participant (UNIQUE staff_code). A row with B filled is a record even with empty inputs. Deleting clears the row **including B**. C–G and L–N are formulas |
@@ -106,6 +106,10 @@ Guards and validation:
   written. The cell gets a note (`Garuda sync: …`), the baseline keeps the old value, `rejected:<kind>` is
   logged once; the note clears when the value is fixed. An invalid value never wins a conflict; if the DB
   changed meanwhile its value replaces it.
+- **Blank required cell with a default** (Status Penugasan = `Aktif`, Status Tindak Lanjut = `Belum Mulai`,
+  % Progres = 0): a blank cell means the default. It is not an issue and the engine does not fill the cell;
+  a database change still wins over it and is written to the cell. A required cell without a default (Unit,
+  Nama Petugas) that is cleared keeps the database value and gets a note.
 - **Duplicate keys** (e.g. the same staff + week twice in Log): every copy is noted and the key is not
   synced until the duplicate is removed (nothing is picked silently).
 - **Generated ids**: a new Penggantian row without `ID Sistem` is inserted and its id written back. An
@@ -114,6 +118,32 @@ Guards and validation:
 
 Idempotent: after a run, merging again yields an empty plan (tested for every case, and replayed on a copy
 of the dummy workbook with the rows `scripts/import_xlsx.py` reads from it).
+
+## Struktur tab Cek BMI
+
+The tab `Cek BMI 2 Mingguan` is not fixed at six checks. Its structure follows Parameter
+(`bmi_periods`, `bmi_interval_days`, `bmi_first_check`), whichever side changed it, and `lib/sync/structure.ts`
+applies the change as the last step of a run (after the data is written, with the settings the run ended
+with). The planning is pure and tested (`lib/sync/bmi-structure.ts`).
+
+| Parameter change | What happens to the tab |
+|---|---|
+| More checks (`bmi_periods` up) | Five columns per new check are inserted after the last group (`insertDimension`), copied from the last group (formats, validation, BMI and Kategori formulas), their inputs cleared, widths copied, the header merged. Formulas in Dashboard and Laporan that point at the summary columns follow, because Sheets rewrites references when columns are inserted |
+| Fewer checks | The trailing groups are deleted, only when no cell in them holds data. Otherwise nothing changes and the run reports "BMI Cek ke-N masih berisi data" as an error (the database also refuses to lower `bmi_periods` below a stored period) |
+| Interval or first date | Every group header is rewritten as `BMI Cek ke-N (Periode 12-25 Oct 2026)`; `Cek Berikutnya` and Laporan use `Parameter!C8` |
+| Always | The summary formulas (Jumlah Cek, Tgl Cek Terakhir, BMI Terakhir, Kategori Terakhir, Delta Berat, Cek Berikutnya, the two Laporan columns) are rewritten for the current number of groups. They use one fixed-size formula over the block (`LOOKUP(2,1/(mask*present),block)` with `MOD(COLUMN(block)-COLUMN(first),5)=offset` as the mask), so 52 checks need no deeper formula than 6 |
+
+One-time changes the same step makes (each only while the old text is still there): column E reads
+`Touch Point` (mirror of Master SDM column I) instead of `Program`; the Parameter rows are renamed
+(`Interval antar cek BMI (hari, semua petugas)`, and the monthly row marked as not used; the old label is
+still matched); Laporan Mingguan C6 and D6 use the interval from Parameter and the new name; the sentences in
+Cek BMI row 2 and Petunjuk about "per bulan" are replaced.
+
+Safety: the step is **opt-in** (`SYNC_BMI_STRUCTURE=on` in Vercel). It rewrites formulas of the live tab, so
+look at a dry run first: `POST /api/sync/run` with `{"dryRun": true}` returns `structure.actions` (what it
+would do) and `structure.blockers` (what it refuses). A change is one atomic `batchUpdate`; if Google rejects
+it, nothing is half applied and the error appears on Sinkronisasi. It is idempotent: when the tab matches the
+settings it asks for nothing.
 
 ## Environment
 
@@ -128,6 +158,7 @@ of the dummy workbook with the rows `scripts/import_xlsx.py` reads from it).
 | `SYNC_SECRET` | yes | ≥ 16 chars (`openssl rand -hex 32`); full access incl. dry run / options |
 | `SYNC_PING_SECRET` | yes | ≥ 16 chars, different from `SYNC_SECRET`; can only trigger a run |
 | `CONFLICT_POLICY` | no | `db-wins` (default) or `sheet-wins` |
+| `SYNC_BMI_STRUCTURE` | no | `on` lets the run restructure the Cek BMI tab (see "Struktur tab Cek BMI"); anything else leaves the tab alone |
 | `SYNC_SHEET_LOCALE` | no | `off` stops the engine from setting the sheet to Indonesian (`in_ID`) / `Asia/Jakarta` |
 
 Credentials are read at request time, so rotating the Google key or a secret needs only an env update and

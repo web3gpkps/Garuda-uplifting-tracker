@@ -31,7 +31,8 @@ describe("checkProfile", () => {
     expect(checkProfile({ ...PROFILE, name: "  " })?.field).toBe("name");
     expect(checkProfile({ ...PROFILE, program: "JOUMPA" })?.field).toBe("program");
     expect(checkProfile({ ...PROFILE, gender: "X" })?.field).toBe("gender");
-    expect(checkProfile({ ...PROFILE, touchPoint: "Lounge" })?.field).toBe("touch_point");
+    expect(checkProfile({ ...PROFILE, touchPoint: "Lounge" })).toBeNull();
+    expect(checkProfile({ ...PROFILE, touchPoint: "x".repeat(61) })?.field).toBe("touch_point");
     expect(checkProfile({ ...PROFILE, assignmentStatus: "Diganti" })?.field).toBe("assignment_status");
     expect(checkProfile({ ...PROFILE, employeeNo: "9".repeat(51) })?.field).toBe("employee_no");
     expect(checkProfile({ ...PROFILE, provider: "p".repeat(101) })?.field).toBe("provider");

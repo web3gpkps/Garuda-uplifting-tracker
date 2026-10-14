@@ -48,6 +48,8 @@ export type Column = DataColumn;
 export interface KvEntry {
   key: string;
   label: string;
+  /** Older texts of the same label, still matched in the sheet (a renamed Parameter row keeps syncing). */
+  aliases?: string[];
   type: ColumnType;
   required?: boolean;
 }

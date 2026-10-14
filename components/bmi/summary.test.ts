@@ -28,9 +28,9 @@ describe("slotCounts", () => {
     checkDate,
   });
   // A: normal in slot 1. B: obese in slot 1. C: not checked yet.
-  const a = bmiSummary([check(1, 170, 60, "2026-10-12")], true, s, today);
-  const b = bmiSummary([check(1, 160, 90, "2026-10-12")], false, s, today);
-  const c = bmiSummary([], null, s, today);
+  const a = bmiSummary([check(1, 170, 60, "2026-10-12")], s, today);
+  const b = bmiSummary([check(1, 160, 90, "2026-10-19")], s, today);
+  const c = bmiSummary([], s, today);
 
   test("counts categories in the chosen slot", () => {
     const counts = slotCounts([a, b, c], 1);
@@ -48,7 +48,7 @@ describe("slotCounts", () => {
   });
 
   test("schedule status comes from each person's own rhythm", () => {
-    // a: note → next 26 Okt (≤ 7 hari); b: no note → next 12 Nov (Terjadwal); c: never checked → 12 Okt (late).
+    // a: last check 12 Okt → next 26 Okt (≤ 7 hari); b: last check 19 Okt → next 2 Nov (Terjadwal); c: never checked → 12 Okt (late).
     const counts = slotCounts([a, b, c], 1);
     expect(counts.dueSoon).toBe(1);
     expect(counts.scheduled).toBe(1);
@@ -67,10 +67,9 @@ describe("Ada catatan BMI", () => {
     expect(parseHasNote(null)).toBeNull();
   });
 
-  test("rhythm follows the note", () => {
-    expect(checkRhythm(true, s)).toBe("tiap 14 hari");
-    expect(checkRhythm(null, s)).toBe("tiap 14 hari");
-    expect(checkRhythm(false, s)).toBe("tiap bulan");
+  test("one rhythm for everyone, whatever the note says", () => {
+    expect(checkRhythm(s)).toBe("tiap 14 hari");
+    expect(checkRhythm({ ...s, bmiIntervalDays: 7 })).toBe("tiap 7 hari");
   });
 
 });
@@ -84,9 +83,10 @@ describe("slot status line and order", () => {
     weightKg: 60,
     checkDate,
   });
-  const checked = bmiSummary([row(1, "2026-10-12")], true, s, today);
-  const never = bmiSummary([], null, s, today);
-  const monthly = bmiSummary([row(1, "2026-10-12")], false, s, today);
+  const checked = bmiSummary([row(1, "2026-10-12")], s, today);
+  const never = bmiSummary([], s, today);
+  // Checked on 19 Oct: the next check (2 Nov) is more than a week away.
+  const scheduled = bmiSummary([row(1, "2026-10-19")], s, today);
 
   test("checked in the slot", () => {
     expect(slotStatusLine(checked.periods[0], checked, today)).toEqual({ text: "Sudah dicek · 12 Okt", tone: "good" });
@@ -98,18 +98,18 @@ describe("slot status line and order", () => {
       text: "Belum dicek · jatuh tempo 6 hari lagi",
       tone: "warning",
     });
-    expect(slotStatusLine(monthly.periods[1], monthly, today)).toEqual({
-      text: "Belum dicek · cek berikutnya 12 Nov",
+    expect(slotStatusLine(scheduled.periods[1], scheduled, today)).toEqual({
+      text: "Belum dicek · cek berikutnya 2 Nov",
       tone: "neutral",
     });
   });
 
   test("late first, then due soon, then the rest", () => {
     const items = [
-      { id: "monthly", s: monthly },
+      { id: "scheduled", s: scheduled },
       { id: "checked", s: checked },
       { id: "never", s: never },
     ];
-    expect(dueFirst(items, (i) => i.s, 2).map((i) => i.id)).toEqual(["never", "checked", "monthly"]);
+    expect(dueFirst(items, (i) => i.s, 2).map((i) => i.id)).toEqual(["never", "checked", "scheduled"]);
   });
 });

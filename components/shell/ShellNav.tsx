@@ -11,7 +11,9 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([type="hidden"]), 
 function navLinkClasses(active: boolean): string {
   return cx(
     "flex min-h-11 items-center rounded-control px-3 text-sm transition-colors duration-120 lg:min-h-9",
-    active ? "bg-brand-tint font-semibold text-brand" : "text-ink hover:bg-bg",
+    active
+      ? "bg-white/10 font-semibold text-white shadow-[inset_3px_0_0_#9be3a7]"
+      : "text-[#d3e3e8] hover:bg-white/10 hover:text-white",
   );
 }
 
@@ -22,7 +24,7 @@ function NavList({ sections, onNavigate }: { sections: NavSection[]; onNavigate?
     <div className="flex flex-col gap-5">
       {sections.map((section) => (
         <div key={section.key}>
-          <p className="section-label mb-1 px-3">{section.label}</p>
+          <p className="nav-label mb-1 px-3">{section.label}</p>
           <ul className="flex flex-col gap-0.5">
             {section.items.map((item) => {
               const active = isNavActive(pathname, item);
@@ -167,7 +169,7 @@ export function MobileChrome({
     <>
       <header
         data-print="hide"
-        className="sticky top-0 z-30 flex h-(--topbar-height) items-center gap-3 border-b border-line bg-surface px-4 sm:px-6 lg:hidden"
+        className="sticky top-0 z-30 flex h-(--topbar-height) items-center gap-3 border-b border-line bg-surface px-4 shadow-card sm:px-6 lg:hidden"
       >
         <Link href={homeHref} aria-label="Beranda" className="flex shrink-0 items-center rounded-control">
           {brand}
@@ -216,18 +218,18 @@ export function MobileChrome({
           if (event.target === event.currentTarget) close();
         }}
         className={cx(
-          "fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(20rem,85vw)] max-w-none border-0 border-r border-line bg-surface p-0 text-ink shadow-float",
+          "on-navy fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(20rem,85vw)] max-w-none border-0 bg-navy p-0 text-white shadow-float",
           "open:flex open:flex-col backdrop:bg-ink/40",
         )}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
+        <div className="flex items-start justify-between gap-3 border-b border-white/15 px-4 py-3">
           <div id={titleId} className="min-w-0">
             {sheetHeader}
           </div>
           <button
             type="button"
             onClick={close}
-            className="-mr-2 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control text-sm font-semibold text-ink-muted hover:bg-bg hover:text-ink"
+            className="-mr-2 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control text-sm font-semibold text-[#d3e3e8] hover:bg-white/10 hover:text-white"
           >
             Tutup
           </button>
@@ -235,7 +237,7 @@ export function MobileChrome({
         <nav aria-label={label} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-4">
           <NavList sections={sections} onNavigate={close} />
         </nav>
-        {sheetFooter ? <div className="border-t border-line px-4 py-3">{sheetFooter}</div> : null}
+        {sheetFooter ? <div className="border-t border-white/15 px-4 py-3">{sheetFooter}</div> : null}
       </dialog>
     </>
   );

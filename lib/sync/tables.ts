@@ -18,6 +18,7 @@ import {
   REMEDIAL_ACTIONS,
   TOUCH_POINTS,
 } from "../rules";
+import { MAX_BMI_PERIODS } from "../bmi-periods";
 import { toDbValue } from "./normalize";
 import type { Canon, CanonRow, Column, ColumnType, DataColumn, KvEntry, SyncTable, TableSpec } from "./types";
 
@@ -50,9 +51,16 @@ export const SETTINGS_ENTRIES: KvEntry[] = [
   { key: "week1_start", label: "Tanggal mulai Minggu ke-1 (Senin)", type: date, required: true },
   { key: "weeks", label: "Jumlah minggu pemantauan", type: int(1, 20), required: true },
   { key: "bmi_first_check", label: "Tanggal cek BMI slot 1", type: date, required: true },
-  { key: "bmi_interval_days", label: "Interval cek BMI – ada catatan (hari)", type: int(1, 90), required: true },
-  { key: "bmi_interval_months", label: "Interval cek BMI – tanpa catatan (bulan)", type: int(1, 12), required: true },
-  { key: "bmi_periods", label: "Jumlah slot cek di sheet BMI", type: int(1, 12), required: true },
+  // One interval for everyone. The structure manager (lib/sync/bmi-structure.ts) renames the old
+  // "ada catatan" row to this label; "Interval cek BMI – tanpa catatan (bulan)" is no longer used.
+  {
+    key: "bmi_interval_days",
+    label: "Interval antar cek BMI (hari, semua petugas)",
+    aliases: ["Interval cek BMI – ada catatan (hari)"],
+    type: int(1, 90),
+    required: true,
+  },
+  { key: "bmi_periods", label: "Jumlah slot cek di sheet BMI", type: int(1, MAX_BMI_PERIODS), required: true },
   { key: "bmi_underweight_below", label: "BMI kategori Kurus jika <", type: num(2, 1, 100), required: true },
   { key: "bmi_normal_max", label: "BMI Normal s.d.", type: num(2, 1, 100), required: true },
   { key: "bmi_overweight_max", label: "BMI Overweight s.d. (di atasnya Obesitas)", type: num(2, 1, 100), required: true },
@@ -92,7 +100,7 @@ const settings: TableSpec = {
 
 /**
  * Master SDM (data rows 5..304). A row with ID SDM but no name is an empty slot; a row with neither is
- * free for a new staff member. bmi_has_note and bmi_note live in "Cek BMI 2 Mingguan" (G and AS) on
+ * free for a new staff member. bmi_has_note and bmi_note live in "Cek BMI 2 Mingguan" (I and AU) on
  * the row below (Cek BMI row = Master row + 1).
  */
 const staff: TableSpec = {
@@ -114,14 +122,15 @@ const staff: TableSpec = {
     d("name", "Nama Petugas", text(), { required: true }),
     d("employee_no", "Employee Number", text()),
     d("gender", "L/P", oneOf(GENDERS)),
-    d("touch_point", "Touch Point", oneOf(TOUCH_POINTS)),
+    // The five listed touch points or free text ("Other"): the database allows up to 60 characters.
+    d("touch_point", "Touch Point", text()),
     d("role_play", "Role Play", score()),
     d("post_test", "Post-Test", score()),
     d("report_remark", "Remark di Laporan", oneOf(REMARKS)),
     d("assignment_status", "Status Penugasan", oneOf(ASSIGNMENT_STATUSES), { required: true, defaultValue: "Aktif" }),
     d("feedback", "Evaluation Feedback", text()),
     d("notes", "Catatan", text()),
-    // These two live in tab "Cek BMI 2 Mingguan" (G, AS), on the row below the Master row.
+    // These two live in tab "Cek BMI 2 Mingguan" (I, AU), on the row below the Master row.
     d("bmi_has_note", "Ada Catatan BMI", { kind: "bool", yes: "Ya", no: "Tidak" }),
     d("bmi_note", "Catatan Program Kebugaran", text()),
   ],
@@ -165,7 +174,7 @@ const bmiChecks: TableSpec = {
   parent: { column: "staff_code", table: "staff" },
   columns: [
     d("staff_code", "ID SDM", text()),
-    d("period", "Cek Ke", int(1, 12)),
+    d("period", "Cek Ke", int(1, MAX_BMI_PERIODS)),
     d("check_date", "Tgl Cek", date),
     d("height_cm", "Tinggi (cm)", num(1, 120, 210), { required: true }),
     d("weight_kg", "Berat (kg)", num(1, 30, 200), { required: true }),

@@ -122,11 +122,11 @@ describe('BMI', () => {
     expect(bmiPeriodForWeek(10, S)).toBe(5);
   });
 
-  test('next check: 2 weeks with a note, monthly without, first slot before any check', () => {
-    expect(nextBmiCheck(null, true, S)).toBe('2026-10-12');
-    expect(nextBmiCheck('2026-10-12', true, S)).toBe('2026-10-26');
-    expect(nextBmiCheck('2026-10-12', null, S)).toBe('2026-10-26');
-    expect(nextBmiCheck('2026-10-12', false, S)).toBe('2026-11-12');
+  test('next check: every interval for everyone, first slot before any check', () => {
+    expect(nextBmiCheck(null, S)).toBe('2026-10-12');
+    expect(nextBmiCheck('2026-10-12', S)).toBe('2026-10-26');
+    expect(nextBmiCheck('2026-10-12', { ...S, bmiIntervalDays: 7 })).toBe('2026-10-19');
+    expect(nextBmiCheck('2026-12-28', S)).toBe('2027-01-11');
     expect(addMonths('2027-01-31', 1)).toBe('2027-02-28');
     expect(bmiScheduleStatus('2026-10-11', '2026-10-12')).toBe('Terlambat cek');
     expect(bmiScheduleStatus('2026-10-19', '2026-10-12')).toBe('Cek ≤ 7 hari');
@@ -139,7 +139,6 @@ describe('BMI', () => {
         { staffCode: 'A', period: 1, checkDate: '2026-10-12', heightCm: 160, weightKg: 68 },
         { staffCode: 'A', period: 2, checkDate: '2026-10-26', heightCm: 160, weightKg: 66 },
       ],
-      true,
       S,
       '2026-10-27',
     );
@@ -149,7 +148,7 @@ describe('BMI', () => {
     expect(s.weightDelta).toBe(-2);
     expect(s.nextCheck).toBe('2026-11-09');
     expect(s.scheduleStatus).toBe('Terjadwal');
-    expect(bmiSummary([], false, S, '2026-10-13').scheduleStatus).toBe('Terlambat cek');
+    expect(bmiSummary([], S, '2026-10-13').scheduleStatus).toBe('Terlambat cek');
   });
 });
 

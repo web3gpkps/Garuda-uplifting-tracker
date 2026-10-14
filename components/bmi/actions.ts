@@ -21,7 +21,7 @@ export type BmiCheckInput = {
 export type BmiProfileInput = {
   staffCode: string;
   gender: "L" | "P" | null;
-  /** "Ada catatan BMI": true = Ya (cek tiap 14 hari), false = Tidak (bulanan), null = belum diisi. */
+  /** "Ada catatan BMI": true = Ya, false = Tidak, null = belum diisi. Hanya catatan: tidak mengubah seberapa sering SDM dicek. */
   bmiHasNote: boolean | null;
   /** "Catatan program kebugaran". */
   bmiNote: string | null;

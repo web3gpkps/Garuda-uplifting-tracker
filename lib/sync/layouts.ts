@@ -376,7 +376,7 @@ function parameterLayout(spec: TableSpec, real: RealSnapshot): Projection {
     return failed(spec, title, `Tab "${title}": kolom "Parameter" / "Nilai" tidak ditemukan di baris 4. Tabel ini tidak disinkronkan.`);
   }
   const [lc, vc] = [labelCols[0], valueCols[0]];
-  const byLabel = new Map(spec.kv!.entries.map((e) => [normHeader(e.label), e.key]));
+  const byLabel = new Map(spec.kv!.entries.flatMap((e) => [e.label, ...(e.aliases ?? [])].map((l) => [normHeader(l), e.key] as const)));
   const values: unknown[][] = [spec.columns.map((c) => c.header)];
   const locked = new Set<string>();
   const rowOfV = new Map<number, number>();
@@ -446,7 +446,7 @@ export function project(spec: TableSpec, real: RealSnapshot): Projection {
 
 /**
  * Master SDM: header row 4, data 5..304. Free row = ID SDM and Nama Petugas both empty. The BMI flag
- * and note are cells of Cek BMI 2 Mingguan (G, AS) on the row below; when that tab's layout is broken
+ * and note are cells of Cek BMI 2 Mingguan (I, AU) on the row below; when that tab's layout is broken
  * they are left alone (locked) and the rest of Master SDM still syncs.
  */
 function masterLayout(spec: TableSpec, real: RealSnapshot): Projection {

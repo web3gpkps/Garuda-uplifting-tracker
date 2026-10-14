@@ -33,14 +33,17 @@ const PENDING_SCREENS = new Set<string>([
 ]);
 
 /**
- * The owner-only sync screens name the replica by its product name, "Google Sheet". There,
+ * The owner-only sync and Parameter screens name the replica by its product name, "Google Sheet". There,
  * and only there, that exact proper noun is allowed; any other "sheet" still fails.
  */
 function allowsGoogleSheet(rel: string): boolean {
   return (
     rel.startsWith("app/admin/sinkronisasi/") ||
     rel === "components/admin/ConflictTable.tsx" ||
-    rel === "components/admin/sync-labels.ts"
+    rel === "components/admin/sync-labels.ts" ||
+    // Owner-only Parameter form: changing the number of checks restructures the replica, and says so.
+    rel === "components/admin/SettingsForm.tsx" ||
+    rel === "components/admin/settings-schema.ts"
   );
 }
 

@@ -32,6 +32,35 @@ export function needsSheetSetup(timeZone: string | undefined): boolean {
   return timeZone !== TARGET_TZ;
 }
 
+/**
+ * Locales whose formulas separate arguments with ";" (the API takes formulas in the notation of the
+ * spreadsheet's locale: a formula written with "," is a parse error in in_ID). Others use ",".
+ */
+const SEMICOLON_LOCALES = /^(in|id|de|fr|es|it|nl|pt|ru|tr|pl|cs|sk|sv|da|fi|nb|no|hu|ro|el|uk|vi|bg|hr|sl|sr|lt|lv|et)(_|$)/i;
+
+/** A formula written with "," between arguments, in the notation of `locale` ("," outside quotes becomes ";"). */
+export function localizeFormula(formula: string, locale?: string): string {
+  if (!locale || !SEMICOLON_LOCALES.test(locale)) return formula;
+  let out = "";
+  let quote: string | null = null;
+  for (const ch of formula) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      out += ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+      out += ch;
+    } else out += ch === "," ? ";" : ch;
+  }
+  return out;
+}
+
+/** Every `formulaValue` of a batchUpdate request list, written in the spreadsheet's notation. */
+export function localizeRequests<T>(requests: T, locale?: string): T {
+  if (!locale || !SEMICOLON_LOCALES.test(locale)) return requests;
+  return JSON.parse(JSON.stringify(requests), (key, value) => (key === "formulaValue" && typeof value === "string" ? localizeFormula(value, locale) : value)) as T;
+}
+
 export class SheetsError extends Error {
   constructor(
     message: string,
@@ -47,6 +76,10 @@ type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 export interface SheetsPort {
   read(tabs: string[]): Promise<RealSnapshot>;
   apply(ops: RealOps, ids: Map<number, number | string>, opts?: { skipTables?: Set<string> }): Promise<void>;
+  /** One atomic spreadsheets:batchUpdate (the BMI tab structure, lib/sync/structure.ts). Absent on the in-memory fakes. */
+  batchUpdate?(requests: unknown[]): Promise<void>;
+  /** Pixel widths of `count` columns of a tab starting at 0-based column `from`. */
+  columnWidths?(tab: string, from: number, count: number): Promise<number[]>;
 }
 
 export function a1Column(index: number): string {
@@ -153,6 +186,20 @@ export class GoogleSheets implements SheetsPort {
       snapshot.tabs[title] = tab;
     });
     return snapshot;
+  }
+
+  async batchUpdate(requests: unknown[]): Promise<void> {
+    await this.call("POST", ":batchUpdate", { requests: localizeRequests(requests, this.locale) });
+  }
+
+  async columnWidths(tab: string, from: number, count: number): Promise<number[]> {
+    const range = `${quoteTab(tab)}!${a1Column(from)}1:${a1Column(from + count - 1)}1`;
+    const fields = "sheets(data(columnMetadata(pixelSize)))";
+    const r = await this.call<{ sheets?: { data?: { columnMetadata?: { pixelSize?: number }[] }[] }[] }>(
+      "GET",
+      `?ranges=${encodeURIComponent(range)}&includeGridData=true&fields=${encodeURIComponent(fields)}`,
+    );
+    return (r.sheets?.[0]?.data?.[0]?.columnMetadata ?? []).map((m) => m.pixelSize ?? 100);
   }
 
   async apply(ops: RealOps, ids: Map<number, number | string>, opts: { skipTables?: Set<string> } = {}): Promise<void> {

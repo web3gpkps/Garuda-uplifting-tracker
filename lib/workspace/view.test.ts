@@ -34,7 +34,7 @@ describe('workspace view', () => {
     expect(changedVia({ updatedByLink: 'own' }, ws)).toBe('tautan ini');
     expect(changedVia({ updatedByLink: 'other' }, ws)).toBe('PIC SUB');
     expect(changedVia({ updatedByLink: 'gone' }, ws)).toBe('tautan lain');
-    expect(changedVia({ updatedByLink: null }, ws)).toBe('pengelola');
+    expect(changedVia({ updatedByLink: null }, ws)).toBe('pengelola atau akun cabang');
     expect(lastChangedLabel({ updatedByLink: 'own', updatedAt: '2026-10-08T07:05:00Z' }, ws)).toBe(
       'Diubah lewat tautan ini, 8 Okt 14.05',
     );

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { emptyOps, encodeRaw, tabsToRead, type RealOps } from "../layouts";
 import { isoToSerial } from "../normalize";
-import { GoogleSheets, a1Column, contiguousDesc, quoteTab } from "../sheets";
+import { GoogleSheets, a1Column, contiguousDesc, localizeFormula, localizeRequests, quoteTab } from "../sheets";
 import { SYNC_TABLES } from "../tables";
 import { smallDb } from "../testing/fixtures";
 import { WorkbookWorld } from "../testing/workbook";
@@ -212,5 +212,25 @@ describe("GoogleSheets.apply", () => {
   test("no requests at all when there is nothing to do and the locale is right", async () => {
     const calls = await applyWith(emptyOps());
     expect(calls).toEqual([]);
+  });
+});
+
+describe("formulas in the spreadsheet's notation", () => {
+  const f = "=IF($B6=\"\",\"a,b\",SUM('Sheet, x'!A1,2))";
+
+  test("a semicolon locale gets ';' between arguments, quotes and sheet names untouched", () => {
+    expect(localizeFormula(f, "in_ID")).toBe("=IF($B6=\"\";\"a,b\";SUM('Sheet, x'!A1;2))");
+    expect(localizeFormula(f, "en_US")).toBe(f);
+    expect(localizeFormula(f, undefined)).toBe(f);
+  });
+
+  test("only formulaValue strings in a request list are rewritten", () => {
+    const requests = [
+      { updateCells: { rows: [{ values: [{ userEnteredValue: { formulaValue: "=MAX(1,2)" } }, { userEnteredValue: { stringValue: "a,b" } }] }] } },
+    ];
+    const out = localizeRequests(requests, "in_ID") as typeof requests;
+    expect(out[0].updateCells.rows[0].values[0].userEnteredValue).toEqual({ formulaValue: "=MAX(1;2)" });
+    expect(out[0].updateCells.rows[0].values[1].userEnteredValue).toEqual({ stringValue: "a,b" });
+    expect(localizeRequests(requests, "en_US")).toBe(requests);
   });
 });

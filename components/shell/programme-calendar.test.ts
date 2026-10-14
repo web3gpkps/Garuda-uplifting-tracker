@@ -16,7 +16,6 @@ const settings: ProgrammeSettingsRow = {
   weeks: 10,
   bmi_first_check: "2026-10-12",
   bmi_interval_days: 14,
-  bmi_interval_months: 1,
   bmi_periods: 6,
 };
 
@@ -53,9 +52,9 @@ describe("programme status and summary", () => {
 
   test("the sentence names the week and the next check", () => {
     expect(programmeSummary(settings, "2026-10-14")).toBe(
-      "Minggu ke-2 dari 10: 12 Okt s.d. 18 Okt 2026. Cek BMI berikutnya: ke-2 dari 6, Senin, 26 Okt 2026.",
+      "Minggu ke-2 dari 10: 12 Okt s.d. 18 Okt 2026. BMI Cek berikutnya: ke-2 dari 6, Senin, 26 Okt 2026.",
     );
-    expect(programmeSummary(settings, "2026-10-12")).toContain("Cek BMI ke-1 dijadwalkan hari ini.");
+    expect(programmeSummary(settings, "2026-10-12")).toContain("BMI Cek ke-1 dijadwalkan hari ini.");
   });
 });
 
@@ -68,16 +67,9 @@ describe("programmeWeekLine", () => {
 });
 
 describe("bmiCadenceNote", () => {
-  test("two-weekly with a BMI note, monthly otherwise", () => {
-    expect(bmiCadenceNote(settings)).toBe("Cek tiap 2 minggu bagi SDM dengan catatan BMI, bulanan bagi yang lain.");
-    expect(bmiCadenceNote({ ...settings, bmi_interval_days: 10, bmi_interval_months: 2 })).toBe(
-      "Cek tiap 10 hari bagi SDM dengan catatan BMI, tiap 2 bulan bagi yang lain.",
-    );
-  });
-
-  test("a row without bmi_interval_months falls back to monthly", () => {
-    const withoutMonths: ProgrammeSettingsRow = { ...settings };
-    delete withoutMonths.bmi_interval_months;
-    expect(bmiCadenceNote(withoutMonths)).toContain("bulanan");
+  test("one rhythm for everyone", () => {
+    expect(bmiCadenceNote(settings)).toBe("Cek tiap 2 minggu untuk semua SDM.");
+    expect(bmiCadenceNote({ ...settings, bmi_interval_days: 10 })).toBe("Cek tiap 10 hari untuk semua SDM.");
+    expect(bmiCadenceNote({ ...settings, bmi_interval_days: 7 })).toBe("Cek tiap minggu untuk semua SDM.");
   });
 });

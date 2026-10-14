@@ -105,7 +105,7 @@ describe("first run (empty baseline)", () => {
       expect(t.db).toEqual({ inserts: [], updates: [], deletes: [], pending: [] });
       expect(t.conflicts).toEqual([]);
     }
-    expect(tp(plan, "settings").sheet.appends.length).toBe(20);
+    expect(tp(plan, "settings").sheet.appends.length).toBe(19);
     expect(w.sheet.rows(SDM).map((r) => r["ID SDM"]).sort()).toEqual(["DPS-01", "SUB-01", "SUB-02"]);
     expect(w.sheet.rows(LOG).length).toBe(2);
     expect(w.sheet.rows(PG)[0]["ID Sistem"]).toBe(1);
@@ -453,6 +453,34 @@ describe("invalid sheet values", () => {
     expect(tp(plan, "staff").db.updates).toEqual([]);
     expect(tp(plan, "staff").issues[0]).toMatchObject({ kind: "required_missing", column: "station" });
     expect(w.sheet.note(SDM, r, "Unit")).toContain("wajib diisi");
+    expectSteady(w);
+  });
+
+  test("a blank required cell that has a default means the default: no issue, no write", () => {
+    const w = seeded();
+    staff(w, "SUB-02").assignment_status = "Aktif";
+    w.sync();
+    const r = rowOf(w, SDM, "ID SDM", "SUB-02");
+    w.sheet.setCell(SDM, r, "Status Penugasan", "");
+    const plan = w.sync();
+    expect(tp(plan, "staff").issues).toEqual([]);
+    expect(tp(plan, "staff").db.updates).toEqual([]);
+    expect(w.sheet.cell(SDM, r, "Status Penugasan")).toBe("");
+    expect(w.sheet.note(SDM, r, "Status Penugasan")).toBeUndefined();
+    expectSteady(w);
+  });
+
+  test("a DB change wins over a blank (default) Status Penugasan cell and is written to it", () => {
+    const w = seeded();
+    staff(w, "SUB-02").assignment_status = "Aktif";
+    w.sync();
+    const r = rowOf(w, SDM, "ID SDM", "SUB-02");
+    w.sheet.setCell(SDM, r, "Status Penugasan", "");
+    w.sync();
+    staff(w, "SUB-02").assignment_status = "Remedial";
+    const plan = w.sync();
+    expect(tp(plan, "staff").conflicts).toEqual([]);
+    expect(w.sheet.cell(SDM, r, "Status Penugasan")).toBe("Remedial");
     expectSteady(w);
   });
 

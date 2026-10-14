@@ -12,7 +12,6 @@ import type { Workspace, WorkspaceStaff } from "./index";
 const NUMERIC_KEYS = [
   "weeks",
   "bmiIntervalDays",
-  "bmiIntervalMonths",
   "bmiPeriods",
   "bmiUnderweightBelow",
   "bmiNormalMax",
@@ -113,9 +112,9 @@ export function trackerData(ws: Workspace, station: string | null = null): Track
 type LinkContext = Pick<Workspace, "linkId" | "linkLabels">;
 type ChangedRow = { updatedByLink?: string | null; updatedAt?: string | null };
 
-/** Who last changed a row: "tautan ini", another link's label, or "pengelola" (owner or data sync). */
+/** Who last changed a row: "tautan ini", another link's label, or "pengelola atau akun cabang" (owner, a signed-in account or the data sync). */
 export function changedVia(row: ChangedRow, ws: LinkContext): string {
-  if (!row.updatedByLink) return "pengelola";
+  if (!row.updatedByLink) return "pengelola atau akun cabang";
   if (row.updatedByLink === ws.linkId) return "tautan ini";
   return ws.linkLabels[row.updatedByLink] ?? "tautan lain";
 }

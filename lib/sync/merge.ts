@@ -652,7 +652,10 @@ function mergeTable(spec: TableSpec, g: Global): TableResult {
         nb[c.db] = d;
         continue;
       }
-      const s = S.values[c.db] ?? null;
+      // A blank required cell that has a default means "the default" (Status Penugasan left empty
+      // in the cleaned sheet = Aktif): it is neither an issue nor a cell the engine fills in.
+      const blankMeansDefault = (S.values[c.db] ?? null) === null && c.defaultValue !== undefined && isRequired(spec, c, rk);
+      const s = blankMeansDefault ? (c.defaultValue as Canon) : (S.values[c.db] ?? null);
       const inv = S.invalid.get(c.db);
       let invalid: { raw: unknown; message: string; kind: IssueKind } | undefined = inv && { ...inv, kind: "invalid_value" };
       if (!invalid && s === null && B && b !== null && isRequired(spec, c, rk)) {

@@ -3,6 +3,7 @@ import type { Workspace } from "@/lib/workspace";
 import { navSections, type WorkspaceAccess } from "@/lib/workspace/access";
 import { ShellFrame, ShellLoading } from "./ShellFrame";
 import { programmeWeekLine } from "./programme-calendar";
+import { cgkBmiNavigation, isCgkBmiShare } from "./cgk-bmi";
 
 type WorkspaceShellProps = {
   access: WorkspaceAccess;
@@ -18,16 +19,18 @@ type WorkspaceShellProps = {
  * Tindak Lanjut is in the nav for KPS links only.
  */
 export function WorkspaceShell({ access, workspace, today, children }: WorkspaceShellProps) {
+  const bmiOnly = isCgkBmiShare(access, workspace);
+  const sections = navSections(access, workspace.isKps);
   return (
     <ShellFrame
-      sections={navSections(access, workspace.isKps)}
-      homeHref={access.basePath}
+      sections={bmiOnly ? cgkBmiNavigation(sections) : sections}
+      homeHref={bmiOnly ? `${access.basePath}/bmi` : access.basePath}
       scopeLabel={workspace.scopeLabel}
       scopeShort={workspace.scope}
       weekLine={workspace.schedule ? programmeWeekLine(workspace.schedule, today) : undefined}
       footer={
         workspace.label ? (
-          <p className="truncate text-xs text-ink-muted" title={workspace.label}>
+          <p className="truncate text-xs text-[#b6ced4]" title={workspace.label}>
             Tautan: {workspace.label}
           </p>
         ) : undefined

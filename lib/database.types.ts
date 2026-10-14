@@ -201,6 +201,54 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          branch_code: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          email: string
+          full_name: string
+          id: string
+          status: Database["public"]["Enums"]["account_status"]
+        }
+        Insert: {
+          branch_code: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          email: string
+          full_name?: string
+          id: string
+          status?: Database["public"]["Enums"]["account_status"]
+        }
+        Update: {
+          branch_code?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          status?: Database["public"]["Enums"]["account_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       remedials: {
         Row: {
           action: string | null
@@ -751,7 +799,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_delete_account: { Args: { p_user_id: string }; Returns: undefined }
       is_admin: { Args: never; Returns: boolean }
+      registration_branches: { Args: never; Returns: string[] }
       share_delete_remedial: {
         Args: {
           p_staff_code: string
@@ -912,7 +962,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      account_status: "pending" | "active" | "inactive"
     }
     CompositeTypes: {
       [_ in never]: never

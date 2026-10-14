@@ -88,7 +88,7 @@ describe("first sync on the imported workbook (same data on both sides)", () => 
 
   test("untouched tabs and workbook formulas survive a busy sequence of edits", () => {
     const w = world();
-    const probes: [string, string][] = [[MS, "L5"], [LOG, "B5"], [BMI, "B6"], [BMI, "K6"], [TL, "Q5"], [TL, "J5"], [REM, "C5"], [PG, "L5"], [PAR, "C30"]];
+    const probes: [string, string][] = [[MS, "L5"], [LOG, "B5"], [BMI, "B6"], [BMI, "G6"], [BMI, "H6"], [BMI, "M6"], [TL, "Q5"], [TL, "J5"], [REM, "C5"], [PG, "L5"], [PAR, "C30"]];
     const before = probes.map(([t, a]) => w.book.formula(t, a));
     staff(w, "SUB-01").notes = "web";
     w.book.set(MS, "S6", "sheet");
@@ -161,7 +161,7 @@ describe("Master SDM (header row 4, free rows, BMI flag and note in Cek BMI)", (
     expect(cells(w, MS, r, ["A", "C", "E", "F", "Q", "J"])).toEqual([4, "IULS", "UPG", "Petugas Baru", "Aktif", 80]);
     expect(w.book.formula(MS, `L${r}`)).toBeDefined();
     // Cek BMI row = Master row + 1: the mirror formula now shows the ID; flag and note filled.
-    expect(cells(w, BMI, r + 1, ["B", "G", "AS"])).toEqual(["UPG-01", "Ya", "program BB"]);
+    expect(cells(w, BMI, r + 1, ["B", "I", "AU"])).toEqual(["UPG-01", "Ya", "program BB"]);
     expect(w.book.formula(BMI, `B${r + 1}`)).toBe(`=IF('Master SDM'!B${r}="","",'Master SDM'!B${r})`);
     expectSteady(w);
   });
@@ -175,7 +175,7 @@ describe("Master SDM (header row 4, free rows, BMI flag and note in Cek BMI)", (
     const second = w.sync();
     expect(tp(second.plan, "bmi_checks").issues).toEqual([]);
     const r = w.book.findRow(BMI, "B", "UPG-01");
-    expect(cells(w, BMI, r, ["M", "N", "O"])).toEqual([isoToSerial("2026-10-12"), 160, 55]);
+    expect(cells(w, BMI, r, ["O", "P", "Q"])).toEqual([isoToSerial("2026-10-12"), 160, 55]);
     expectSteady(w);
   });
 
@@ -247,24 +247,24 @@ describe("Master SDM (header row 4, free rows, BMI flag and note in Cek BMI)", (
     expectSteady(w);
   });
 
-  test("Ada Catatan BMI (Cek BMI G) and Catatan Program Kebugaran (AS) sync both ways", () => {
+  test("Ada Catatan BMI (Cek BMI I) and Catatan Program Kebugaran (AU) sync both ways", () => {
     const w = world();
     const r = w.book.findRow(BMI, "B", "SUB-01");
-    w.book.set(BMI, `G${r}`, "ya");
-    w.book.set(BMI, `AS${r}`, "turunkan 3 kg");
+    w.book.set(BMI, `I${r}`, "ya");
+    w.book.set(BMI, `AU${r}`, "turunkan 3 kg");
     w.sync();
     expect(staff(w, "SUB-01")).toMatchObject({ bmi_has_note: true, bmi_note: "turunkan 3 kg" });
-    expect(w.book.get(BMI, `G${r}`)).toBe("ya"); // equal after normalization: not rewritten
+    expect(w.book.get(BMI, `I${r}`)).toBe("ya"); // equal after normalization: not rewritten
     staff(w, "SUB-02").bmi_has_note = false;
     staff(w, "SUB-02").bmi_note = "dari web";
     w.sync();
     const r2 = w.book.findRow(BMI, "B", "SUB-02");
-    expect(cells(w, BMI, r2, ["G", "AS"])).toEqual(["Tidak", "dari web"]);
-    w.book.set(BMI, `G${r2}`, "Mungkin");
+    expect(cells(w, BMI, r2, ["I", "AU"])).toEqual(["Tidak", "dari web"]);
+    w.book.set(BMI, `I${r2}`, "Mungkin");
     const { plan } = w.sync();
     expect(tp(plan, "staff").issues[0]).toMatchObject({ kind: "invalid_value", column: "bmi_has_note" });
     expect(staff(w, "SUB-02").bmi_has_note).toBe(false);
-    w.book.set(BMI, `G${r2}`, undefined);
+    w.book.set(BMI, `I${r2}`, undefined);
     w.sync();
     expect(staff(w, "SUB-02").bmi_has_note).toBeNull();
     expectSteady(w);
@@ -297,40 +297,40 @@ describe("Cek BMI 2 Mingguan (wide in the sheet, long in the DB, 6 slots)", () =
   test("slot columns map to (staff, period) rows both ways", () => {
     const w = world();
     const sub02 = w.book.findRow(BMI, "B", "SUB-02");
-    w.book.set(BMI, `M${sub02}`, isoToSerial("2026-10-26"));
-    w.book.set(BMI, `N${sub02}`, 165);
-    w.book.set(BMI, `O${sub02}`, "60,5");
+    w.book.set(BMI, `O${sub02}`, isoToSerial("2026-10-26"));
+    w.book.set(BMI, `P${sub02}`, 165);
+    w.book.set(BMI, `Q${sub02}`, "60,5");
     w.db.rows("bmi_checks").push(bmiRow(7, "DPS-01", 6, { check_date: "2026-12-21", height_cm: 158.5, weight_kg: 52 }));
     const { plan } = w.sync();
     expect(tp(plan, "bmi_checks").db.inserts).toEqual([
       { staff_code: "SUB-02", period: 2, check_date: "2026-10-26", height_cm: 165, weight_kg: 60.5 },
     ]);
     const dps = w.book.findRow(BMI, "B", "DPS-01");
-    expect(cells(w, BMI, dps, ["AG", "AH", "AI"])).toEqual([isoToSerial("2026-12-21"), 158.5, 52]);
-    expect(w.book.formula(BMI, `AJ${dps}`)).toBeDefined();
+    expect(cells(w, BMI, dps, ["AI", "AJ", "AK"])).toEqual([isoToSerial("2026-12-21"), 158.5, 52]);
+    expect(w.book.formula(BMI, `AL${dps}`)).toBeDefined();
     expectSteady(w);
   });
 
   test("a date without height and weight is noted, not saved", () => {
     const w = world();
     const r = w.book.findRow(BMI, "B", "SUB-01");
-    w.book.set(BMI, `W${r}`, isoToSerial("2026-11-23"));
+    w.book.set(BMI, `Y${r}`, isoToSerial("2026-11-23"));
     const { plan } = w.sync();
     expect(tp(plan, "bmi_checks").db.inserts).toEqual([]);
     expect(tp(plan, "bmi_checks").issues[0]).toMatchObject({ kind: "incomplete_row", rowKey: "SUB-01|4" });
-    expect(w.book.note(BMI, `X${r}`)).toContain("Baris belum lengkap");
+    expect(w.book.note(BMI, `Z${r}`)).toContain("Baris belum lengkap");
     expectSteady(w);
   });
 
   test("clearing height and weight deletes that check; the date is cleared with it", () => {
     const w = world();
     const r = w.book.findRow(BMI, "B", "SUB-01");
-    w.book.set(BMI, `I${r}`, undefined);
-    w.book.set(BMI, `J${r}`, undefined);
+    w.book.set(BMI, `K${r}`, undefined);
+    w.book.set(BMI, `L${r}`, undefined);
     const { plan } = w.sync();
     expect(tp(plan, "bmi_checks").db.deletes).toEqual([{ staff_code: "SUB-01", period: 1 }]);
-    expect(w.book.get(BMI, `H${r}`)).toBe("");
-    expect(w.book.formula(BMI, `K${r}`)).toBeDefined();
+    expect(w.book.get(BMI, `J${r}`)).toBe("");
+    expect(w.book.formula(BMI, `M${r}`)).toBeDefined();
     expectSteady(w);
   });
 
@@ -580,7 +580,7 @@ describe("Parameter (label in B, value in C)", () => {
     w.db.rows("settings")[0].bmi_interval_days = 7;
     w.db.rows("settings")[0].replacement_deadline = "2026-12-31";
     w.sync();
-    expect(w.book.get(PAR, `C${w.book.findRow(PAR, "B", "Interval cek BMI – ada catatan (hari)")}`)).toBe(7);
+    expect(w.book.get(PAR, `C${w.book.findRow(PAR, "B", "Interval antar cek BMI (hari, semua petugas)")}`)).toBe(7);
     expect(w.book.get(PAR, `C${w.book.findRow(PAR, "B", "Batas waktu penggantian SDM")}`)).toBe(isoToSerial("2026-12-31"));
     expectSteady(w);
   });

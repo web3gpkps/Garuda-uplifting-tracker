@@ -120,11 +120,9 @@ export interface Settings {
   week1Start: IsoDate;
   weeks: number;
   bmiFirstCheck: IsoDate;
-  /** Staff with a BMI note: every n days. */
+  /** Every staff member is checked every n days (default 14: once per two weeks). */
   bmiIntervalDays: number;
-  /** Staff without a BMI note: every n months. */
-  bmiIntervalMonths: number;
-  /** Number of BMI slots in the sheet. */
+  /** Number of BMI check slots (periods); the sheet tab follows it (lib/sync/bmi-structure.ts). */
   bmiPeriods: number;
   bmiUnderweightBelow: number;
   bmiNormalMax: number;
@@ -149,7 +147,6 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   weeks: 10,
   bmiFirstCheck: '2026-10-12',
   bmiIntervalDays: 14,
-  bmiIntervalMonths: 1,
   bmiPeriods: 6,
   bmiUnderweightBelow: 18.5,
   bmiNormalMax: 25,
@@ -564,16 +561,12 @@ export function bmiPeriodForWeek(week: number, s: Settings): number {
 }
 
 /**
- * BMI "Cek Berikutnya": no check yet → first check date; no BMI note ("Tidak") → monthly
- * (EDATE); otherwise (note "Ya" or not filled in) → every bmiIntervalDays.
+ * BMI "Cek Berikutnya": no check yet → first check date; otherwise the last check date plus
+ * bmiIntervalDays, for every staff member (the "Ada Catatan BMI" flag does not change the rhythm).
  */
-export function nextBmiCheck(
-  lastCheckDate: IsoDate | null,
-  hasNote: boolean | null | undefined,
-  s: Settings,
-): IsoDate {
+export function nextBmiCheck(lastCheckDate: IsoDate | null, s: Settings): IsoDate {
   if (lastCheckDate === null) return s.bmiFirstCheck;
-  return hasNote === false ? addMonths(lastCheckDate, s.bmiIntervalMonths) : addDays(lastCheckDate, s.bmiIntervalDays);
+  return addDays(lastCheckDate, s.bmiIntervalDays);
 }
 
 /** BMI "Status Jadwal". */
@@ -609,12 +602,7 @@ export interface BmiSummary {
 }
 
 /** One staff member's BMI row. Slots outside 1 … bmiPeriods are ignored. */
-export function bmiSummary(
-  checks: readonly BmiCheckRow[],
-  hasNote: boolean | null | undefined,
-  s: Settings,
-  today: DateInput,
-): BmiSummary {
+export function bmiSummary(checks: readonly BmiCheckRow[], s: Settings, today: DateInput): BmiSummary {
   const periods: Array<BmiPeriodValue | null> = Array.from({ length: s.bmiPeriods }, () => null);
   for (const c of checks) {
     if (!Number.isInteger(c.period) || c.period < 1 || c.period > s.bmiPeriods) continue;
@@ -640,7 +628,7 @@ export function bmiSummary(
   const latestWeight = lastOf('weightKg');
   const latestBmi = lastOf('bmi');
   const lastCheckDate = lastOf('checkDate');
-  const nextCheck = nextBmiCheck(lastCheckDate, hasNote, s);
+  const nextCheck = nextBmiCheck(lastCheckDate, s);
   return {
     periods,
     checks: checksCount,

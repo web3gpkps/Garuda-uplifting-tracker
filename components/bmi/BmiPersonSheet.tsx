@@ -7,6 +7,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, Select, Textarea } from "@/components/ui/Field";
 import { SaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { CategoryBadge, ScheduleBadge } from "./badges";
 import { formatTanggal, formatTanggalPendek } from "@/lib/dates";
 import { formatDecimal, formatSignedKg } from "@/lib/format";
 import type { BmiSummary, Settings } from "@/lib/rules";
@@ -16,6 +17,8 @@ export type BmiPerson = {
   code: string;
   name: string;
   station: string | null;
+  /** Touch Point as stored: a standard value or the text the owner entered. */
+  touchPoint: string | null;
   gender: string | null;
   /** "Ada catatan BMI": true = Ya, false = Tidak, null = belum diisi. */
   bmiHasNote: boolean | null;
@@ -31,6 +34,8 @@ type BmiPersonSheetProps = {
   accessKey: string;
   person: BmiPerson;
   plannedDates: string[];
+  /** "BMI Cek ke-3 (Periode 9-22 Nov 2026)" for every period. */
+  labels: string[];
   /** The slot chosen on the page, marked in the history. */
   period: number;
   settings: Settings;
@@ -68,6 +73,7 @@ export function BmiPersonSheet({
   accessKey,
   person,
   plannedDates,
+  labels,
   period,
   settings,
 }: BmiPersonSheetProps) {
@@ -148,7 +154,7 @@ export function BmiPersonSheet({
             </Field>
             <Field
               label="Ada catatan BMI"
-              help={`Ya: cek ${checkRhythm(true, settings)}. Tidak: cek ${checkRhythm(false, settings)}.`}
+              help={`Hanya catatan. Semua SDM dicek ${checkRhythm(settings)}.`}
             >
               <Select
                 value={hasNote}
@@ -177,10 +183,16 @@ export function BmiPersonSheet({
         </form>
 
         <dl className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
+          <dt className="text-ink-muted">Touch Point</dt><dd className="text-ink [overflow-wrap:anywhere]">{person.touchPoint || "–"}</dd>
+          <dt className="text-ink-muted">Jumlah cek</dt><dd className="text-ink tabular-nums">{summary.checks}</dd>
+          <dt className="text-ink-muted">Tanggal cek terakhir</dt>
+          <dd className="text-ink tabular-nums">{summary.lastCheckDate ? formatTanggal(summary.lastCheckDate) : "–"}</dd>
+          <dt className="text-ink-muted">BMI terakhir</dt><dd className="text-ink tabular-nums">{formatDecimal(summary.latestBmi, 1) || "–"}</dd>
+          <dt className="text-ink-muted">Kategori terakhir</dt><dd><CategoryBadge category={summary.latestCategory} /></dd>
           <dt className="text-ink-muted">Cek berikutnya</dt>
           <dd className="flex flex-wrap items-center gap-2 text-ink tabular-nums">
             <time dateTime={summary.nextCheck}>{formatTanggal(summary.nextCheck)}</time>
-            <StatusChip label={summary.scheduleStatus} />
+            <ScheduleBadge status={summary.scheduleStatus} />
           </dd>
           <dt className="text-ink-muted">Δ berat</dt>
           <dd className="text-ink tabular-nums">
@@ -205,28 +217,27 @@ export function BmiPersonSheet({
               const value = summary.periods[i] ?? null;
               const selected = i + 1 === period;
               return (
-                <li
-                  key={planned}
-                  className="grid grid-cols-[4.5rem_4.5rem_minmax(0,1fr)] items-center gap-x-3 py-2 text-sm"
-                >
+                <li key={planned} className="flex flex-col gap-1 py-2.5 text-sm">
                   <span className={selected ? "font-semibold text-ink" : "text-ink"}>
-                    Cek ke-{i + 1}
+                    {labels[i]}
                     {selected ? <span className="sr-only"> (dipilih)</span> : null}
                   </span>
-                  <span className="text-ink-muted tabular-nums">
-                    {formatTanggalPendek(value?.checkDate ?? planned)}
-                  </span>
-                  {value && value.heightCm !== null && value.weightKg !== null ? (
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
-                      <span>
-                        {formatDecimal(value.heightCm, 1)} cm · {formatDecimal(value.weightKg, 1)} kg
-                        {value.bmi !== null ? ` · BMI ${formatDecimal(value.bmi, 1)}` : ""}
-                      </span>
-                      {value.category ? <StatusChip label={value.category} /> : null}
+                  <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-ink-muted tabular-nums">
+                      {formatTanggalPendek(value?.checkDate ?? planned)}
                     </span>
-                  ) : (
-                    <span className="text-ink-muted">Belum dicek</span>
-                  )}
+                    {value && value.heightCm !== null && value.weightKg !== null ? (
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
+                        <span>
+                          {formatDecimal(value.heightCm, 1)} cm · {formatDecimal(value.weightKg, 1)} kg
+                          {value.bmi !== null ? ` · BMI ${formatDecimal(value.bmi, 1)}` : ""}
+                        </span>
+                        <CategoryBadge category={value.category} />
+                      </span>
+                    ) : (
+                      <span className="text-ink-muted">Belum dicek</span>
+                    )}
+                  </span>
                 </li>
               );
             })}

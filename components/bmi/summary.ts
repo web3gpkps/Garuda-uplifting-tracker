@@ -77,12 +77,8 @@ export function parseHasNote(value: unknown): boolean | null {
   return null;
 }
 
-/**
- * How often this person is checked (lib/rules nextBmiCheck): no note ("Tidak") monthly,
- * otherwise (Ya, or not filled in) every bmiIntervalDays.
- */
-export function checkRhythm(hasNote: boolean | null | undefined, s: Settings): string {
-  if (hasNote === false) return s.bmiIntervalMonths === 1 ? "tiap bulan" : `tiap ${s.bmiIntervalMonths} bulan`;
+/** How often everyone is checked (lib/rules nextBmiCheck): "tiap 14 hari". */
+export function checkRhythm(s: Settings): string {
   return `tiap ${s.bmiIntervalDays} hari`;
 }
 

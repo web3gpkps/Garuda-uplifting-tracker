@@ -52,7 +52,9 @@ set local role authenticated;
 select is(public.is_admin(), false, 'is_admin() is false for a non-admin');
 
 select is(pg_temp.count_rows(tbl), 0::bigint, format('non-admin sees no rows in %s', tbl))
-  from _expected order by tbl;
+  from _expected where tbl <> 'profiles' order by tbl;
+-- profiles: a signed-in account reads its own row and nobody else's.
+select is(pg_temp.count_rows('profiles'), 1::bigint, 'non-admin sees only their own row in profiles');
 
 select throws_ok(
   $$insert into public.admins (user_id, email) values ('22222222-2222-4222-8222-222222222222', 'x')$$,

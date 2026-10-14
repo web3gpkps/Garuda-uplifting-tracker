@@ -7,12 +7,12 @@ import { readdirSync, readFileSync, writeFileSync } from "fs";
 const [dir, typesFile] = process.argv.slice(2);
 const db = new PGlite({ extensions: { pgcrypto } });
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin;
-create schema auth; create schema extensions; create table auth.users (id uuid primary key, email text);
+create schema auth; create schema extensions; create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb);
 create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;`);
 for (const f of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) await db.exec(readFileSync(`${dir}/${f}`, "utf8"));
 const ts = (t: string) => ({ text: "string", uuid: "string", date: "string", "timestamp with time zone": "string",
-  numeric: "number", smallint: "number", integer: "number", bigint: "number", boolean: "boolean", jsonb: "Json", "text[]": "string[]" } as any)[t] ?? (() => { throw new Error("type " + t); })();
-const cols: any[] = (await db.query(`select table_name, column_name, data_type, is_nullable, column_default, is_identity
+  numeric: "number", smallint: "number", integer: "number", bigint: "number", boolean: "boolean", void: "undefined", jsonb: "Json", "text[]": "string[]" } as any)[t] ?? (() => { throw new Error("type " + t); })();
+const cols: any[] = (await db.query(`select table_name, column_name, data_type, udt_name, is_nullable, column_default, is_identity
   from information_schema.columns where table_schema='public' order by table_name, column_name`)).rows;
 const fks: any[] = (await db.query(`select c.conname, rel.relname tbl, ref.relname reft,
    (select array_agg(a.attname order by k.ord) from unnest(c.conkey) with ordinality k(n,ord) join pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.n) cols,
@@ -27,7 +27,8 @@ for (const t of tables) {
   const line = (c: any, mode: string) => {
     const nul = c.is_nullable === "YES";
     const opt = mode === "Update" || (mode === "Insert" && (nul || c.column_default != null || c.is_identity === "YES"));
-    return `          ${c.column_name}${opt ? "?" : ""}: ${ts(c.data_type)}${nul ? " | null" : ""}`;
+    const type = c.data_type === "USER-DEFINED" ? `Database["public"]["Enums"]["${c.udt_name}"]` : ts(c.data_type);
+    return `          ${c.column_name}${opt ? "?" : ""}: ${type}${nul ? " | null" : ""}`;
   };
   out += `      ${t}: {\n`;
   for (const mode of ["Row", "Insert", "Update"]) out += `        ${mode}: {\n${cs.map((c) => line(c, mode)).join("\n")}\n        }\n`;
@@ -50,8 +51,20 @@ for (const f of fns) {
   out += `      ${f.proname}: {\n        Args: {\n${args.map((a: any) => `          ${a.n}${a.opt ? "?" : ""}: ${a.t}`).join("\n")}\n        }\n        Returns: ${r}\n      }\n`;
 }
 out += "    }\n";
-const src = readFileSync(typesFile, "utf8");
-const start = src.indexOf("  public: {\n    Tables: {") + "  public: {\n".length;
-const end = src.indexOf("    Enums: {", start);
-writeFileSync(typesFile, src.slice(0, start) + out + src.slice(end));
+const enums: any[] = (await db.query(`select t.typname, array_agg(e.enumlabel order by e.enumsortorder) labels
+  from pg_type t join pg_enum e on e.enumtypid = t.oid join pg_namespace n on n.oid = t.typnamespace
+ where n.nspname = 'public' group by t.typname order by t.typname`)).rows;
+out += enums.length
+  ? `    Enums: {\n${enums.map((e) => `      ${e.typname}: ${e.labels.map((l: string) => JSON.stringify(l)).join(" | ")}`).join("\n")}\n    }\n`
+  : "    Enums: {\n      [_ in never]: never\n    }\n";
+// The checked-out file may use CRLF; work on LF and write back with the original line endings.
+const raw = readFileSync(typesFile, "utf8");
+const eol = raw.includes("\r\n") ? "\r\n" : "\n";
+const src = raw.replace(/\r\n/g, "\n");
+const start = src.indexOf("  public: {\n    Tables: {");
+if (start < 0) throw new Error("public Tables block not found in " + typesFile);
+const from = start + "  public: {\n".length;
+const end = src.indexOf("    CompositeTypes: {", from);
+const next = src.slice(0, from) + out + src.slice(end);
+writeFileSync(typesFile, eol === "\n" ? next : next.replace(/\n/g, eol));
 console.log("tables", tables.length, "functions", fns.length);

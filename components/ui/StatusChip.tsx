@@ -129,7 +129,7 @@ export function toneForStatus(label: string | null | undefined): StatusTone {
  * good and neutral are plain text in their tone colour.
  */
 const toneClasses: Record<StatusTone, string> = {
-  good: "text-good", // 5.7:1
+  good: "rounded-status bg-good-tint px-1.5 text-good", // 5.7:1
   neutral: "text-ink-muted", // 6.85:1
   warning: "rounded-status bg-warning-tint px-1.5 text-warning", // 6.07:1
   critical: "rounded-status bg-critical-tint px-1.5 text-critical", // 6.28:1

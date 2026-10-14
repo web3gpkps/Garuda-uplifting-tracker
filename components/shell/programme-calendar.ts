@@ -12,8 +12,6 @@ export type ProgrammeSettingsRow = {
   weeks: number;
   bmi_first_check: string;
   bmi_interval_days: number;
-  /** Interval for staff without a BMI note; only used for the wording. Default from lib/rules. */
-  bmi_interval_months?: number;
   bmi_periods: number;
 };
 
@@ -29,7 +27,6 @@ function asRuleSettings(settings: ProgrammeSettings): Settings {
     weeks: settings.weeks,
     bmiFirstCheck: settings.bmi_first_check,
     bmiIntervalDays: settings.bmi_interval_days,
-    bmiIntervalMonths: settings.bmi_interval_months ?? DEFAULT_SETTINGS.bmiIntervalMonths,
     bmiPeriods: settings.bmi_periods,
   };
 }
@@ -117,11 +114,11 @@ export function programmeSummary(settings: ProgrammeSettings, today: IsoDate): s
 
   let second = "";
   if (next && next.date === today) {
-    second = ` Cek BMI ke-${next.period} dijadwalkan hari ini.`;
+    second = ` BMI Cek ke-${next.period} dijadwalkan hari ini.`;
   } else if (next) {
-    second = ` Cek BMI berikutnya: ke-${next.period} dari ${s.bmiPeriods}, ${formatHariTanggal(next.date)}.`;
+    second = ` BMI Cek berikutnya: ke-${next.period} dari ${s.bmiPeriods}, ${formatHariTanggal(next.date)}.`;
   } else if (status.phase !== "before") {
-    second = ` Cek BMI terakhir (ke-${s.bmiPeriods}) sudah lewat.`;
+    second = ` BMI Cek terakhir (ke-${s.bmiPeriods}) sudah lewat.`;
   }
   return first + second;
 }
@@ -143,15 +140,10 @@ function everyDays(days: number): string {
   return days % 7 === 0 ? `tiap ${days / 7 === 1 ? "minggu" : `${days / 7} minggu`}` : `tiap ${days} hari`;
 }
 
-/**
- * The BMI cadence in one line (slide 15): staff with a BMI note are checked every
- * interval of days, the rest every interval of months.
- * "Cek tiap 2 minggu bagi SDM dengan catatan BMI, bulanan bagi yang lain."
- */
+/** The BMI cadence in one line: every staff member is checked every interval ("Cek tiap 2 minggu untuk semua SDM."). */
 export function bmiCadenceNote(settings: ProgrammeSettings): string {
   const s = asRuleSettings(settings);
-  const months = s.bmiIntervalMonths === 1 ? "bulanan" : `tiap ${s.bmiIntervalMonths} bulan`;
-  return `Cek ${everyDays(s.bmiIntervalDays)} bagi SDM dengan catatan BMI, ${months} bagi yang lain.`;
+  return `Cek ${everyDays(s.bmiIntervalDays)} untuk semua SDM.`;
 }
 
 /** BMI slots planned after the last monitoring week (not on the rail), e.g. slot 6 on 21 Des. */

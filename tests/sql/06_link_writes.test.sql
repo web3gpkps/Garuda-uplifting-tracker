@@ -135,6 +135,9 @@ select throws_ok(format('select public.share_save_staff(%L, null, null, null, nu
   '22023', 'invalid_input', 'staff: gender must be L/P');
 select throws_ok(format('select public.share_save_staff(%L, null, null, null, null, %L, null, null, null, %L, null)', repeat('a1', 24), 'x', 'Cuti'),
   '22023', 'invalid_input', 'staff: assignment_status is enumerated');
+select throws_ok(format('select public.share_save_staff(%L, null, null, null, null, %L, null, null, %L, null, null)', repeat('a1', 24), 'x', repeat('t', 61)),
+  '22023', 'invalid_input', 'staff: touch_point is at most 60 characters');
+insert into _r select 'st_other', public.share_save_staff(repeat('a1', 24), null, null, null, null, 'Dummy Other', null, null, '  Lounge VIP  ', null, null);
 select throws_ok(format('select public.share_save_staff(%L, null, null, null, null, %L, null, null, null, null, null)', repeat('c3', 24), 'x'),
   '22023', 'invalid_input', 'staff: KPS must name a station on insert');
 insert into _r select 'st_kps_move', public.share_save_staff(repeat('c3', 24), 'TST-SUB2', null, null, 'KNO', 'Dummy B', null, null, null, null, null);
@@ -214,6 +217,9 @@ select is((select row(findings, updated_by_link)::text from public.weekly_report
           row('temuan SUB', pg_temp.link('PIC SUB'))::text, 'weekly report: SUB row in its own scope, trimmed, attributed');
 select is((select findings from public.weekly_reports where week = 1 and scope = 'KPS'), 'temuan KPS', 'weekly report: KPS writes the KPS row');
 select is((select count(*) from public.weekly_reports where week = 2), 0::bigint, 'weekly report: blank findings deletes the row');
+
+select is((select touch_point from public.staff where code = (select v -> 'row' ->> 'code' from _r where pk = 'st_other')), 'Lounge VIP',
+  'staff: touch_point accepts free text ("Other"), trimmed');
 
 select * from finish();
 rollback;

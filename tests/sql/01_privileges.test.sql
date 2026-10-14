@@ -58,8 +58,8 @@ select results_eq(
       where n.nspname = 'public'
         and pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
       order by 1 $$,
-  $$ values ('share_delete_remedial'), ('share_delete_replacement'), ('share_kps_save_staff_baseline'), ('share_kps_update_action_item'), ('share_open'), ('share_save_check'), ('share_save_profile'), ('share_save_remedial'), ('share_save_replacement'), ('share_save_staff'), ('share_save_weekly_report'), ('share_save_weekly_score'), ('share_update_action_item') $$,
-  'anon can execute exactly the share_* RPCs in public'
+  $$ values ('registration_branches'), ('share_delete_remedial'), ('share_delete_replacement'), ('share_kps_save_staff_baseline'), ('share_kps_update_action_item'), ('share_open'), ('share_save_check'), ('share_save_profile'), ('share_save_remedial'), ('share_save_replacement'), ('share_save_staff'), ('share_save_weekly_report'), ('share_save_weekly_score'), ('share_update_action_item') $$,
+  'anon can execute exactly registration_branches + the share_* RPCs in public'
 );
 
 select results_eq(
@@ -69,8 +69,8 @@ select results_eq(
       where n.nspname = 'public'
         and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
       order by 1 $$,
-  $$ values ('is_admin'), ('share_delete_remedial'), ('share_delete_replacement'), ('share_kps_save_staff_baseline'), ('share_kps_update_action_item'), ('share_open'), ('share_save_check'), ('share_save_profile'), ('share_save_remedial'), ('share_save_replacement'), ('share_save_staff'), ('share_save_weekly_report'), ('share_save_weekly_score'), ('share_update_action_item') $$,
-  'authenticated can execute exactly is_admin + the share_* RPCs in public'
+  $$ values ('admin_delete_account'), ('is_admin'), ('registration_branches'), ('share_delete_remedial'), ('share_delete_replacement'), ('share_kps_save_staff_baseline'), ('share_kps_update_action_item'), ('share_open'), ('share_save_check'), ('share_save_profile'), ('share_save_remedial'), ('share_save_replacement'), ('share_save_staff'), ('share_save_weekly_report'), ('share_save_weekly_score'), ('share_update_action_item') $$,
+  'authenticated can execute exactly is_admin, admin_delete_account, registration_branches + the share_* RPCs in public'
 );
 
 select ok(
@@ -110,8 +110,8 @@ select results_eq(
        join pg_catalog.pg_namespace n on n.oid = p.pronamespace
       where n.nspname in ('public', 'private') and p.prosecdef
       order by 1 $$,
-  $$ values ('private.sync_ping'), ('public.is_admin'), ('public.share_delete_remedial'), ('public.share_delete_replacement'), ('public.share_kps_save_staff_baseline'), ('public.share_kps_update_action_item'), ('public.share_open'), ('public.share_save_check'), ('public.share_save_profile'), ('public.share_save_remedial'), ('public.share_save_replacement'), ('public.share_save_staff'), ('public.share_save_weekly_report'), ('public.share_save_weekly_score'), ('public.share_update_action_item') $$,
-  'SECURITY DEFINER is limited to is_admin, the share_* RPCs and the sync ping'
+  $$ values ('private.handle_new_user'), ('private.settings_guard_bmi_periods'), ('private.sync_ping'), ('private.sync_profile_email'), ('public.admin_delete_account'), ('public.is_admin'), ('public.registration_branches'), ('public.share_delete_remedial'), ('public.share_delete_replacement'), ('public.share_kps_save_staff_baseline'), ('public.share_kps_update_action_item'), ('public.share_open'), ('public.share_save_check'), ('public.share_save_profile'), ('public.share_save_remedial'), ('public.share_save_replacement'), ('public.share_save_staff'), ('public.share_save_weekly_report'), ('public.share_save_weekly_score'), ('public.share_update_action_item') $$,
+  'SECURITY DEFINER is limited to is_admin, admin_delete_account, registration_branches, the share_* RPCs, the sign-up trigger and the sync ping'
 );
 
 -- Future objects created by postgres in public do not grant anon (alter default privileges).
