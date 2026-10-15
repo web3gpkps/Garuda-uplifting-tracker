@@ -6,8 +6,9 @@ import { bmiCheckName } from "@/lib/bmi-periods";
 import { Dialog, DialogActions } from "@/components/ui/Dialog";
 import { Field, Input, NumberInput, Select, Textarea, parseDecimal } from "@/components/ui/Field";
 import { COMMITMENT_IDEAL, COMMITMENT_LABEL, COMMITMENT_MAX, commitmentCell, commitmentToSave, needsCommitment } from "@/lib/bmi-commitment";
-import { toInputText } from "@/lib/format";
+import { formatDecimal, toInputText } from "@/lib/format";
 import { bmi, bmiCategory, type BmiCategory, type Settings } from "@/lib/rules";
+import { CategoryBadge } from "./badges";
 import { heightError, planCheck, weightError, type CheckErrors, type CheckField, type CheckInputs } from "./entry";
 import { checkRhythm, hasNoteLabel, parseHasNote } from "./summary";
 import { idOf, type BmiTrackerRow, type EditTarget } from "./tracker-model";
@@ -241,15 +242,23 @@ function EditForm({
   // The category of what is typed now decides whether Komitmen/Target is asked for.
   const typedHeight = parseDecimal(inputs.height);
   const typedWeight = parseDecimal(inputs.weight);
-  const liveCategory: BmiCategory | null =
+  const liveBmi: number | null =
     target.kind === "commitment" && stored
-      ? bmiCategory(bmi(stored.heightCm, stored.weightKg), settings)
+      ? bmi(stored.heightCm, stored.weightKg)
       : typedHeight !== null &&
           typedWeight !== null &&
           heightError(inputs.height) === undefined &&
           weightError(inputs.weight) === undefined
-        ? bmiCategory(bmi(typedHeight, typedWeight), settings)
+        ? bmi(typedHeight, typedWeight)
         : null;
+  const liveCategory: BmiCategory | null = bmiCategory(liveBmi, settings);
+  // The result of the numbers above, in the tracker's category colours, before Komitmen/Target.
+  const bmiResult = (
+    <p className="flex flex-wrap items-center gap-3 text-sm" aria-live="polite">
+      <span>BMI {formatDecimal(liveBmi, 1) || "–"}</span>
+      <CategoryBadge category={liveCategory} />
+    </p>
+  );
   const commitmentField = needsCommitment(liveCategory) ? (
     <Field
       label={COMMITMENT_LABEL}
@@ -309,11 +318,17 @@ function EditForm({
       </Field>
     );
   } else if (target.kind === "commitment") {
-    body = commitmentField;
+    body = (
+      <div className="flex flex-col gap-4">
+        {bmiResult}
+        {commitmentField}
+      </div>
+    );
   } else if (stored) {
     body = (
       <div className="flex flex-col gap-4">
         {control(target.field)}
+        {bmiResult}
         {commitmentField}
       </div>
     );
@@ -325,6 +340,7 @@ function EditForm({
           {bmiCheckName(target.period)} baru tersimpan setelah tanggal, tinggi, dan berat terisi.
         </p>
         {order.map((field) => control(field))}
+        {bmiResult}
         {commitmentField}
       </div>
     );
