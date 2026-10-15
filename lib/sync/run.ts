@@ -13,6 +13,7 @@
 import { countOps, projectAll, tabsToRead, translate, type RealOps } from "./layouts";
 import { countPlan, finalizeBaseline, merge, type TableCounts } from "./merge";
 import { needsSheetSetup, type SheetsPort } from "./sheets";
+import { reconcileReserveRows, reserveEnabled, type ReserveSummary } from "./reserve-rows";
 import { reconcileBmiStructure, structureEnabled, structureSettings, type StructureSummary } from "./structure";
 import { conflictToLog, issueToLog, type SyncStore } from "./supabase";
 import { SYNC_TABLES } from "./tables";
@@ -41,6 +42,8 @@ export interface RunSummary {
   sheet?: ReturnType<typeof countOps> & { setLocale: boolean };
   /** The Cek BMI tab: columns per check follow Parameter (lib/sync/structure.ts). */
   structure?: StructureSummary;
+  /** Ready-to-use rows for new staff in Master SDM and Cek BMI (lib/sync/reserve-rows.ts). */
+  reserve?: ReserveSummary;
   errors?: string[];
 }
 
@@ -72,17 +75,21 @@ export async function runSync(deps: RunDeps, opts: RunOptions = {}): Promise<Run
     const plan = merge({ baseline, sheet, db, conflictPolicy: policy, allowMassDelete: opts.allowMassDelete, specs });
     const ops: RealOps = translate(plan, projections, real);
     const setLocale = needsSheetSetup(real.timeZone);
-    return { plan, ops, previous: baseline, sheetSummary: { ...countOps(ops), setLocale } };
+    return { plan, ops, real, previous: baseline, sheetSummary: { ...countOps(ops), setLocale } };
   };
+
+  /** New staff the plan puts into free rows of Master SDM. */
+  const placedStaff = (plan: Plan) => plan.tables.find((t) => t.table === "staff")?.sheet.appends.length ?? 0;
 
   if (opts.dryRun) {
     // Reads only; no lease, nothing written anywhere (sync_state included).
     try {
-      const { plan, sheetSummary } = await prepare();
+      const { plan, real, sheetSummary } = await prepare();
       const errors = plan.tables.filter((t) => t.error).map((t) => t.error!);
+      const reserve = reserveEnabled() ? ((await reconcileReserveRows(deps.sheets, real, placedStaff(plan), { dryRun: true })) ?? undefined) : undefined;
       const settings = structureEnabled() ? structureSettings(finalizeBaseline(plan, new Map(), specs)) : null;
       const structure = settings ? ((await reconcileBmiStructure(deps.sheets, settings, { dryRun: true })) ?? undefined) : undefined;
-      return { status: "dry-run", durationMs: elapsed(), policy, tables: summarize(plan), sheet: sheetSummary, structure, errors };
+      return { status: "dry-run", durationMs: elapsed(), policy, tables: summarize(plan), sheet: sheetSummary, structure, reserve, errors };
     } catch (e) {
       return { status: "error", durationMs: elapsed(), policy, errors: [safeMessage(e)] };
     }
@@ -92,7 +99,7 @@ export async function runSync(deps: RunDeps, opts: RunOptions = {}): Promise<Run
   if (!token) return { status: "busy", durationMs: elapsed(), policy };
 
   try {
-    const { plan, ops, previous, sheetSummary } = await prepare();
+    const { plan, ops, real, previous, sheetSummary } = await prepare();
     if (elapsed() > (deps.writeDeadlineMs ?? 35_000)) throw new Error("Read phase too slow; no writes started.");
 
     const { ids, failed } = await deps.store.apply(plan);
@@ -121,6 +128,17 @@ export async function runSync(deps: RunDeps, opts: RunOptions = {}): Promise<Run
       for (const [id, sig] of Object.entries(previous?.issues ?? {})) if (id.startsWith(`${table}::`)) next.issues![id] = sig;
     }
 
+    // Keep ready-to-use rows for new staff. Before the structure step: that step reads the tabs again.
+    let reserve: ReserveSummary | undefined;
+    let reserveError: string | undefined;
+    if (reserveEnabled()) {
+      try {
+        reserve = (await reconcileReserveRows(deps.sheets, real, placedStaff(plan))) ?? undefined;
+      } catch (e) {
+        reserveError = `Baris cadangan SDM: ${safeMessage(e)}`;
+      }
+    }
+
     // The Cek BMI tab follows the settings this run ended with (more or fewer checks, new interval).
     let structure: StructureSummary | undefined;
     let structureError: string | undefined;
@@ -138,6 +156,8 @@ export async function runSync(deps: RunDeps, opts: RunOptions = {}): Promise<Run
       ...[...failed].map(([t, m]) => `DB ${t}: ${m}`),
       ...(structure?.blockers ?? []),
       ...(structureError ? [structureError] : []),
+      ...(reserve?.blockers ?? []),
+      ...(reserveError ? [reserveError] : []),
     ];
     const released = await deps.store.releaseLease(token, next, errors.length ? errors.join(" | ").slice(0, 2000) : null);
     if (!released) errors.push("Lease expired before the run finished; baseline not stored.");
@@ -148,6 +168,7 @@ export async function runSync(deps: RunDeps, opts: RunOptions = {}): Promise<Run
       tables: summarize(plan, failed),
       sheet: sheetSummary,
       structure,
+      reserve,
       errors: errors.length ? errors : undefined,
     };
   } catch (e) {

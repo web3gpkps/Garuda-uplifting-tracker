@@ -119,6 +119,24 @@ Guards and validation:
 Idempotent: after a run, merging again yields an empty plan (tested for every case, and replayed on a copy
 of the dummy workbook with the rows `scripts/import_xlsx.py` reads from it).
 
+## Baris siap pakai untuk SDM baru
+
+A staff member added on the website goes into a **free row** of Master SDM: a row inside the block of
+formulas whose ID SDM and Nama Petugas are empty. The row below it in Cek BMI 2 Mingguan (Master row + 1)
+mirrors it with formulas, so the person shows there and their BMI is computed. The sync never writes into
+rows without those formulas (an empty row below the block is not a free row) and never inserts rows in the
+data, so when the last free row is used the next new staff member stays in the database only, with the
+issue "Master SDM penuh" on the Sinkronisasi page (this happened on 15 Oct 2026: 717 staff in rows 5-721).
+
+`lib/sync/reserve-rows.ts` keeps rows ready. After the data of a run is written, when fewer than 10 free
+rows are left (not counting the staff this run places), it copies the formulas, formats and drop-downs of
+the last row of each tab down 50 more rows (Master SDM rows r.., Cek BMI rows r+1..), empties the typed
+values of the copy and numbers the new Cek BMI rows. Existing rows are never changed. It refuses, with a
+run error, when Cek BMI does not line up with Master SDM (the last Cek BMI row must mirror the last Master
+row). It runs before the structure step, needs a port that can `batchUpdate`, and is switched off with
+`SYNC_RESERVE_ROWS=off`. Ranges that other tabs hold to a fixed end (the Dashboard counts
+`'Master SDM'!$N$5:$N$304`) do not grow with the rows.
+
 ## Struktur tab Cek BMI
 
 The tab `Cek BMI 2 Mingguan` is not fixed at six checks. Its structure follows Parameter

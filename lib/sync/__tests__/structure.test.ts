@@ -68,10 +68,13 @@ function setup(periods?: number) {
 
 beforeEach(() => {
   process.env.SYNC_BMI_STRUCTURE = "on";
+  // These tests count the batches of the structure step; the reserve rows step has its own tests.
+  process.env.SYNC_RESERVE_ROWS = "off";
 });
 
 afterEach(() => {
   delete process.env.SYNC_BMI_STRUCTURE;
+  delete process.env.SYNC_RESERVE_ROWS;
 });
 
 describe("structure step of a run", () => {
