@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { COMMITMENT_IDEAL, COMMITMENT_MAX, commitmentCell, commitmentError, commitmentToSave, needsCommitment } from "./bmi-commitment";
+import { COMMITMENT_IDEAL, COMMITMENT_MAX, commitmentCell, commitmentDraft, commitmentError, commitmentToSave, needsCommitment } from "./bmi-commitment";
 
 describe("Komitmen/Target", () => {
   test("everything but Normal asks for a commitment", () => {
@@ -27,6 +27,14 @@ describe("Komitmen/Target", () => {
     // A check that just left Normal still carries the old text until the database clears it.
     expect(commitmentCell("Overweight", COMMITMENT_IDEAL)).toEqual({ text: "", editable: true });
     expect(commitmentCell(null, null)).toEqual({ text: "", editable: false });
+  });
+
+  test("the input of a stored check starts with its typed text, never with Sudah Ideal", () => {
+    expect(commitmentDraft("Obesitas", "Turun 5 kg")).toBe("Turun 5 kg");
+    expect(commitmentDraft("Overweight", null)).toBe("");
+    expect(commitmentDraft("Normal", COMMITMENT_IDEAL)).toBe("");
+    expect(commitmentDraft("Overweight", COMMITMENT_IDEAL)).toBe("");
+    expect(commitmentDraft(null, "x")).toBe("");
   });
 
   test("a commitment is at most 500 characters", () => {

@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_SETTINGS, TOUCH_POINTS, type Settings } from "@/lib/rules";
 import {
+  CATEGORY_FILTERS,
   applyEdit,
   filterViews,
   idOf,
+  isCategoryFilter,
   isCheckedIn,
   summarizeRow,
   summaryOf,
@@ -53,7 +55,7 @@ const rows = [
   row("T-03", "Petugas Tiga"),
 ];
 const views: BmiRowView[] = rows.map((r) => ({ row: r, summary: summarizeRow(r, settings, today) }));
-const base = { query: "", status: "all" as const, touchPoint: "", period: 1 };
+const base = { query: "", status: "all" as const, touchPoint: "", category: "all" as const, period: 1 };
 const codes = (list: BmiRowView[]) => list.map((v) => v.row.code);
 
 describe("summarizeRow", () => {
@@ -93,6 +95,34 @@ describe("filterViews", () => {
     expect(codes(filterViews(views, { ...base, query: "  dua " }))).toEqual(["T-02"]);
     expect(codes(filterViews(views, { ...base, query: "t-03" }))).toEqual(["T-03"]);
     expect(filterViews(views, { ...base, query: "tidak ada" })).toEqual([]);
+  });
+
+  test("the category filter keeps the people whose latest check is in that category", () => {
+    // T-01 Normal, T-02 Obesitas, T-03 no check yet.
+    expect(codes(filterViews(views, { ...base, category: "Normal" }))).toEqual(["T-01"]);
+    expect(codes(filterViews(views, { ...base, category: "Obesitas" }))).toEqual(["T-02"]);
+    expect(filterViews(views, { ...base, category: "Overweight" })).toEqual([]);
+    expect(filterViews(views, { ...base, category: "Kurus" })).toEqual([]);
+    expect(codes(filterViews(views, { ...base, category: "all" }))).toEqual(["T-01", "T-02", "T-03"]);
+  });
+
+  test("the category filter combines with the other filters", () => {
+    expect(codes(filterViews(views, { ...base, category: "Obesitas", touchPoint: "Baggage Service" }))).toEqual(["T-02"]);
+    expect(filterViews(views, { ...base, category: "Obesitas", query: "satu" })).toEqual([]);
+    expect(codes(filterViews(views, { ...base, category: "Normal", status: "due" }))).toEqual(["T-01"]);
+  });
+
+  test("a category the person had before the latest check no longer counts", () => {
+    const moved = { ...rows[0], checks: [rows[0].checks[0], { date: "2026-10-19", heightCm: 170, weightKg: 90, commitment: null }, ...rows[0].checks.slice(2)] };
+    const v = [{ row: moved, summary: summarizeRow(moved, settings, today) }];
+    expect(filterViews(v, { ...base, category: "Normal" })).toEqual([]);
+    expect(filterViews(v, { ...base, category: "Obesitas" })).toHaveLength(1);
+  });
+
+  test("the filter options are the four categories after \"all\"", () => {
+    expect(CATEGORY_FILTERS.map((f) => f.value)).toEqual(["all", "Normal", "Kurus", "Overweight", "Obesitas"]);
+    expect(isCategoryFilter("Overweight")).toBe(true);
+    expect(isCategoryFilter("Gemuk")).toBe(false);
   });
 
   test("a branch account's view searches the employee number, not the staff code", () => {

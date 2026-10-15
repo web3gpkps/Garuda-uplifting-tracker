@@ -8,7 +8,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, Input, NumberInput, Textarea, parseDecimal } from "@/components/ui/Field";
 import { SaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { StatusChip, type StatusTone } from "@/components/ui/StatusChip";
-import { COMMITMENT_IDEAL, COMMITMENT_LABEL, COMMITMENT_MAX, commitmentCell, commitmentToSave, needsCommitment } from "@/lib/bmi-commitment";
+import { COMMITMENT_IDEAL, COMMITMENT_LABEL, COMMITMENT_MAX, commitmentCell, commitmentDraft, commitmentToSave, needsCommitment } from "@/lib/bmi-commitment";
 import { bmiCheckName, isCoachingCheck } from "@/lib/bmi-periods";
 import { formatTanggal } from "@/lib/dates";
 import { bmi, bmiCategory, type Settings } from "@/lib/rules";
@@ -73,8 +73,12 @@ export function BmiCard({
   const [height, setHeight] = useState(toInputText(saved?.heightCm));
   const [weight, setWeight] = useState(toInputText(saved?.weightKg));
   const [commitment, setCommitment] = useState(
-    saved ? commitmentCell(bmiCategory(bmi(saved.heightCm, saved.weightKg), settings), saved.commitment).text : "",
+    saved ? commitmentDraft(bmiCategory(bmi(saved.heightCm, saved.weightKg), settings), saved.commitment) : "",
   );
+  // What this card last saved or deleted. The page's own copy (`saved`) only catches up once the server's
+  // refresh arrives, and the card must not act on the old one in between (a second save, a delete, a cancel).
+  const [local, setLocal] = useState<{ value: BmiCardSaved | null } | null>(null);
+  const current = local ? local.value : saved;
   const [errors, setErrors] = useState<CheckErrors>({});
   const [save, setSave] = useState<SaveState>({ status: "idle" });
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -122,8 +126,16 @@ export function BmiCard({
       setConfirmOpen(false);
       if (result.ok) {
         setErrors({});
+        setLocal({
+          value: result.deleted
+            ? null
+            : { checkDate: values.checkDate, heightCm: values.heightCm as number, weightKg: values.weightKg as number, commitment: values.commitment },
+        });
         setSave({ status: result.deleted ? "deleted" : "saved", at: result.savedAt });
-        if (result.deleted) setCheckDate(defaultDate);
+        if (result.deleted) {
+          setCheckDate(defaultDate);
+          setCommitment("");
+        }
         else if (goNext) jumpToNext();
         return;
       }
@@ -142,7 +154,7 @@ export function BmiCard({
       weight: weightError(weight),
     };
     const bothEmpty = heightValue === null && weightValue === null;
-    if (bothEmpty && !saved) {
+    if (bothEmpty && !current) {
       next.height = "Isi tinggi badan.";
       next.weight = "Isi berat badan.";
     } else if (heightValue === null && weightValue !== null) {
@@ -176,8 +188,9 @@ export function BmiCard({
   function cancelDelete() {
     if (pending) return;
     setConfirmOpen(false);
-    setHeight(toInputText(saved?.heightCm));
-    setWeight(toInputText(saved?.weightKg));
+    setHeight(toInputText(current?.heightCm));
+    setWeight(toInputText(current?.weightKg));
+    setCommitment(current ? commitmentDraft(bmiCategory(bmi(current.heightCm, current.weightKg), settings), current.commitment) : "");
   }
 
   const incomplete = profileIncomplete(person);
@@ -224,13 +237,13 @@ export function BmiCard({
       </div>
     );
     return (
-      <li className="flex scroll-mt-4 flex-col" data-bmi-row="" data-checked={saved ? "true" : "false"}>
+      <li className="flex scroll-mt-4 flex-col" data-bmi-row="" data-checked={current ? "true" : "false"}>
         <div role="group" aria-label={`${bmiCheckName(period)}, ${person.name}`} className="grid grid-cols-2 gap-3 px-4 py-4">
           {nameBlock}
-          {reading("TB", saved ? `${formatDecimal(saved.heightCm, 0, 1)} cm` : "–")}
-          {reading("BB", saved ? `${formatDecimal(saved.weightKg, 0, 1)} kg` : "–")}
-          {reading("Tgl cek", saved?.checkDate ? formatTanggal(saved.checkDate) : "–")}
-          {reading(COMMITMENT_LABEL, commitmentCell(liveCategory, saved?.commitment).text || "–")}
+          {reading("TB", current ? `${formatDecimal(current.heightCm, 0, 1)} cm` : "–")}
+          {reading("BB", current ? `${formatDecimal(current.weightKg, 0, 1)} kg` : "–")}
+          {reading("Tgl cek", current?.checkDate ? formatTanggal(current.checkDate) : "–")}
+          {reading(COMMITMENT_LABEL, commitmentCell(liveCategory, current?.commitment).text || "–")}
           <div className="flex min-w-0 flex-col gap-1">
             <span className="text-sm font-semibold text-ink">BMI</span>
             <div className="flex min-h-11 flex-wrap items-center gap-2">
@@ -254,7 +267,7 @@ export function BmiCard({
   }
 
   return (
-    <li className="flex scroll-mt-4 flex-col" data-bmi-row="" data-checked={saved ? "true" : "false"}>
+    <li className="flex scroll-mt-4 flex-col" data-bmi-row="" data-checked={current ? "true" : "false"}>
       <form
         ref={formRef}
         onSubmit={onSubmit}

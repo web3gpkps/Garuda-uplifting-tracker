@@ -3,7 +3,7 @@
  * by tracker-model.test.ts. Formulas stay in lib/rules; this only shapes rows, filters
  * them, counts them and applies an edit to a row so the screen can show a save at once.
  */
-import { bmiSummary, TOUCH_POINTS, type BmiCheckRow, type BmiSummary, type Settings } from "@/lib/rules";
+import { bmiSummary, TOUCH_POINTS, type BmiCategory, type BmiCheckRow, type BmiSummary, type Settings } from "@/lib/rules";
 import type { CheckField } from "./entry";
 
 /** One stored check: the database refuses a check without both height and weight. */
@@ -100,12 +100,29 @@ export function idOf(row: Pick<BmiTrackerRow, "code" | "displayId">): string {
   return row.displayId ?? row.code;
 }
 
+/** The BMI category filter: every category, or one of the four (matched on the latest check, the Kategori Terakhir column). */
+export type CategoryFilter = "all" | BmiCategory;
+
+export const CATEGORY_FILTERS: ReadonlyArray<{ value: CategoryFilter; label: string }> = [
+  { value: "all", label: "Semua kategori" },
+  { value: "Normal", label: "Normal" },
+  { value: "Kurus", label: "Kurus" },
+  { value: "Overweight", label: "Overweight" },
+  { value: "Obesitas", label: "Obesitas" },
+];
+
+export function isCategoryFilter(value: string): value is CategoryFilter {
+  return CATEGORY_FILTERS.some((f) => f.value === value);
+}
+
 export type RowFilters = {
   /** Name or ID (No Pegawai in a branch account's view), any case. */
   query: string;
   status: StatusFilter;
   /** "" is every touch point. */
   touchPoint: string;
+  /** Latest BMI category; "all" leaves everybody in, including people with no check yet. */
+  category: CategoryFilter;
   /** The chosen period, 1-based: "Sudah dicek" and "Belum dicek" are about this one. */
   period: number;
 };
@@ -116,6 +133,7 @@ export function filterViews(views: readonly BmiRowView[], f: RowFilters): BmiRow
   return views.filter(({ row, summary }) => {
     if (query && !`${idOf(row)} ${row.name}`.toLowerCase().includes(query)) return false;
     if (f.touchPoint && row.touchPoint?.trim() !== f.touchPoint) return false;
+    if (f.category !== "all" && summary.latestCategory !== f.category) return false;
     if (f.status === "late" && summary.scheduleStatus !== "Terlambat cek") return false;
     if (f.status === "due" && summary.scheduleStatus !== "Cek ≤ 7 hari") return false;
     const checked = isCheckedIn(summary, f.period);

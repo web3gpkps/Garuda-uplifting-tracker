@@ -35,6 +35,16 @@ export function commitmentCell(
   return { text: stored === COMMITMENT_IDEAL ? "" : (stored ?? ""), editable: true };
 }
 
+/**
+ * What the commitment input starts with for a stored check: the typed text of a check that is not Normal,
+ * and nothing for a Normal one (its "Sudah Ideal" is not text to edit, so it must not turn up in the
+ * input when the numbers are changed to something above Normal).
+ */
+export function commitmentDraft(category: BmiCategory | null, stored: string | null | undefined): string {
+  const cell = commitmentCell(category, stored);
+  return cell.editable ? cell.text : "";
+}
+
 /** A typed commitment checked before it is sent: null when fine. */
 export function commitmentError(typed: string): string | null {
   return typed.trim().length > COMMITMENT_MAX ? `Paling panjang ${COMMITMENT_MAX} karakter.` : null;

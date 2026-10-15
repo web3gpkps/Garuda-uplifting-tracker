@@ -41,10 +41,12 @@ import { EditStaffDialog, type StaffEditRequest } from "./EditStaffDialog";
 import { serverCheckErrors } from "./entry";
 import { BMI_SHEET_TAB, sheetColumnCount, sheetColumnRange } from "./labels";
 import {
+  CATEGORY_FILTERS,
   STATUS_FILTERS,
   applyEdit,
   filterViews,
   idOf,
+  isCategoryFilter,
   isCheckedIn,
   isStatusFilter,
   summaryOf,
@@ -52,6 +54,7 @@ import {
   trackerMetrics,
   type BmiRowView,
   type BmiTrackerRow,
+  type CategoryFilter,
   type EditTarget,
   type RowEdit,
   type StatusFilter,
@@ -181,6 +184,7 @@ export function BmiTracker({
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [touchPoint, setTouchPoint] = useState("");
+  const [category, setCategory] = useState<CategoryFilter>("all");
   const [paging, setPaging] = useState({ key: "", extra: 0 });
   const [profileCode, setProfileCode] = useState<string | null>(null);
   const [edit, setEdit] = useState<EditRequest | null>(null);
@@ -199,14 +203,14 @@ export function BmiTracker({
 
   const deferredQuery = useDeferredValue(query);
   const filtered = useMemo(
-    () => filterViews(views, { query: deferredQuery, status, touchPoint, period }),
-    [views, deferredQuery, status, touchPoint, period],
+    () => filterViews(views, { query: deferredQuery, status, touchPoint, category, period }),
+    [views, deferredQuery, status, touchPoint, category, period],
   );
   const metrics = useMemo(() => trackerMetrics(views, period), [views, period]);
   const touchPoints = useMemo(() => touchPointsOf(rows), [rows]);
 
   // Show more after "Tampilkan ... berikutnya"; any new filter starts from the first page again.
-  const pageKey = `${deferredQuery}|${status}|${touchPoint}|${period}|${stationFilter}`;
+  const pageKey = `${deferredQuery}|${status}|${touchPoint}|${category}|${period}|${stationFilter}`;
   const extra = paging.key === pageKey ? paging.extra : 0;
   const pageSize = phone ? CARD_PAGE : TABLE_PAGE;
   const limit = pageSize + extra;
@@ -214,7 +218,7 @@ export function BmiTracker({
   const remaining = filtered.length - shown.length;
 
   const columnCount = sheetColumnCount(settings.bmiPeriods);
-  const hasFilters = query !== "" || status !== "all" || touchPoint !== "";
+  const hasFilters = query !== "" || status !== "all" || touchPoint !== "" || category !== "all";
 
   // The chosen period's columns sit just right of the frozen ones, as in the sheet. The position is
   // arithmetic (every group has the same width), so it holds even when that group is not drawn yet.
@@ -344,12 +348,15 @@ export function BmiTracker({
 
   const addStaff = (input: AddBmiStaffInput): Promise<AddBmiStaffResult> => actions.addStaff(accessKey, input);
 
-  const openEdit = useCallback((target: EditTarget) => setEdit((prev) => ({ n: (prev?.n ?? 0) + 1, target })), []);
+  // Every opening has its own number for good: a dialog remembers things per opening (the "Hapus cek?" step),
+  // so a number that started again from 1 after a close would bring that step back by itself.
+  const openings = useRef(0);
+  const openEdit = useCallback((target: EditTarget) => setEdit({ n: ++openings.current, target }), []);
   const openProfile = useCallback((code: string) => setProfileCode(code), []);
   // "Edit Profil" in the profile panel: the panel closes and the form opens in its place.
   const openStaffEdit = useCallback((code: string) => {
     setProfileCode(null);
-    setStaffEdit((prev) => ({ n: (prev?.n ?? 0) + 1, code }));
+    setStaffEdit({ n: ++openings.current, code });
   }, []);
 
   function exportCsv() {
@@ -369,6 +376,7 @@ export function BmiTracker({
     setQuery("");
     setStatus("all");
     setTouchPoint("");
+    setCategory("all");
   }
 
   /** Phone cards: due and late first, for the chosen period. */
@@ -483,6 +491,19 @@ export function BmiTracker({
                   ))}
                 </Select>
               </Control>
+              <Control id={`${ids}-c`} label="Kategori BMI terakhir" className="bmi-control--filter">
+                <Select
+                  id={`${ids}-c`}
+                  value={category}
+                  onChange={(e) => isCategoryFilter(e.target.value) && setCategory(e.target.value)}
+                >
+                  {CATEGORY_FILTERS.map((f) => (
+                    <option key={f.value} value={f.value}>
+                      {f.label}
+                    </option>
+                  ))}
+                </Select>
+              </Control>
               {touchPoints.length > 0 ? (
                 <Control id={`${ids}-g`} label="Touch Point" className="bmi-control--filter bmi-control--touch">
                   <Select id={`${ids}-g`} value={touchPoint} onChange={(e) => setTouchPoint(e.target.value)}>
@@ -559,7 +580,7 @@ export function BmiTracker({
               </div>
             ) : phone === true ? (
               <BmiPhoneList
-                key={`${period}|${status}|${touchPoint}|${stationFilter}`}
+                key={`${period}|${status}|${touchPoint}|${category}|${stationFilter}`}
                 label={labels[period - 1] ?? bmiCheckName(period)}
                 cards={cards}
                 accessKey={accessKey}

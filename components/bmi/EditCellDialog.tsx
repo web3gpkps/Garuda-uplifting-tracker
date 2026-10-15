@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { bmiCheckName } from "@/lib/bmi-periods";
 import { Dialog, DialogActions } from "@/components/ui/Dialog";
 import { Field, Input, NumberInput, Select, Textarea, parseDecimal } from "@/components/ui/Field";
-import { COMMITMENT_IDEAL, COMMITMENT_LABEL, COMMITMENT_MAX, commitmentCell, commitmentToSave, needsCommitment } from "@/lib/bmi-commitment";
+import { COMMITMENT_IDEAL, COMMITMENT_LABEL, COMMITMENT_MAX, commitmentDraft, commitmentToSave, needsCommitment } from "@/lib/bmi-commitment";
 import { formatDecimal, toInputText } from "@/lib/format";
 import { bmi, bmiCategory, type BmiCategory, type Settings } from "@/lib/rules";
 import { CategoryBadge } from "./badges";
@@ -126,7 +126,7 @@ function EditForm({
   });
   // Komitmen/Target: what is typed (a stored "Sudah Ideal" is not text to edit).
   const [commitment, setCommitment] = useState(
-    stored ? commitmentCell(bmiCategory(bmi(stored.heightCm, stored.weightKg), settings), stored.commitment).text : "",
+    stored ? commitmentDraft(bmiCategory(bmi(stored.heightCm, stored.weightKg), settings), stored.commitment) : "",
   );
   const [errors, setErrors] = useState<CheckErrors & { note?: string }>({});
   const [message, setMessage] = useState("");
@@ -202,7 +202,8 @@ function EditForm({
     begin();
     void deleteCheck(row.code, target.period).then((outcome) => {
       finish(outcome);
-      if (!outcome.ok) onConfirmDelete(false);
+      // Done or refused, the "Hapus cek?" step is over.
+      onConfirmDelete(false);
     });
   }
 
