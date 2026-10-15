@@ -116,12 +116,15 @@ Selain tautan, setiap cabang bisa punya akun sendiri (pola yang sama dengan IAP 
 3. Akun yang disetujui masuk di `/login` dan dikirim ke `/cabang`: halaman yang sama dengan tautan stasiun,
    lingkupnya cabang akun itu (KPS = semua stasiun), ditentukan di database, bukan dari URL. Akun
    `pending` atau `inactive` ditolak dengan alasan dan tidak memegang sesi.
-4. Lupa kata sandi: `/forgot-password`, tautan email ke `/auth/callback`, lalu `/reset-password`.
+4. Lupa kata sandi: tidak lewat email. Pemilik membuka **Akun Cabang**, memilih **Atur ulang kata sandi**,
+   dan memberikan kata sandi sementara yang tampil sekali. Akun itu masuk, lalu menggantinya lewat
+   **Ganti kata sandi** (`/reset-password`). `/forgot-password` hanya menjelaskan alur ini.
 
 Pengaturan di dashboard Supabase (tidak bisa diubah dari migrasi): Authentication, URL Configuration:
 **Site URL** = alamat aplikasi, dan **Redirect URLs** memuat `<alamat aplikasi>/auth/callback` (serta
-`http://localhost:3000/auth/callback` untuk pengembangan). Konfirmasi email saat ini aktif di project;
-pengirim email bawaan Supabase dibatasi jumlahnya, jadi pasang SMTP sendiri bila pendaftar banyak.
+`http://localhost:3000/auth/callback` untuk pengembangan). Tanpa SMTP sendiri, matikan **Confirm email**
+(Authentication, Sign In / Providers, Email): pengirim email bawaan Supabase hanya mengirim ke anggota tim
+project. Persetujuan pemilik tetap menjadi gerbangnya, jadi pastikan nama, cabang dan email pendaftar sebelum menyetujui.
 Tabel `public.profiles`, fungsi `admin_delete_account` dan `registration_branches` ada di
 `supabase/migrations/20261014090000_branch_accounts.sql` dan `20261014090200_registration_branches.sql`; tes
 keamanannya di `tests/sql/08_accounts.test.sql`.

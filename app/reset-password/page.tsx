@@ -16,7 +16,7 @@ export default function ResetPasswordPage() {
   );
 }
 
-/** The recovery link signs the visitor in (see /auth/callback); without that session there is nothing to change. */
+/** Changing the password needs a session: a signed-in account, or one the recovery link (/auth/callback) opened. */
 async function ResetGate() {
   const [admin, account] = await Promise.all([getAdminSession(), getAccountSession()]);
   const signedIn = admin.status === "admin" || admin.status === "not-admin" || account.status !== "signed-out";
@@ -24,11 +24,11 @@ async function ResetGate() {
   if (!signedIn) {
     return (
       <AuthFrame
-        title="Tautan tidak berlaku"
-        intro={<p>Tautan penggantian kata sandi sudah dipakai atau kedaluwarsa. Minta tautan baru.</p>}
+        title="Masuk dulu"
+        intro={<p>Masuk dengan kata sandi Anda (atau kata sandi sementara dari pengelola), lalu ganti kata sandi di sini.</p>}
         footnote={
-          <Link href="/forgot-password" className="font-semibold text-accent underline underline-offset-2">
-            Minta tautan baru
+          <Link href="/login" className="font-semibold text-accent underline underline-offset-2">
+            Ke halaman masuk
           </Link>
         }
       />

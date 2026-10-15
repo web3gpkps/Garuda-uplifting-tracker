@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Panel } from "@/components/ui/Panel";
 import { Tabs } from "@/components/ui/Tabs";
 import { branchLabel } from "@/lib/accounts/rules";
-import { deleteAccount, updateAccount } from "./account-actions";
+import { deleteAccount, resetAccountPassword, updateAccount } from "./account-actions";
 import {
   TAB_LABEL,
   TAB_ORDER,
@@ -53,6 +53,11 @@ export function AccountsManager({ title, accounts, branches }: Props) {
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const [removePending, startRemove] = useTransition();
+  const [resetting, setResetting] = useState<AccountRow | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [resetPending, startReset] = useTransition();
 
   const visible = accounts.filter((row) => matchesSearch(row, query));
   const counts = accountCounts(accounts);
@@ -90,6 +95,48 @@ export function AccountsManager({ title, accounts, branches }: Props) {
         setRemoveError("Server tidak menjawab. Coba lagi.");
       }
     });
+  }
+
+  function openReset(row: AccountRow) {
+    setResetError(null);
+    setTempPassword(null);
+    setCopied(false);
+    setResetting(row);
+  }
+
+  // The temporary password lives only in this dialog's state: closing it forgets the password.
+  function closeReset() {
+    setResetting(null);
+    setTempPassword(null);
+    setCopied(false);
+  }
+
+  function confirmReset() {
+    if (!resetting) return;
+    const row = resetting;
+    setResetError(null);
+    startReset(async () => {
+      try {
+        const result = await resetAccountPassword(row.id);
+        if (!result.ok) {
+          setResetError(result.message);
+          return;
+        }
+        setTempPassword(result.password);
+      } catch {
+        setResetError("Server tidak menjawab. Coba lagi.");
+      }
+    });
+  }
+
+  async function copyPassword() {
+    if (!tempPassword) return;
+    try {
+      await navigator.clipboard.writeText(tempPassword);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
   }
 
   function panel(tab: AccountTab) {
@@ -186,6 +233,11 @@ export function AccountsManager({ title, accounts, branches }: Props) {
                             Aktifkan lagi
                           </Button>
                         ) : null}
+                        {tab !== "pending" ? (
+                          <Button size="sm" variant="secondary" disabled={busy} onClick={() => openReset(row)}>
+                            Atur ulang kata sandi
+                          </Button>
+                        ) : null}
                         <Button
                           size="sm"
                           variant="ghost"
@@ -247,6 +299,59 @@ export function AccountsManager({ title, accounts, branches }: Props) {
           panel: panel(tab),
         }))}
       />
+
+      <Dialog
+        open={resetting !== null}
+        onClose={closeReset}
+        dismissible={!resetPending}
+        title={
+          tempPassword
+            ? `Kata sandi sementara untuk ${resetting?.fullName || resetting?.email}`
+            : `Atur ulang kata sandi ${resetting?.fullName || resetting?.email || ""}?`
+        }
+        description={
+          tempPassword
+            ? "Kata sandi ini hanya tampil sekali. Berikan ke pemilik akun secara langsung, lalu minta ia menggantinya lewat Ganti kata sandi setelah masuk."
+            : "Kata sandi lama langsung tidak berlaku. Anda akan melihat kata sandi sementara satu kali untuk diberikan ke pemilik akun."
+        }
+        footer={
+          tempPassword ? (
+            <Button onClick={closeReset}>Sudah dicatat, tutup</Button>
+          ) : (
+            <>
+              <Button variant="secondary" disabled={resetPending} onClick={closeReset}>
+                Batal
+              </Button>
+              <Button loading={resetPending} loadingText="Mengatur ulang…" onClick={confirmReset}>
+                Atur ulang kata sandi
+              </Button>
+            </>
+          )
+        }
+      >
+        {tempPassword ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-ink-muted">
+              Email: <span className="font-semibold text-ink break-all">{resetting?.email}</span>
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <code
+                aria-label="Kata sandi sementara"
+                className="rounded-control bg-surface-sunken px-3 py-2 font-mono text-lg tracking-wider text-ink select-all"
+              >
+                {tempPassword}
+              </code>
+              <Button size="sm" variant="secondary" onClick={copyPassword}>
+                {copied ? "Tersalin" : "Salin"}
+              </Button>
+            </div>
+          </div>
+        ) : resetError ? (
+          <p role="alert" className="text-sm font-semibold text-critical">
+            {resetError}
+          </p>
+        ) : null}
+      </Dialog>
 
       <Dialog
         open={removing !== null}

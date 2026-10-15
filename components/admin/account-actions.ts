@@ -4,8 +4,11 @@ import { refresh } from "next/cache";
 import { isAccountStatus, KPS_BRANCH, UNASSIGNED_BRANCH } from "@/lib/accounts/rules";
 import { requireAdmin } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
+import { temporaryPassword } from "@/lib/accounts/temp-password";
 
 export type AccountActionResult = { ok: true; message: string } | { ok: false; message: string };
+export type PasswordResetResult = { ok: true; password: string } | { ok: false; message: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BRANCH = /^[A-Z0-9]{2,5}$/;
@@ -75,4 +78,32 @@ export async function deleteAccount(id: string): Promise<AccountActionResult> {
   }
   refresh();
   return { ok: true, message: "Akun dihapus." };
+}
+
+/**
+ * "Atur ulang kata sandi": gives a branch account a new temporary password and returns it once, for the owner
+ * to hand over (there is no e-mail). The old password stops working at once. Owner only; never for an owner
+ * account. The password is not stored or logged anywhere; the account changes it after signing in.
+ */
+export async function resetAccountPassword(id: string): Promise<PasswordResetResult> {
+  await requireAdmin();
+  if (typeof id !== "string" || !UUID.test(id)) return { ok: false, message: "Akun tidak dikenali." };
+
+  // RLS: only the owner can read other profiles, so this also confirms the row is a branch account.
+  const supabase = await createClient();
+  const { data: profile, error: profileError } = await supabase.from("profiles").select("id").eq("id", id).maybeSingle();
+  if (profileError) return { ok: false, message: "Akun belum bisa diperiksa. Coba lagi." };
+  if (!profile) return { ok: false, message: "Akun ini sudah tidak ada. Muat ulang halaman." };
+
+  const service = createServiceClient();
+  if (!service) return { ok: false, message: "Server belum dikonfigurasi untuk mengatur ulang kata sandi." };
+
+  const { data: owner, error: ownerError } = await service.from("admins").select("user_id").eq("user_id", id).maybeSingle();
+  if (ownerError) return { ok: false, message: "Akun belum bisa diperiksa. Coba lagi." };
+  if (owner) return { ok: false, message: "Kata sandi akun pengelola tidak bisa diatur ulang dari sini." };
+
+  const password = temporaryPassword();
+  const { error } = await service.auth.admin.updateUserById(id, { password });
+  if (error) return { ok: false, message: "Kata sandi belum diganti. Coba lagi." };
+  return { ok: true, password };
 }

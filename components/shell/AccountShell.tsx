@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Workspace } from "@/lib/workspace";
 import { ACCOUNT_ACCESS, navSections } from "@/lib/workspace/access";
@@ -32,11 +33,16 @@ export function AccountShell({ workspace, accountName, today, children }: Accoun
       scopeShort={workspace.scope}
       weekLine={workspace.schedule ? programmeWeekLine(workspace.schedule, today) : undefined}
       footer={
-        <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-xs text-[#b6ced4]" title={accountName}>
-            {accountName}
-          </span>
-          <SignOutButton variant="ghost" size="sm" />
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-xs text-[#b6ced4]" title={accountName}>
+              {accountName}
+            </span>
+            <SignOutButton variant="ghost" size="sm" />
+          </div>
+          <Link href="/reset-password" className="flex min-h-11 items-center text-xs text-[#b6ced4] underline underline-offset-2 hover:text-white lg:min-h-0">
+            Ganti kata sandi
+          </Link>
         </div>
       }
     >

@@ -212,28 +212,6 @@ export type RecoveryState =
   | { status: "error"; message: string; field?: string; email?: string }
   | { status: "done"; message: string };
 
-/** Always answers the same way, so the form cannot be used to find out who has an account. */
-export async function requestPasswordReset(_prev: RecoveryState, formData: FormData): Promise<RecoveryState> {
-  const email = String(formData.get("email") ?? "").trim();
-  if (!email) return { status: "error", message: "Isi email akun Anda.", field: "Isi email akun Anda.", email };
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return { status: "error", message: "Format email belum benar.", field: "Format email belum benar.", email };
-  }
-  if (!getSupabasePublicEnv()) return { status: "error", message: NOT_CONFIGURED, email };
-
-  const supabase = await createClient();
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${await requestOrigin()}/auth/callback?next=/reset-password`,
-  });
-  if (error) {
-    const failure = authFailure(error);
-    if (failure.code === "rate-limited" || failure.code === "auth-unreachable") {
-      return { status: "error", message: failure.message, email };
-    }
-  }
-  return { status: "done", message: "Jika email itu terdaftar, tautan untuk mengganti kata sandi sudah dikirim. Periksa kotak masuk Anda." };
-}
-
 export async function updatePassword(_prev: RecoveryState, formData: FormData): Promise<RecoveryState> {
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
@@ -253,7 +231,7 @@ export async function updatePassword(_prev: RecoveryState, formData: FormData): 
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) {
-    return { status: "error", message: "Tautan sudah tidak berlaku. Minta tautan baru dari halaman Lupa kata sandi." };
+    return { status: "error", message: "Sesi Anda sudah berakhir. Masuk lagi, lalu ulangi." };
   }
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
