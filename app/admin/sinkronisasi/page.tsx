@@ -6,11 +6,16 @@ import { ErrorState } from "@/components/ui/States";
 import { ReloadButton } from "@/components/ui/ReloadButton";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ConflictTable, ResolvedConflicts, type ConflictRow } from "@/components/admin/ConflictTable";
+import { SyncActions } from "@/components/admin/SyncActions";
+import { TABLE_LABEL } from "@/components/admin/sync-labels";
 import { formatRelatif, formatWaktu } from "@/components/admin/format";
 import { requireAdmin } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Sinkronisasi" };
+
+// "Sinkronkan sekarang" runs the whole sync inside the Server Action.
+export const maxDuration = 60;
 
 const TITLE = "Sinkronisasi";
 const OPEN_LIMIT = 200;
@@ -57,7 +62,7 @@ async function SyncData() {
   await requireAdmin();
   const supabase = await createClient();
   // sync_state.baseline (the full snapshot) is never read here: it is large and not shown.
-  const [stateResult, openResult, resolvedResult] = await Promise.all([
+  const [stateResult, openResult, resolvedResult, heldResult] = await Promise.all([
     supabase
       .from("sync_state")
       .select("initialized, lease_token, lease_until, last_success_at, failures, last_error")
@@ -76,7 +81,20 @@ async function SyncData() {
       .not("resolved_at", "is", null)
       .order("resolved_at", { ascending: false })
       .limit(RESOLVED_LIMIT),
+    supabase
+      .from("sync_conflicts")
+      .select("table_name, sheet_value, created_at")
+      .eq("resolution", "rejected:deletes_skipped")
+      .is("resolved_at", null)
+      .order("created_at", { ascending: false }),
   ]);
+
+  // Latest held-back count per table (the guard logs once per table while the deletes stay pending).
+  const held = new Map<string, number>();
+  for (const r of heldResult.data ?? []) {
+    if (!held.has(r.table_name)) held.set(r.table_name, Number(r.sheet_value) || 0);
+  }
+  const heldDeletes = [...held].map(([t, rows]) => ({ table: TABLE_LABEL[t] ?? t, rows }));
 
   // Request time (after the queries): reading the clock is allowed here.
   const now = new Date();
@@ -100,6 +118,8 @@ async function SyncData() {
         title={TITLE}
         meta={stateResult.error || !state ? `${openCount} konflik belum ditinjau` : parts.join(" · ")}
       />
+
+      <SyncActions heldDeletes={heldDeletes} />
 
       {stateResult.error || !state ? (
         <Panel>

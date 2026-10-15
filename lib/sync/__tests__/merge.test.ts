@@ -339,55 +339,55 @@ describe("delete vs edit races (whole-row conflicts)", () => {
 
 // ------------------------------------------------------------------ deletion guard
 
-describe("deletion guard: max(3 rows, 10%)", () => {
+describe("deletion guard: max(10 rows, 50%)", () => {
   const bigDb = (n: number) => ({ ...smallDb(), staff: manyStaff(n), weekly_scores: [], bmi_checks: [] });
   const dropSheetRows = (w: World, tab: string, count: number) => w.sheet.tabs.get(tab)!.values.splice(1, count);
 
   test("clearing many sheet rows skips the DB deletes and logs once", () => {
-    const w = seeded(bigDb(20));
-    dropSheetRows(w, SDM, 5);
+    const w = seeded(bigDb(30));
+    dropSheetRows(w, SDM, 16);
     const plan = w.sync();
     const s = tp(plan, "staff");
     expect(s.db.deletes).toEqual([]);
     expect(s.issues.filter((i) => i.kind === "deletes_skipped").map((i) => i.isNew)).toEqual([true]);
-    expect(w.db.rows("staff")).toHaveLength(20);
-    expect(Object.keys(w.baseline!.tables.staff!)).toHaveLength(20);
+    expect(w.db.rows("staff")).toHaveLength(30);
+    expect(Object.keys(w.baseline!.tables.staff!)).toHaveLength(30);
     const again = w.sync();
     expect(tp(again, "staff").issues.filter((i) => i.kind === "deletes_skipped").map((i) => i.isNew)).toEqual([false]);
     expect(pending(again)).toEqual([]);
   });
 
   test("allowMassDelete lifts the guard for that table", () => {
-    const w = seeded(bigDb(20));
-    dropSheetRows(w, SDM, 5);
+    const w = seeded(bigDb(30));
+    dropSheetRows(w, SDM, 16);
     w.sync();
     w.sync({ allowMassDelete: ["staff"] });
-    expect(w.db.rows("staff")).toHaveLength(15);
+    expect(w.db.rows("staff")).toHaveLength(14);
     expectSteady(w);
   });
 
-  test("up to 3 rows (or 10%) is allowed", () => {
+  test("up to 10 rows (or half the table) is allowed", () => {
     const w = seeded(bigDb(20));
-    dropSheetRows(w, SDM, 3);
-    w.sync();
-    expect(w.db.rows("staff")).toHaveLength(17);
-    expectSteady(w);
-  });
-
-  test("threshold is 10% for big tables: 10 of 100 allowed, 11 of 100 skipped", () => {
-    const w = seeded(bigDb(100));
     dropSheetRows(w, SDM, 10);
     w.sync();
-    expect(w.db.rows("staff")).toHaveLength(90);
+    expect(w.db.rows("staff")).toHaveLength(10);
+    expectSteady(w);
+  });
+
+  test("threshold is 50% for big tables: 50 of 100 allowed, 51 of 100 held back", () => {
+    const w = seeded(bigDb(100));
+    dropSheetRows(w, SDM, 50);
+    w.sync();
+    expect(w.db.rows("staff")).toHaveLength(50);
     const w2 = seeded(bigDb(100));
-    dropSheetRows(w2, SDM, 11);
+    dropSheetRows(w2, SDM, 51);
     w2.sync();
     expect(w2.db.rows("staff")).toHaveLength(100);
   });
 
   test("DB-side mass delete skips the sheet deletes", () => {
-    const w = seeded(bigDb(20));
-    w.db.tables.set("staff", w.db.rows("staff").slice(5));
+    const w = seeded(bigDb(30));
+    w.db.tables.set("staff", w.db.rows("staff").slice(16));
     const plan = w.sync();
     expect(tp(plan, "staff").sheet.updates).toEqual([]);
     expect(w.sheet.rows(SDM).every((r) => r["Nama Petugas"] !== "")).toBe(true);

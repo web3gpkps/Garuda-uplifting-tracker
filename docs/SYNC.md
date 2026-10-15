@@ -98,9 +98,11 @@ conflict.
 
 Guards and validation:
 
-- **Deletion guard**: more than `max(3, 10 %)` of a table's baseline rows deleted in one direction in one
-  run → those deletes are skipped, `rejected:deletes_skipped` logged once. Override for one run:
-  `{"allowMassDelete": ["staff"]}`.
+- **Deletion guard**: deletes reach the other side on the next run. Only an extreme one, more than
+  `max(10 rows, 50 %)` of a table's baseline rows deleted in one direction in one run (e.g. a tab cleared
+  by accident), is held back and logged once as `rejected:deletes_skipped`. /admin/sinkronisasi then shows
+  "Penghapusan ditahan" with **Terapkan penghapusan** (one run with `allowMassDelete` for those tables; the
+  log rows are marked reviewed). API override for one run: `{"allowMassDelete": ["staff"]}`.
 - **Invalid sheet values** (score 120, height 300, unknown option, unknown unit, bad date, `% Progres` >
   100%, required cell cleared, unknown `ID SDM`, settings breaking the DB's cross-field checks) are never
   written. The cell gets a note (`Garuda sync: …`), the baseline keeps the old value, `rejected:<kind>` is
@@ -244,7 +246,7 @@ HTTP 200 except `error` (500), unauthorized (401), not configured (503).
 | BMI period > 6 in the DB | `rejected:no_sheet_row` | add slot columns to the workbook, or ignore |
 | Cek BMI rows sorted / B no longer mirrors Master SDM | that staff member's `Ada Catatan BMI` / `Catatan Program Kebugaran` are not synced (DB value stands) | restore the order (row = Master row + 1, B = `=IF('Master SDM'!Bn="","",'Master SDM'!Bn)`) |
 | Unknown unit typed in the sheet | `rejected:invalid_value` | use a code from `stations`, or add the station in the DB first |
-| Many rows cleared in the sheet | deletes skipped; `rejected:deletes_skipped` | restore (Version history) or rerun with `allowMassDelete` |
+| More than half of a tab cleared at once | deletes held back; `rejected:deletes_skipped` | restore (Version history), or **Terapkan penghapusan** on /admin/sinkronisasi |
 | Bad credentials / env | `error` naming the variable (never its value) | fix env |
 
 ## Resolving conflicts
@@ -288,6 +290,16 @@ Steps:
 4. Real run: same curl without the body. Then run once more: every count should be 0.
 5. Install the Apps Script (`apps-script/README.md`), then run `supabase/production-setup.sql` (Vault
    secrets + pg_cron) so the schedule and the DB trigger start calling the route.
+
+## Sheet-shaped views (schema `sheet`)
+
+Migration `20261015130000_sheet_mirror_views.sql` adds read-only views named after the tabs (`sheet."Master SDM"`,
+`sheet."Cek BMI 2 Mingguan"`, …) whose columns are the tab's header texts in the tab's order, formula
+columns included (computed like lib/rules.ts; time-dependent ones use the Jakarta date). Open them in the
+Supabase Table Editor (schema `sheet`). The tables in `public` stay normalized; the engine, the RPCs and the
+app use those. `Cek BMI 2 Mingguan` is rebuilt when `settings.bmi_periods` changes. Only postgres and
+service_role can read the schema (not exposed to the API). The owner can also run a sync from
+/admin/sinkronisasi (**Sinkronkan sekarang**) instead of waiting for the next minute.
 
 ## Local scripts
 

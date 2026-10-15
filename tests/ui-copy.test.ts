@@ -40,6 +40,7 @@ function allowsGoogleSheet(rel: string): boolean {
   return (
     rel.startsWith("app/admin/sinkronisasi/") ||
     rel === "components/admin/ConflictTable.tsx" ||
+    rel === "components/admin/SyncActions.tsx" ||
     rel === "components/admin/sync-labels.ts" ||
     // Owner-only Parameter form: changing the number of checks restructures the replica, and says so.
     rel === "components/admin/SettingsForm.tsx" ||

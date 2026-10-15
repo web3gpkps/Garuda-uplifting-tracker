@@ -11,8 +11,9 @@
  * New row on one side -> insert on the other. Row in baseline but gone from one side -> delete on the
  * other (delete vs edit is a whole-row conflict resolved by the same policy).
  *
- * Guards: deleting more than max(3, 10%) of a table's baseline rows in one direction skips those
- * deletes. Invalid sheet values are never written to the DB; they get a cell note and the baseline
+ * Guards: deletes apply on the next run, except an extreme one (more than massDeleteLimit() of a table's
+ * baseline rows in one direction, e.g. a tab cleared by accident): those are held back until the operator
+ * applies them (/admin/sinkronisasi, allowMassDelete). Invalid sheet values are never written to the DB; they get a cell note and the baseline
  * keeps its old value. A header/layout problem is a hard error for that table: nothing is touched.
  *
  * No I/O here. Same inputs -> same plan, and applying a plan then merging again yields an empty plan.
@@ -41,6 +42,14 @@ import {
   type TablePlan,
   type TableSpec,
 } from "./types";
+
+/**
+ * Deletes in one direction above this many rows are held back: more than half of the table and more than
+ * 10 rows. Ordinary deletes (a few staff, a cleared week) always go through.
+ */
+export function massDeleteLimit(baselineRows: number): number {
+  return Math.max(10, baselineRows * 0.5);
+}
 
 export interface MergeInput {
   baseline: Baseline | null;
@@ -763,7 +772,7 @@ function mergeTable(spec: TableSpec, g: Global): TableResult {
   for (const r of newRows) insertFromSheet(r, null);
 
   // ---- deletion guard
-  const limit = Math.max(3, Object.keys(base).length * 0.1);
+  const limit = massDeleteLimit(Object.keys(base).length);
   const allow = input.allowMassDelete?.includes(spec.table) ?? false;
   const dbDeleted = new Set<string>();
   if (dbDeleteCands.length > limit && !allow) {
@@ -773,7 +782,7 @@ function mergeTable(spec: TableSpec, g: Global): TableResult {
       null,
       null,
       "db",
-      `${dbDeleteCands.length} baris hilang dari tab "${spec.tab}" (batas ${Math.floor(limit)}). Penghapusan di database dilewati; pulihkan baris di Sheet atau jalankan sinkronisasi dengan allowMassDelete.`,
+      `${dbDeleteCands.length} baris hilang dari tab "${spec.tab}" (batas ${Math.floor(limit)}). Penghapusan di database ditahan: pulihkan baris di Sheet, atau terapkan di halaman Sinkronisasi.`,
       { sheetValue: dbDeleteCands.length },
     );
   } else {
@@ -791,7 +800,7 @@ function mergeTable(spec: TableSpec, g: Global): TableResult {
       null,
       null,
       "sheet",
-      `${sheetDeleteCands.length} baris hilang dari database untuk tab "${spec.tab}" (batas ${Math.floor(limit)}). Penghapusan di Sheet dilewati.`,
+      `${sheetDeleteCands.length} baris hilang dari database untuk tab "${spec.tab}" (batas ${Math.floor(limit)}). Penghapusan di Sheet ditahan: terapkan di halaman Sinkronisasi.`,
       { sheetValue: sheetDeleteCands.length },
     );
   } else {
