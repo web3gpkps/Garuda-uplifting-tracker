@@ -1,6 +1,6 @@
 /*
  * Sheet structure numbers for the Cek BMI screen. The names of the checks come from
- * lib/bmi-periods.ts (bmiCheckLabel, bmiCheckName), the one source for the screens, the CSV and the sheet.
+ * lib/bmi-periods.ts (bmiCheckLabel, bmiCheckName), the one source for the screens, the Excel export and the sheet.
  */
 
 import { COMMITMENT_LABEL } from "@/lib/bmi-commitment";
@@ -15,7 +15,7 @@ export const COACHING_LOCKED_HINT = "Data cek ini hanya bisa diubah di Google Sh
 
 /** Identity columns before the first period (No ... Ada Catatan BMI). */
 const IDENTITY_COLUMNS = 9;
-/** The columns of every period, in order; the table and the CSV use the same words. */
+/** The columns of every period, in order; the table and the Excel export use the same words. */
 export const PERIOD_FIELD_LABELS = ["Tgl Cek", "Tinggi (cm)", "Berat (kg)", "BMI", "Kategori", COMMITMENT_LABEL] as const;
 export const PERIOD_COLUMNS = PERIOD_FIELD_LABELS.length;
 

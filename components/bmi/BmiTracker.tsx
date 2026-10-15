@@ -35,7 +35,7 @@ import { BmiTable } from "./BmiTable";
 import { scrollLeftFor } from "./period-window";
 import { GEOMETRY } from "./table-columns";
 import { useToast } from "./BmiToast";
-import { bmiCsv, csvFilename } from "./csv";
+import { bmiExportInput, downloadBmiXlsx, xlsxFilename } from "./xlsx-export";
 import { EditCellDialog, type EditRequest, type SaveOutcome } from "./EditCellDialog";
 import { EditStaffDialog, type StaffEditRequest } from "./EditStaffDialog";
 import { serverCheckErrors } from "./entry";
@@ -100,7 +100,7 @@ export type BmiTrackerProps = {
     chip: string;
     /** Foot of the Total SDM card, e.g. "Petugas di Stasiun CGK". */
     foot: string;
-    /** Station code or "KPS": the CSV file name. */
+    /** Station code or "KPS": the Excel file name. */
     code: string;
   };
   /** KPS and owner: the station filter (URL driven). null for a single-station access. */
@@ -111,7 +111,7 @@ export type BmiTrackerProps = {
   ownStation: string;
   /** The station filter's value as a station code, "" for all stations. */
   stationFilter: string;
-  /** Header of the first identity column and of the CSV: "ID SDM", or "No Pegawai" in a branch account's view. */
+  /** Header of the first identity column and of the Excel export: "ID SDM", or "No Pegawai" in a branch account's view. */
   idLabel: string;
   /** Placeholder of the search box. */
   searchHint: string;
@@ -190,6 +190,7 @@ export function BmiTracker({
   const [edit, setEdit] = useState<EditRequest | null>(null);
   const [staffEdit, setStaffEdit] = useState<StaffEditRequest | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const phone = usePhone();
   const { toast, node: toastNode } = useToast();
@@ -359,17 +360,36 @@ export function BmiTracker({
     setStaffEdit({ n: ++openings.current, code });
   }, []);
 
-  function exportCsv() {
-    const text = bmiCsv(filtered, settings, idLabel);
-    const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8;" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = csvFilename(scope.code, today);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-    toast(`CSV diekspor: ${filtered.length} petugas`);
+  // The file is what the screen shows now: these rows, counts, filters and period groups.
+  async function exportXlsx() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const input = bmiExportInput({
+        views,
+        filtered,
+        metrics,
+        settings,
+        labels,
+        period,
+        currentPeriod,
+        viewAll,
+        query,
+        status,
+        touchPoint,
+        category,
+        station: stationSelect ? (stationSelect.options.find((o) => o.value === stationSelect.current)?.label ?? null) : null,
+        idLabel,
+        scope,
+        now: new Date(),
+      });
+      await downloadBmiXlsx(input, xlsxFilename(scope.code, today));
+      toast(`Excel diekspor: ${filtered.length} petugas`);
+    } catch {
+      toast("Excel belum bisa dibuat. Coba lagi.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   function clearFilters() {
@@ -434,8 +454,15 @@ export function BmiTracker({
   return (
     <div className="bmi-tracker flex flex-col gap-4">
       <BmiHero chip={scope.chip}>
-        <Button variant="secondary" onClick={exportCsv} disabled={filtered.length === 0} title={filtered.length === 0 ? "Tidak ada baris untuk diekspor" : undefined}>
-          Ekspor CSV
+        <Button
+          variant="secondary"
+          onClick={exportXlsx}
+          disabled={filtered.length === 0}
+          loading={exporting}
+          loadingText="Menyusun Excel…"
+          title={filtered.length === 0 ? "Tidak ada baris untuk diekspor" : undefined}
+        >
+          Ekspor Excel
         </Button>
         <Button onClick={() => setAddOpen(true)}>Tambah SDM</Button>
       </BmiHero>

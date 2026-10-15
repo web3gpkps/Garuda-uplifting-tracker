@@ -1,6 +1,6 @@
 /*
  * BMI check periods: how many there can be, which dates each one covers and how it is named.
- * One source for the screens, the CSV export, the admin Parameter form and the Google Sheet tab
+ * One source for the screens, the Excel export, the admin Parameter form and the Google Sheet tab
  * (lib/sync/bmi-structure.ts writes the same label into the tab's header row).
  * Pure: no React, no server code.
  */
