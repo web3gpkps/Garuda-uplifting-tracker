@@ -3,8 +3,10 @@ import type { StaffSaveResult } from "@/components/sdm/actions";
 import type { BmiActionResult, BmiCheckInput, BmiProfileInput } from "./actions";
 import type { LinkError } from "@/lib/workspace/errors";
 import { TOUCH_POINTS } from "@/lib/rules";
-import { bmiCheckName } from "@/lib/bmi-periods";
+import { COMMITMENT_MAX } from "@/lib/bmi-commitment";
+import { bmiCheckName, isCoachingCheck } from "@/lib/bmi-periods";
 import { isPlausibleDate } from "./format";
+import { COACHING_LOCKED_HINT } from "./labels";
 
 /** The select option that reveals the free-text field. It is never saved itself. */
 export const OTHER_TOUCH_POINT = "Other";
@@ -31,7 +33,7 @@ export type AddBmiStaffInput = {
    * (link or account) always adds to its own verified station and ignores this.
    */
   station?: string | null;
-  firstCheck: { period: number; checkDate: string; heightCm: number; weightKg: number } | null;
+  firstCheck: { period: number; checkDate: string; heightCm: number; weightKg: number; commitment?: string | null } | null;
   savedCode: string | null;
 };
 
@@ -156,8 +158,9 @@ export function checkAddBmiStaff(input: AddBmiStaffInput, periods: number): Link
   if (problem) return problem;
   if (input.firstCheck !== null) {
     const check = input.firstCheck;
-    if (!check || !Number.isInteger(check.period) || check.period < 1 || check.period > periods) {
-      return invalid("period", `Pilih ${bmiCheckName(1)} sampai ${bmiCheckName(periods)}.`);
+    if (check && isCoachingCheck(check.period)) return invalid("period", COACHING_LOCKED_HINT);
+    if (!check || !Number.isInteger(check.period) || check.period < 2 || check.period > periods) {
+      return invalid("period", `Pilih ${bmiCheckName(2)} sampai ${bmiCheckName(periods)}.`);
     }
     if (!check || typeof check.checkDate !== "string" || !isPlausibleDate(check.checkDate)) {
       return invalid("check_date", "Tanggal cek tidak valid.");
@@ -173,6 +176,10 @@ export function checkAddBmiStaff(input: AddBmiStaffInput, periods: number): Link
     }
     if (Math.round(check.weightKg * 10) / 10 !== check.weightKg) {
       return invalid("weight_kg", "Cukup satu angka di belakang koma.");
+    }
+    const commitment = check.commitment ?? null;
+    if (commitment !== null && (typeof commitment !== "string" || commitment.trim().length > COMMITMENT_MAX)) {
+      return invalid("commitment", `Komitmen/Target paling panjang ${COMMITMENT_MAX} karakter.`);
     }
   }
   return null;

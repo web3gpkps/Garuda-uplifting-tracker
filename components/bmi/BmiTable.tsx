@@ -1,14 +1,15 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { bmiCheckName } from "@/lib/bmi-periods";
+import { COMMITMENT_LABEL, commitmentCell } from "@/lib/bmi-commitment";
+import { bmiCheckName, isCoachingCheck } from "@/lib/bmi-periods";
 import { formatTanggal } from "@/lib/dates";
 import { formatDecimal, formatSignedKg } from "@/lib/format";
 import type { BmiCategory } from "@/lib/rules";
 import { CategoryBadge, Dash, ScheduleBadge } from "./badges";
 import { BmiTextCell } from "./BmiTextCell";
 import { hasNoteLabel } from "./summary";
-import { BMI_SHEET_TAB, sheetColumnCount, sheetColumnRange } from "./labels";
+import { BMI_SHEET_TAB, COACHING_CHECK_NOTE, COACHING_LOCKED_HINT, sheetColumnCount, sheetColumnRange } from "./labels";
 import {
   initialWindow,
   isWindowed,
@@ -20,7 +21,7 @@ import {
   type PeriodSegment,
 } from "./period-window";
 import { GEOMETRY, IDENTITY, PERIOD_FIELDS, SUMMARY, W, textWidth } from "./table-columns";
-import type { BmiRowView, EditTarget } from "./tracker-model";
+import { idOf, type BmiRowView, type EditTarget } from "./tracker-model";
 
 /** Bits of the per-row "expanded" mask. */
 const FEEDBACK = 1;
@@ -82,6 +83,8 @@ type PeriodCellsProps = {
   weight: number | null;
   bmi: number | null;
   category: BmiCategory | null;
+  /** Komitmen/Target as stored (a Normal check reads "Sudah Ideal"). */
+  commitment: string | null;
   onEdit: (target: EditTarget) => void;
 };
 
@@ -89,31 +92,62 @@ type PeriodCellsProps = {
  * The five cells of one person in one period. Every prop is a plain value, so a save in one period
  * redraws that period's cells only: with 52 periods a row is 260 cells, and the other 255 are skipped.
  */
-const PeriodCells = memo(function PeriodCells({ code, name, p, date, height, weight, bmi, category, onEdit }: PeriodCellsProps) {
+const PeriodCells = memo(function PeriodCells({ code, name, p, date, height, weight, bmi, category, commitment, onEdit }: PeriodCellsProps) {
   const check = bmiCheckName(p);
+  // The Coaching Assessment check is read-only here: it is entered in the Google Sheet.
+  const locked = isCoachingCheck(p);
+  const target = commitmentCell(category, commitment);
   return (
     <>
-      <EditCell
-        text={date ? formatTanggal(date) : ""}
-        hint={`Ubah Tanggal Cek, ${check}, ${name}`}
-        onActivate={() => onEdit({ kind: "check", code, period: p, field: "date" })}
-      />
-      <EditCell
-        className="numeric"
-        text={number(height)}
-        hint={`Ubah Tinggi Badan (cm), ${check}, ${name}`}
-        onActivate={() => onEdit({ kind: "check", code, period: p, field: "height" })}
-      />
-      <EditCell
-        className="numeric"
-        text={number(weight)}
-        hint={`Ubah Berat Badan (kg), ${check}, ${name}`}
-        onActivate={() => onEdit({ kind: "check", code, period: p, field: "weight" })}
-      />
+      {locked ? (
+        <>
+          <td className="computed locked" title={COACHING_LOCKED_HINT}>
+            {date ? formatTanggal(date) : <Dash />}
+          </td>
+          <td className="computed locked numeric" title={COACHING_LOCKED_HINT}>
+            {height != null ? number(height) : <Dash />}
+          </td>
+          <td className="computed locked numeric" title={COACHING_LOCKED_HINT}>
+            {weight != null ? number(weight) : <Dash />}
+          </td>
+        </>
+      ) : (
+        <>
+          <EditCell
+            text={date ? formatTanggal(date) : ""}
+            hint={`Ubah Tanggal Cek, ${check}, ${name}`}
+            onActivate={() => onEdit({ kind: "check", code, period: p, field: "date" })}
+          />
+          <EditCell
+            className="numeric"
+            text={number(height)}
+            hint={`Ubah Tinggi Badan (cm), ${check}, ${name}`}
+            onActivate={() => onEdit({ kind: "check", code, period: p, field: "height" })}
+          />
+          <EditCell
+            className="numeric"
+            text={number(weight)}
+            hint={`Ubah Berat Badan (kg), ${check}, ${name}`}
+            onActivate={() => onEdit({ kind: "check", code, period: p, field: "weight" })}
+          />
+        </>
+      )}
       <td className="computed numeric">{bmi != null ? formatDecimal(bmi, 1) : <Dash />}</td>
       <td className="computed">
         <CategoryBadge category={category} />
       </td>
+      {target.editable && !locked ? (
+        <EditCell
+          className="commitment"
+          text={target.text}
+          hint={`Ubah ${COMMITMENT_LABEL}, ${check}, ${name}`}
+          onActivate={() => onEdit({ kind: "commitment", code, period: p })}
+        />
+      ) : (
+        <td className="computed commitment" title={locked ? COACHING_LOCKED_HINT : target.text || undefined}>
+          {target.text ? target.text : <Dash />}
+        </td>
+      )}
     </>
   );
 });
@@ -125,7 +159,7 @@ const BmiRow = memo(function BmiRow({ view, index, segments, openMask, onEdit, o
     <tr>
       <td className="sticky sticky1 numeric">{index}</td>
       <th scope="row" className="sticky sticky2 id">
-        {code}
+        {idOf(row) || "–"}
       </th>
       <td className="sticky sticky3 name">
         <button
@@ -154,7 +188,7 @@ const BmiRow = memo(function BmiRow({ view, index, segments, openMask, onEdit, o
         className="feedback"
         text={row.feedback}
         textWidth={textWidth(W.feedback)}
-        column="Coaching Evaluation Feedback"
+        column="Coaching Evaluation"
         person={name}
         expanded={(openMask & FEEDBACK) !== 0}
         onToggle={() => onToggle(code, FEEDBACK)}
@@ -193,6 +227,7 @@ const BmiRow = memo(function BmiRow({ view, index, segments, openMask, onEdit, o
                 weight={check?.weightKg ?? null}
                 bmi={value?.bmi ?? null}
                 category={value?.category ?? null}
+                commitment={check?.commitment ?? null}
                 onEdit={onEdit}
               />
             );
@@ -234,6 +269,8 @@ type BmiTableProps = {
   period: number;
   /** All periods side by side, or only the chosen one. */
   viewAll: boolean;
+  /** Header of the first identity column: "ID SDM", or "No Pegawai" in a branch account's view. */
+  idLabel: string;
   onEdit: (target: EditTarget) => void;
   onProfile: (code: string) => void;
   /** The scrolling container, so the screen can scroll it to a period. */
@@ -244,7 +281,7 @@ type BmiTableProps = {
  * The spreadsheet of Cek BMI: two header rows, the first three columns frozen, a yellow cell
  * for every input, computed cells tinted. It scrolls inside its own container, never the page.
  */
-export function BmiTable({ caption, views, labels, period, viewAll, onEdit, onProfile, scrollRef }: BmiTableProps) {
+export function BmiTable({ caption, views, labels, period, viewAll, idLabel, onEdit, onProfile, scrollRef }: BmiTableProps) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const onToggle = useCallback((code: string, bit: number) => {
     setOpen((prev) => {
@@ -340,7 +377,7 @@ export function BmiTable({ caption, views, labels, period, viewAll, onEdit, onPr
           <tr className="group">
             {IDENTITY.map((c) => (
               <th key={c.label} scope="col" rowSpan={2} className={c.className}>
-                {c.label}
+                {c.label === "ID SDM" ? idLabel : c.label}
               </th>
             ))}
             {segments.map((segment) =>
@@ -358,6 +395,7 @@ export function BmiTable({ caption, views, labels, period, viewAll, onEdit, onPr
                       data-selected={i + 1 === period || undefined}
                     >
                       {labels[i]}
+                      {isCoachingCheck(i + 1) ? <span className="period-note">{COACHING_CHECK_NOTE}</span> : null}
                     </th>
                   );
                 })

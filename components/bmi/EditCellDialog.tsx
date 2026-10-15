@@ -4,12 +4,13 @@ import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent 
 import { Button } from "@/components/ui/Button";
 import { bmiCheckName } from "@/lib/bmi-periods";
 import { Dialog, DialogActions } from "@/components/ui/Dialog";
-import { Field, Input, NumberInput, Select, Textarea } from "@/components/ui/Field";
+import { Field, Input, NumberInput, Select, Textarea, parseDecimal } from "@/components/ui/Field";
+import { COMMITMENT_IDEAL, COMMITMENT_LABEL, COMMITMENT_MAX, commitmentCell, commitmentToSave, needsCommitment } from "@/lib/bmi-commitment";
 import { toInputText } from "@/lib/format";
-import type { Settings } from "@/lib/rules";
-import { planCheck, type CheckErrors, type CheckField, type CheckInputs } from "./entry";
+import { bmi, bmiCategory, type BmiCategory, type Settings } from "@/lib/rules";
+import { heightError, planCheck, weightError, type CheckErrors, type CheckField, type CheckInputs } from "./entry";
 import { checkRhythm, hasNoteLabel, parseHasNote } from "./summary";
-import type { BmiTrackerRow, EditTarget } from "./tracker-model";
+import { idOf, type BmiTrackerRow, type EditTarget } from "./tracker-model";
 
 /** What a save came back with: the dialog shows `message` and marks the inputs in `errors`. */
 export type SaveOutcome = { ok: true } | { ok: false; message: string; errors?: CheckErrors };
@@ -25,7 +26,11 @@ type EditCellDialogProps = {
   labels: string[];
   today: string;
   onClose: () => void;
-  saveCheck: (code: string, period: number, check: { checkDate: string; heightCm: number; weightKg: number }) => Promise<SaveOutcome>;
+  saveCheck: (
+    code: string,
+    period: number,
+    check: { checkDate: string | null; heightCm: number; weightKg: number; commitment: string | null },
+  ) => Promise<SaveOutcome>;
   deleteCheck: (code: string, period: number) => Promise<SaveOutcome>;
   saveProfile: (code: string, patch: { hasNote: boolean | null } | { fitnessNote: string | null }) => Promise<SaveOutcome>;
 };
@@ -39,6 +44,7 @@ const FIELD_TITLE: Record<CheckField, string> = {
 function titleOf(target: EditTarget): string {
   if (target.kind === "hasNote") return "Ubah Ada Catatan BMI";
   if (target.kind === "fitnessNote") return "Ubah Catatan Program Kebugaran";
+  if (target.kind === "commitment") return `Ubah ${COMMITMENT_LABEL}, ${bmiCheckName(target.period)}`;
   return `Ubah ${FIELD_TITLE[target.field]}, ${bmiCheckName(target.period)}`;
 }
 
@@ -78,8 +84,8 @@ export function EditCellDialog({ request, row, ...rest }: EditCellDialogProps) {
 }
 
 function descriptionOf(target: EditTarget, row: BmiTrackerRow, labels: string[]): string {
-  const base = `${row.name} · ${row.code}`;
-  if (target.kind !== "check") return base;
+  const base = [row.name, idOf(row)].filter(Boolean).join(" · ");
+  if (target.kind !== "check" && target.kind !== "commitment") return base;
   return `${base} · ${labels[target.period - 1] ?? bmiCheckName(target.period)}`;
 }
 
@@ -107,7 +113,7 @@ function EditForm({
 }: FormProps) {
   const formId = useId();
   const form = useRef<HTMLFormElement>(null);
-  const stored = target.kind === "check" ? (row.checks[target.period - 1] ?? null) : null;
+  const stored = target.kind === "check" || target.kind === "commitment" ? (row.checks[target.period - 1] ?? null) : null;
   const planned = target.kind === "check" ? (plannedDates[target.period - 1] ?? today) : today;
 
   const [hasNote, setHasNote] = useState(hasNoteLabel(row.hasNote) ?? "");
@@ -117,6 +123,10 @@ function EditForm({
     height: toInputText(stored?.heightCm),
     weight: toInputText(stored?.weightKg),
   });
+  // Komitmen/Target: what is typed (a stored "Sudah Ideal" is not text to edit).
+  const [commitment, setCommitment] = useState(
+    stored ? commitmentCell(bmiCategory(bmi(stored.heightCm, stored.weightKg), settings), stored.commitment).text : "",
+  );
   const [errors, setErrors] = useState<CheckErrors & { note?: string }>({});
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -158,6 +168,15 @@ function EditForm({
       void saveProfile(row.code, { fitnessNote: note.trim() === "" ? null : note }).then(finish);
       return;
     }
+    if (target.kind === "commitment") {
+      if (!stored) return onClose();
+      const category = bmiCategory(bmi(stored.heightCm, stored.weightKg), settings);
+      const next = commitmentToSave(category, commitment);
+      if (next === (stored.commitment ?? null)) return onClose();
+      begin();
+      void saveCheck(row.code, target.period, { checkDate: stored.date, heightCm: stored.heightCm, weightKg: stored.weightKg, commitment: next }).then(finish);
+      return;
+    }
     const plan = planCheck(inputs);
     if (!plan.ok) {
       setErrors(plan.errors);
@@ -165,14 +184,16 @@ function EditForm({
       requestAnimationFrame(() => form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return;
     }
+    const toSave = commitmentToSave(bmiCategory(bmi(plan.check.heightCm, plan.check.weightKg), settings), commitment);
     const unchanged =
       stored !== null &&
       stored.date === plan.check.checkDate &&
       stored.heightCm === plan.check.heightCm &&
-      stored.weightKg === plan.check.weightKg;
+      stored.weightKg === plan.check.weightKg &&
+      (stored.commitment ?? null) === toSave;
     if (unchanged) return onClose();
     begin();
-    void saveCheck(row.code, target.period, plan.check).then(finish);
+    void saveCheck(row.code, target.period, { ...plan.check, commitment: toSave }).then(finish);
   }
 
   function remove() {
@@ -217,6 +238,41 @@ function EditForm({
     );
   };
 
+  // The category of what is typed now decides whether Komitmen/Target is asked for.
+  const typedHeight = parseDecimal(inputs.height);
+  const typedWeight = parseDecimal(inputs.weight);
+  const liveCategory: BmiCategory | null =
+    target.kind === "commitment" && stored
+      ? bmiCategory(bmi(stored.heightCm, stored.weightKg), settings)
+      : typedHeight !== null &&
+          typedWeight !== null &&
+          heightError(inputs.height) === undefined &&
+          weightError(inputs.weight) === undefined
+        ? bmiCategory(bmi(typedHeight, typedWeight), settings)
+        : null;
+  const commitmentField = needsCommitment(liveCategory) ? (
+    <Field
+      label={COMMITMENT_LABEL}
+      help="Target atau komitmen, misalnya penurunan berat badan. Enter menambah baris. Ctrl+Enter menyimpan."
+      error={errors.commitment}
+    >
+      <Textarea
+        rows={3}
+        maxLength={COMMITMENT_MAX}
+        value={commitment}
+        onChange={(e) => {
+          setCommitment(e.target.value);
+          if (errors.commitment) setErrors((prev) => ({ ...prev, commitment: undefined }));
+        }}
+        onKeyDown={noteKeys}
+      />
+    </Field>
+  ) : liveCategory === "Normal" ? (
+    <p className="text-sm text-ink-muted">
+      {COMMITMENT_LABEL}: {COMMITMENT_IDEAL}. Hasil BMI Normal, tidak perlu diisi.
+    </p>
+  ) : null;
+
   let body;
   if (confirmDelete && target.kind === "check") {
     body = (
@@ -252,8 +308,15 @@ function EditForm({
         />
       </Field>
     );
+  } else if (target.kind === "commitment") {
+    body = commitmentField;
   } else if (stored) {
-    body = control(target.field);
+    body = (
+      <div className="flex flex-col gap-4">
+        {control(target.field)}
+        {commitmentField}
+      </div>
+    );
   } else {
     const order: CheckField[] = [target.field, ...(["date", "height", "weight"] as const).filter((f) => f !== target.field)];
     body = (
@@ -262,6 +325,7 @@ function EditForm({
           {bmiCheckName(target.period)} baru tersimpan setelah tanggal, tinggi, dan berat terisi.
         </p>
         {order.map((field) => control(field))}
+        {commitmentField}
       </div>
     );
   }

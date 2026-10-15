@@ -5,10 +5,11 @@
  * runs it as a formula (CSV injection).
  */
 import { bmiCheckLabels } from "@/lib/bmi-periods";
+import { commitmentCell } from "@/lib/bmi-commitment";
 import { PERIOD_FIELD_LABELS } from "./labels";
 import type { Settings } from "@/lib/rules";
 import { hasNoteLabel } from "./summary";
-import type { BmiRowView } from "./tracker-model";
+import { idOf, type BmiRowView } from "./tracker-model";
 
 /** Quotes one field. null and undefined are empty. */
 export function csvField(value: unknown): string {
@@ -32,11 +33,11 @@ export function csvFilename(scope: string, today: string): string {
 /** What the headers need of the settings: the dates and the number of checks. */
 export type CsvPeriods = Pick<Settings, "bmiFirstCheck" | "bmiIntervalDays" | "bmiPeriods">;
 
-/** Nine identity columns, five per period headed by the full check label, then eight summary columns. */
-export function bmiCsvHeaders(settings: CsvPeriods): string[] {
+/** Nine identity columns, one group per period headed by the full check label, then eight summary columns. */
+export function bmiCsvHeaders(settings: CsvPeriods, idLabel = "ID SDM"): string[] {
   const headers = [
     "No",
-    "ID SDM",
+    idLabel,
     "Nama Petugas",
     "Unit",
     "Touch Point",
@@ -66,7 +67,7 @@ export function bmiCsvRecords(views: readonly BmiRowView[], periods: number): un
   return views.map(({ row, summary }, index) => {
     const record: unknown[] = [
       index + 1,
-      row.code,
+      idOf(row),
       row.name,
       row.station,
       row.touchPoint,
@@ -78,7 +79,14 @@ export function bmiCsvRecords(views: readonly BmiRowView[], periods: number): un
     for (let i = 0; i < periods; i++) {
       const check = row.checks[i] ?? null;
       const value = summary.periods[i] ?? null;
-      record.push(check?.date, check?.heightCm, check?.weightKg, value?.bmi, value?.category);
+      record.push(
+        check?.date,
+        check?.heightCm,
+        check?.weightKg,
+        value?.bmi,
+        value?.category,
+        check ? commitmentCell(value?.category ?? null, check.commitment).text : undefined,
+      );
     }
     record.push(
       summary.checks,
@@ -95,6 +103,6 @@ export function bmiCsvRecords(views: readonly BmiRowView[], periods: number): un
 }
 
 /** The whole file for the rows in view. */
-export function bmiCsv(views: readonly BmiRowView[], settings: CsvPeriods): string {
-  return csvDocument(bmiCsvHeaders(settings), bmiCsvRecords(views, settings.bmiPeriods));
+export function bmiCsv(views: readonly BmiRowView[], settings: CsvPeriods, idLabel = "ID SDM"): string {
+  return csvDocument(bmiCsvHeaders(settings, idLabel), bmiCsvRecords(views, settings.bmiPeriods));
 }

@@ -11,6 +11,29 @@ export function isCgkBmiShare(
   return access.kind === "link" && workspace.scope === "CGK" && !workspace.isKps && !workspace.isOwner;
 }
 
+/**
+ * A signed-in branch account of one station (not KPS, not the owner). Its menu is Cek BMI only,
+ * named "BMI Monitoring Tracker", and the BMI screen speaks of the employee number (No Pegawai).
+ * The other pages stay in the code and their routes keep working; only the menu hides them.
+ */
+export function isBranchBmiView(
+  access: Pick<WorkspaceAccess, "kind">,
+  workspace: { isKps: boolean; isOwner: boolean },
+): boolean {
+  return access.kind === "account" && !workspace.isKps && !workspace.isOwner;
+}
+
+/** The menu name of Cek BMI for a branch account. */
+export const BRANCH_BMI_MENU_LABEL = "BMI Monitoring Tracker";
+
+/** Cek BMI only, under its branch-account name. Hidden items are not removed from navSections. */
+export function branchBmiNavigation(sections: NavSection[]): NavSection[] {
+  return cgkBmiNavigation(sections).map((section) => ({
+    ...section,
+    items: section.items.map((item) => ({ ...item, label: BRANCH_BMI_MENU_LABEL, shortLabel: BRANCH_BMI_MENU_LABEL })),
+  }));
+}
+
 export function cgkBmiNavigation(sections: NavSection[]): NavSection[] {
   return sections
     .map((section) => ({ ...section, items: section.items.filter((item) => item.key === "bmi") }))

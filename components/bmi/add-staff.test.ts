@@ -207,6 +207,7 @@ describe("add staff validation and retries", () => {
       { ...input, employeeNo: "x".repeat(51) },
       { ...input, bmiHasNote: null }, { ...input, bmiNote: "x".repeat(2001) },
       { ...input, firstCheck: { ...input.firstCheck!, period: 0 } },
+      { ...input, firstCheck: { ...input.firstCheck!, period: 1 } },
       { ...input, firstCheck: { ...input.firstCheck!, period: PERIODS + 1 } },
       { ...input, firstCheck: { ...input.firstCheck!, checkDate: "2026-02-30" } },
       { ...input, firstCheck: { ...input.firstCheck!, heightCm: 119 } },
@@ -226,14 +227,20 @@ describe("add staff validation and retries", () => {
     expect(checkAddBmiStaff(seventh, 6)).not.toBeNull();
     expect(checkAddBmiStaff(seventh, 8)).toBeNull();
   });
-  test("1 to 52 periods: the first check may be the last one and not one beyond", () => {
-    for (const periods of [1, 8, 26, 52]) {
+  test("the Coaching Assessment check (the first) is never added from here", () => {
+    const first = { ...input, firstCheck: { ...input.firstCheck!, period: 1 } };
+    const problem = checkAddBmiStaff(first, PERIODS);
+    expect(problem?.field).toBe("period");
+    expect(problem?.message).toBe("Data cek ini hanya bisa diubah di Google Sheet.");
+  });
+  test("2 to 52 periods: the first check may be the last one and not one beyond", () => {
+    for (const periods of [2, 8, 26, 52]) {
       const last = { ...input, firstCheck: { ...input.firstCheck!, period: periods } };
       const beyond = { ...input, firstCheck: { ...input.firstCheck!, period: periods + 1 } };
       expect(checkAddBmiStaff(last, periods)).toBeNull();
       const problem = checkAddBmiStaff(beyond, periods);
       expect(problem?.field).toBe("period");
-      expect(problem?.message).toBe(`Pilih BMI Cek ke-1 sampai BMI Cek ke-${periods}.`);
+      expect(problem?.message).toBe(`Pilih BMI Cek ke-2 sampai BMI Cek ke-${periods}.`);
     }
   });
   test("a refused insert never reports success or writes BMI", async () => {
@@ -318,8 +325,8 @@ test("an addition syncs Master SDM to BMI without replacing formulas or existing
   expect(w.book.get("Master SDM", `G${row}`)).toBe(input.employeeNo);
   expect(w.book.get("Cek BMI 2 Mingguan", `B${row + 1}`)).toBe(result.code);
   expect(w.book.get("Cek BMI 2 Mingguan", `I${row + 1}`)).toBe("Ya");
-  expect(w.book.get("Cek BMI 2 Mingguan", `U${row + 1}`)).toBe(165.5);
-  expect(w.book.get("Cek BMI 2 Mingguan", `V${row + 1}`)).toBe(65.5);
+  expect(w.book.get("Cek BMI 2 Mingguan", `W${row + 1}`)).toBe(165.5);
+  expect(w.book.get("Cek BMI 2 Mingguan", `X${row + 1}`)).toBe(65.5);
   expect(w.book.get("Master SDM", "B5")).toBe(oldCode);
   expect(w.book.formula("Cek BMI 2 Mingguan", "M9")).toBe(formula);
   const summary = bmiSummary([{ staffCode: result.code, period: 3, checkDate: "2026-11-09", heightCm: 165.5, weightKg: 65.5 }], DEFAULT_SETTINGS, "2026-11-09");

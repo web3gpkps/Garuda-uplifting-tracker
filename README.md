@@ -87,7 +87,7 @@ Aplikasi ini memakai **project Supabase baru**, terpisah dari tracker lain.
 
 Cek BMI mengikuti prototype `CGK_BMI_Tracker_Prototype_Interaktif.html`: banner, empat angka ringkasan, tabel
 bergaya spreadsheet dengan kolom identitas beku, enam kelompok cek (Tgl Cek, Tinggi, Berat, BMI,
-Kategori) dan kolom ringkasan, pilihan periode, filter status, tombol Semua periode / Fokus periode,
+Kategori, Komitmen/Target) dan kolom ringkasan, pilihan periode, filter status, tombol Semua periode / Fokus periode,
 panel profil, dialog ubah isian, Tambah SDM dan Ekspor CSV. Di bawah 561px layar memakai kartu per
 orang. Teks panjang (Coaching Evaluation Feedback, Result/Remarks, Catatan Program Kebugaran) dipotong
 satu baris dan bisa dibuka penuh dengan tombol di sel. Warna prototype dipakai; hanya warna teks yang

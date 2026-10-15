@@ -154,8 +154,8 @@ Tabs and input columns of the Garuda workbook (header row 4 unless noted):
 
 | Table | Tab | Key | Input columns |
 |---|---|---|---|
-| staff | Master SDM (data 5..1089) | B ID SDM | C Program, D Provider, E Unit, F Nama, G Employee Number, H L/P, I Touch Point, J Role Play, K Post-Test, M Remark, Q Status Penugasan, R Feedback, S Catatan; Cek BMI I (Ada Catatan BMI) → bmi_has_note, Cek BMI AU (Catatan Program Kebugaran) → bmi_note |
-| bmi_checks | Cek BMI 2 Mingguan (data 6..1090, row = Master row + 1) | B (formula) + slot | slot k (1..6): Tgl/Tinggi/Berat at J/K/L, O/P/Q, T/U/V, Y/Z/AA, AD/AE/AF, AI/AJ/AK |
+| staff | Master SDM (data 5..1089) | B ID SDM | C Program, D Provider, E Unit, F Nama, G Employee Number, H L/P, I Touch Point, J Role Play, K Post-Test, M Remark, Q Status Penugasan, R Feedback, S Catatan; Cek BMI I (Ada Catatan BMI) → bmi_has_note, Cek BMI BA (Catatan Program Kebugaran) → bmi_note |
+| bmi_checks | Cek BMI 2 Mingguan (data 6..1090, row = Master row + 1) | B (formula) + slot | slot k (1..6): groups of six columns (Tgl, Tinggi, Berat, BMI, Kategori, Komitmen/Target), Tgl/Tinggi/Berat/Komitmen at J/K/L/O, P/Q/R/U, V/W/X/AA, AB/AC/AD/AG, AH/AI/AJ/AM, AN/AO/AP/AS |
 | weekly_scores | Log Performa Mingguan (data 5..) | A Minggu Ke + C ID SDM | G Touch Point, H–K scores, O Topik Gap, P Observer, Q Catatan |
 | action_items | Tindak Lanjut (data 5..54) | B ID | C Kelompok, D Aspek, E Akar Masalah, F Tindakan, G Target, H Jenis, I Jadwal, J Batas Waktu (literal only), K PIC, L Status, M % Progres (fraction), N Tgl Update, O Bukti, P Catatan, S Sumber |
 | remedials | Remedial (data 5..154) | B ID SDM | H Tindakan, I Tgl, J Role Play Ulang, K Post-Test Ulang, O Dilaporkan, P Catatan |

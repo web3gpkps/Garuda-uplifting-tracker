@@ -128,10 +128,20 @@ with). The planning is pure and tested (`lib/sync/bmi-structure.ts`).
 
 | Parameter change | What happens to the tab |
 |---|---|
-| More checks (`bmi_periods` up) | Five columns per new check are inserted after the last group (`insertDimension`), copied from the last group (formats, validation, BMI and Kategori formulas), their inputs cleared, widths copied, the header merged. Formulas in Dashboard and Laporan that point at the summary columns follow, because Sheets rewrites references when columns are inserted |
+| More checks (`bmi_periods` up) | Six columns per new check are inserted after the last group (`insertDimension`), copied from the last group (formats, validation, BMI and Kategori formulas), their inputs cleared, widths copied, the header merged. Formulas in Dashboard and Laporan that point at the summary columns follow, because Sheets rewrites references when columns are inserted |
 | Fewer checks | The trailing groups are deleted, only when no cell in them holds data. Otherwise nothing changes and the run reports "BMI Cek ke-N masih berisi data" as an error (the database also refuses to lower `bmi_periods` below a stored period) |
 | Interval or first date | Every group header is rewritten as `BMI Cek ke-N (Periode 12-25 Oct 2026)`; `Cek Berikutnya` and Laporan use `Parameter!C8` |
-| Always | The summary formulas (Jumlah Cek, Tgl Cek Terakhir, BMI Terakhir, Kategori Terakhir, Delta Berat, Cek Berikutnya, the two Laporan columns) are rewritten for the current number of groups. They use one fixed-size formula over the block (`LOOKUP(2,1/(mask*present),block)` with `MOD(COLUMN(block)-COLUMN(first),5)=offset` as the mask), so 52 checks need no deeper formula than 6 |
+| Always | The summary formulas (Jumlah Cek, Tgl Cek Terakhir, BMI Terakhir, Kategori Terakhir, Delta Berat, Cek Berikutnya, the two Laporan columns) are rewritten for the current number of groups. They use one fixed-size formula over the block (`LOOKUP(2,1/(mask*present),block)` with `MOD(COLUMN(block)-COLUMN(first),6)=offset` as the mask), so 52 checks need no deeper formula than 6 |
+
+**Komitmen/Target.** Each group has six columns: Tgl Cek, Tinggi, Berat, BMI, Kategori and Komitmen/Target
+(`bmi_checks.commitment`, sixth, a yellow input). A tab whose groups still have five columns gets the sixth
+first: `planCommitmentColumns` inserts a column after every Kategori (from the last group to the first), copies
+the look of Kategori and Berat, merges the group title over six columns and writes the header; nothing else
+changes in that run, and every formula that points to the right of an inserted column is moved by Sheets itself
+(it was done once on the live tab on 15 Oct 2026, after a backup in `scripts/out`). A group without the column
+(a tab not migrated yet) still syncs Tgl, Tinggi and Berat; the note is left out for it. A Normal check reads
+`Sudah Ideal` in the column: the trigger `bmi_checks_commitment` sets it, whoever wrote the check (the app, the
+owner or this sync), and clears it when the check is no longer Normal, so the sheet gets it on the next run.
 
 One-time changes the same step makes (each only while the old text is still there): column E reads
 `Touch Point` (mirror of Master SDM column I) instead of `Program`; the Parameter rows are renamed

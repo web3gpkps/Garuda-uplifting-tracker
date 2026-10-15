@@ -29,11 +29,11 @@ describe("Cek BMI labels", () => {
     expect(columnLetters(703)).toBe("AAA");
   });
 
-  test("the tab grows by five columns for every period", () => {
-    expect(sheetColumnCount(1)).toBe(22);
-    expect(sheetColumnCount(8)).toBe(sheetColumnCount(7) + 5);
-    expect(sheetColumnRange(6)).toBe("A–AU");
-    expect(sheetColumnCount(MAX_BMI_PERIODS)).toBe(9 + 5 * MAX_BMI_PERIODS + 8);
+  test("the tab grows by six columns for every period", () => {
+    expect(sheetColumnCount(1)).toBe(23);
+    expect(sheetColumnCount(8)).toBe(sheetColumnCount(7) + 6);
+    expect(sheetColumnRange(6)).toBe("A–BA");
+    expect(sheetColumnCount(MAX_BMI_PERIODS)).toBe(9 + 6 * MAX_BMI_PERIODS + 8);
     expect(sheetColumnRange(MAX_BMI_PERIODS)).toBe(`A–${columnLetters(sheetColumnCount(MAX_BMI_PERIODS))}`);
   });
 });

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/Button";
 import { Dialog, DialogActions } from "@/components/ui/Dialog";
 import { Field, Input, NumberInput, Select, Textarea, parseDecimal } from "@/components/ui/Field";
 import { formatDecimal } from "@/lib/format";
+import { COMMITMENT_IDEAL, COMMITMENT_LABEL, COMMITMENT_MAX, commitmentToSave, needsCommitment } from "@/lib/bmi-commitment";
+import { isCoachingCheck } from "@/lib/bmi-periods";
 import { bmi, bmiCategory, TOUCH_POINTS, type Settings } from "@/lib/rules";
 import {
   checkAddBmiStaff,
@@ -91,10 +93,14 @@ function AddBmiStaffForm({
   const [hasNote, setHasNote] = useState("");
   const [note, setNote] = useState("");
   const [station, setStation] = useState(initialStation);
-  const [period, setPeriod] = useState(String(defaultPeriod));
-  const [date, setDate] = useState(dateFor(defaultPeriod));
+  // The first check (Coaching Assessment) is entered in the Google Sheet, so a new SDM's first check starts at the second.
+  const startPeriod = isCoachingCheck(defaultPeriod) ? defaultPeriod + 1 : defaultPeriod;
+  const checkChoices = labels.map((label, index) => ({ label, period: index + 1 })).filter((c) => !isCoachingCheck(c.period));
+  const [period, setPeriod] = useState(String(startPeriod));
+  const [date, setDate] = useState(dateFor(startPeriod));
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
+  const [commitment, setCommitment] = useState("");
   const [savedCode, setSavedCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [uncertain, setUncertain] = useState(false);
@@ -154,7 +160,8 @@ function AddBmiStaffForm({
         });
         return;
       }
-      firstCheck = { period: Number(period), ...plan.check };
+      const category = bmiCategory(bmi(plan.check.heightCm, plan.check.weightKg), settings);
+      firstCheck = { period: Number(period), ...plan.check, commitment: commitmentToSave(category, commitment) };
     }
 
     const input: AddBmiStaffInput = {
@@ -290,38 +297,49 @@ function AddBmiStaffForm({
           <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
         </Field>
 
-        <div className="flex flex-col gap-4 rounded-panel border border-line p-4">
-          <Field label="Cek pertama (opsional)" error={errors.period} help="Kosongkan tinggi dan berat jika belum ada pemeriksaan.">
-            <Select
-              value={period}
-              onChange={(e) => {
-                setPeriod(e.target.value);
-                setDate(dateFor(Number(e.target.value)));
-              }}
-            >
-              {labels.map((label, index) => (
-                <option key={label} value={index + 1}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Tanggal cek" error={errors.check_date}>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        {checkChoices.length > 0 ? (
+          <div className="flex flex-col gap-4 rounded-panel border border-line p-4">
+            <Field label="Cek pertama (opsional)" error={errors.period} help="Kosongkan tinggi dan berat jika belum ada pemeriksaan.">
+              <Select
+                value={period}
+                onChange={(e) => {
+                  setPeriod(e.target.value);
+                  setDate(dateFor(Number(e.target.value)));
+                }}
+              >
+                {checkChoices.map((choice) => (
+                  <option key={choice.period} value={choice.period}>
+                    {choice.label}
+                  </option>
+                ))}
+              </Select>
             </Field>
-            <Field label="Tinggi (cm)" error={errors.height_cm}>
-              <NumberInput decimal value={height} onChange={(e) => setHeight(e.target.value)} />
-            </Field>
-            <Field label="Berat (kg)" error={errors.weight_kg}>
-              <NumberInput decimal value={weight} onChange={(e) => setWeight(e.target.value)} />
-            </Field>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Tanggal cek" error={errors.check_date}>
+                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              </Field>
+              <Field label="Tinggi (cm)" error={errors.height_cm}>
+                <NumberInput decimal value={height} onChange={(e) => setHeight(e.target.value)} />
+              </Field>
+              <Field label="Berat (kg)" error={errors.weight_kg}>
+                <NumberInput decimal value={weight} onChange={(e) => setWeight(e.target.value)} />
+              </Field>
+            </div>
+            <p className="flex flex-wrap items-center gap-3 text-sm" aria-live="polite">
+              <span>BMI {formatDecimal(preview, 1) || "–"}</span>
+              <CategoryBadge category={bmiCategory(preview, settings)} />
+            </p>
+            {needsCommitment(bmiCategory(preview, settings)) ? (
+              <Field label={COMMITMENT_LABEL} error={errors.commitment} help="Target atau komitmen, misalnya penurunan berat badan.">
+                <Textarea value={commitment} onChange={(e) => setCommitment(e.target.value)} maxLength={COMMITMENT_MAX} rows={3} />
+              </Field>
+            ) : bmiCategory(preview, settings) === "Normal" ? (
+              <p className="text-sm text-ink-muted">
+                {COMMITMENT_LABEL}: {COMMITMENT_IDEAL}. Hasil BMI Normal, tidak perlu diisi.
+              </p>
+            ) : null}
           </div>
-          <p className="flex flex-wrap items-center gap-3 text-sm" aria-live="polite">
-            <span>BMI {formatDecimal(preview, 1) || "–"}</span>
-            <CategoryBadge category={bmiCategory(preview, settings)} />
-          </p>
-        </div>
+        ) : null}
       </fieldset>
       <DialogActions>
         <Button variant="secondary" onClick={onClose} disabled={busy}>

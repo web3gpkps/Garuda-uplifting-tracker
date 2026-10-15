@@ -36,6 +36,16 @@ export function formatPeriodRange({ start, end }: BmiPeriodRange): string {
   return `${a.day}-${b.day} ${MONTHS[b.month - 1]} ${b.year}`;
 }
 
+/**
+ * The check taken during the Coaching Assessment is the first one. Its height and weight are
+ * entered in the Google Sheet only: the screens show them and never offer to change them.
+ */
+export const COACHING_CHECK_PERIOD = 1;
+
+export function isCoachingCheck(period: number): boolean {
+  return period === COACHING_CHECK_PERIOD;
+}
+
 /** "BMI Cek ke-3": where there is no room for the period. */
 export function bmiCheckName(period: number): string {
   return `BMI Cek ke-${period}`;

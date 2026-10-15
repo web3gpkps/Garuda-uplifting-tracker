@@ -84,7 +84,7 @@ describe("structure step of a run", () => {
     expect(summary.structure?.actions.join(" ")).toContain("Touch Point");
     expect(port.batches).toHaveLength(1);
     // The widths of the last group are asked for so inserted groups look like it.
-    expect(port.widthCalls).toEqual([["Cek BMI 2 Mingguan", 34, 5]]);
+    expect(port.widthCalls).toEqual([["Cek BMI 2 Mingguan", 39, 6]]);
   });
 
   test("a higher number of checks in the database adds groups to the tab", async () => {
@@ -96,7 +96,7 @@ describe("structure step of a run", () => {
     expect(summary.structure?.actions[0]).toContain("Tambah 3 kelompok kolom cek");
     expect(port.batches).toHaveLength(1);
     const insert = (port.batches[0] as Record<string, any>[]).find((r) => r.insertDimension)!.insertDimension;
-    expect(insert.range.endIndex - insert.range.startIndex).toBe(15);
+    expect(insert.range.endIndex - insert.range.startIndex).toBe(18);
   });
 
   test("a dry run plans the change and applies nothing", async () => {
@@ -134,7 +134,7 @@ describe("structure step of a run", () => {
     // Data in the last group of the sheet, then fewer checks.
     const snap = port.book.snapshot().tabs["Cek BMI 2 Mingguan"]!;
     const row = snap.values.findIndex((r, i) => i >= 5 && r?.[1]);
-    port.book.setAt("Cek BMI 2 Mingguan", row + 1, 35, 170);
+    port.book.setAt("Cek BMI 2 Mingguan", row + 1, 40, 170);
     (db.rows("settings")[0] as Record<string, unknown>).bmi_periods = 5;
     const summary = await runSync({ store, sheets: port });
     expect(summary.status).toBe("partial");

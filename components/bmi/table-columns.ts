@@ -20,6 +20,7 @@ export const W = {
   measure: 100,
   bmi: 78,
   cat: 118,
+  commitment: 220,
   summary: 130,
   summaryWide: 186,
   comment: 260,
@@ -37,12 +38,12 @@ export const IDENTITY: Column[] = [
   { label: "Unit", width: W.unit },
   { label: "Touch Point", width: W.touch },
   { label: "L/P", width: W.sex },
-  { label: "Coaching Evaluation Feedback", width: W.feedback },
+  { label: "Coaching Evaluation", width: W.feedback },
   { label: "Result/Remarks", width: W.remarks },
   { label: "Ada Catatan BMI", width: W.yn },
 ];
 
-const PERIOD_WIDTHS = [W.date, W.measure, W.measure, W.bmi, W.cat] as const;
+const PERIOD_WIDTHS = [W.date, W.measure, W.measure, W.bmi, W.cat, W.commitment] as const;
 export const PERIOD_FIELDS: Column[] = PERIOD_FIELD_LABELS.map((label, i) => ({ label, width: PERIOD_WIDTHS[i] }));
 
 export const SUMMARY: Column[] = [

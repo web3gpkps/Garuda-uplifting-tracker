@@ -43,6 +43,6 @@ describe("expandLabel", () => {
     expect(expandLabel(false, "Coaching Evaluation Feedback", "Petugas uji")).toBe(
       "Lihat selengkapnya, Coaching Evaluation Feedback, Petugas uji",
     );
-    expect(expandLabel(true, "Result/Remarks", "Petugas uji")).toBe("Ciutkan, Result/Remarks, Petugas uji");
+    expect(expandLabel(true, "Result/Remarks", "Petugas uji")).toBe("Hide, Result/Remarks, Petugas uji");
   });
 });

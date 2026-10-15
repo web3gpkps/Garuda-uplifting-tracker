@@ -6,6 +6,7 @@ import type { StaffSaveResult } from "@/components/sdm/actions";
 import { getWorkspaceFor, resolveAccess, ruleSettings, stationCodes, toLinkError } from "@/lib/workspace";
 import { saveBmiCheck, saveBmiProfile } from "./actions";
 import { addBmiStaff, checkBmiStaffProfile, type AddBmiStaffInput, type AddBmiStaffResult } from "./add-staff";
+import { editBmiStaff, type EditBmiStaffInput, type EditBmiStaffResult } from "./edit-staff";
 
 /**
  * Adds the staff row (share_save_staff) for "Tambah SDM". It is the Master SDM save without the
@@ -56,5 +57,34 @@ export async function addStaffFromBmi(accessKey: string, input: AddBmiStaffInput
     saveStaff: (profile) => saveStaffProfile(accessKey, profile),
     saveProfile: (profile) => saveBmiProfile(accessKey, profile),
     saveCheck: (check) => saveBmiCheck(accessKey, check),
+  });
+}
+
+/**
+ * "Ubah profil" on a name in Cek BMI: corrects the name, the employee number, the touch point and
+ * L/P. The staff list comes from the verified access, so a person outside its scope is never found;
+ * the database checks the scope again.
+ */
+export async function editStaffFromBmi(accessKey: string, input: EditBmiStaffInput): Promise<EditBmiStaffResult> {
+  const resolved = await resolveAccess(accessKey);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  return editBmiStaff(input, {
+    load: async () => {
+      const result = await getWorkspaceFor(resolved.access);
+      if (!result.ok) return null;
+      return result.workspace.staff.map((st) => ({
+        code: st.code,
+        program: st.program ?? null,
+        provider: st.provider ?? null,
+        station: st.station ?? null,
+        name: st.name ?? null,
+        employeeNo: st.employeeNo ?? null,
+        gender: st.gender ?? null,
+        touchPoint: st.touchPoint ?? null,
+        assignmentStatus: st.assignmentStatus ?? null,
+        notes: st.notes ?? null,
+      }));
+    },
+    saveStaff: (profile) => saveStaffProfile(accessKey, profile),
   });
 }

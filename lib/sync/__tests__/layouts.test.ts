@@ -161,7 +161,7 @@ describe("Master SDM (header row 4, free rows, BMI flag and note in Cek BMI)", (
     expect(cells(w, MS, r, ["A", "C", "E", "F", "Q", "J"])).toEqual([4, "IULS", "UPG", "Petugas Baru", "Aktif", 80]);
     expect(w.book.formula(MS, `L${r}`)).toBeDefined();
     // Cek BMI row = Master row + 1: the mirror formula now shows the ID; flag and note filled.
-    expect(cells(w, BMI, r + 1, ["B", "I", "AU"])).toEqual(["UPG-01", "Ya", "program BB"]);
+    expect(cells(w, BMI, r + 1, ["B", "I", "BA"])).toEqual(["UPG-01", "Ya", "program BB"]);
     expect(w.book.formula(BMI, `B${r + 1}`)).toBe(`=IF('Master SDM'!B${r}="","",'Master SDM'!B${r})`);
     expectSteady(w);
   });
@@ -175,7 +175,7 @@ describe("Master SDM (header row 4, free rows, BMI flag and note in Cek BMI)", (
     const second = w.sync();
     expect(tp(second.plan, "bmi_checks").issues).toEqual([]);
     const r = w.book.findRow(BMI, "B", "UPG-01");
-    expect(cells(w, BMI, r, ["O", "P", "Q"])).toEqual([isoToSerial("2026-10-12"), 160, 55]);
+    expect(cells(w, BMI, r, ["P", "Q", "R"])).toEqual([isoToSerial("2026-10-12"), 160, 55]);
     expectSteady(w);
   });
 
@@ -247,11 +247,11 @@ describe("Master SDM (header row 4, free rows, BMI flag and note in Cek BMI)", (
     expectSteady(w);
   });
 
-  test("Ada Catatan BMI (Cek BMI I) and Catatan Program Kebugaran (AU) sync both ways", () => {
+  test("Ada Catatan BMI (Cek BMI I) and Catatan Program Kebugaran (BA) sync both ways", () => {
     const w = world();
     const r = w.book.findRow(BMI, "B", "SUB-01");
     w.book.set(BMI, `I${r}`, "ya");
-    w.book.set(BMI, `AU${r}`, "turunkan 3 kg");
+    w.book.set(BMI, `BA${r}`, "turunkan 3 kg");
     w.sync();
     expect(staff(w, "SUB-01")).toMatchObject({ bmi_has_note: true, bmi_note: "turunkan 3 kg" });
     expect(w.book.get(BMI, `I${r}`)).toBe("ya"); // equal after normalization: not rewritten
@@ -259,7 +259,7 @@ describe("Master SDM (header row 4, free rows, BMI flag and note in Cek BMI)", (
     staff(w, "SUB-02").bmi_note = "dari web";
     w.sync();
     const r2 = w.book.findRow(BMI, "B", "SUB-02");
-    expect(cells(w, BMI, r2, ["I", "AU"])).toEqual(["Tidak", "dari web"]);
+    expect(cells(w, BMI, r2, ["I", "BA"])).toEqual(["Tidak", "dari web"]);
     w.book.set(BMI, `I${r2}`, "Mungkin");
     const { plan } = w.sync();
     expect(tp(plan, "staff").issues[0]).toMatchObject({ kind: "invalid_value", column: "bmi_has_note" });
@@ -297,28 +297,28 @@ describe("Cek BMI 2 Mingguan (wide in the sheet, long in the DB, 6 slots)", () =
   test("slot columns map to (staff, period) rows both ways", () => {
     const w = world();
     const sub02 = w.book.findRow(BMI, "B", "SUB-02");
-    w.book.set(BMI, `O${sub02}`, isoToSerial("2026-10-26"));
-    w.book.set(BMI, `P${sub02}`, 165);
-    w.book.set(BMI, `Q${sub02}`, "60,5");
+    w.book.set(BMI, `P${sub02}`, isoToSerial("2026-10-26"));
+    w.book.set(BMI, `Q${sub02}`, 165);
+    w.book.set(BMI, `R${sub02}`, "60,5");
     w.db.rows("bmi_checks").push(bmiRow(7, "DPS-01", 6, { check_date: "2026-12-21", height_cm: 158.5, weight_kg: 52 }));
     const { plan } = w.sync();
     expect(tp(plan, "bmi_checks").db.inserts).toEqual([
-      { staff_code: "SUB-02", period: 2, check_date: "2026-10-26", height_cm: 165, weight_kg: 60.5 },
+      { staff_code: "SUB-02", period: 2, check_date: "2026-10-26", height_cm: 165, weight_kg: 60.5, commitment: null },
     ]);
     const dps = w.book.findRow(BMI, "B", "DPS-01");
-    expect(cells(w, BMI, dps, ["AI", "AJ", "AK"])).toEqual([isoToSerial("2026-12-21"), 158.5, 52]);
-    expect(w.book.formula(BMI, `AL${dps}`)).toBeDefined();
+    expect(cells(w, BMI, dps, ["AN", "AO", "AP"])).toEqual([isoToSerial("2026-12-21"), 158.5, 52]);
+    expect(w.book.formula(BMI, `AQ${dps}`)).toBeDefined();
     expectSteady(w);
   });
 
   test("a date without height and weight is noted, not saved", () => {
     const w = world();
     const r = w.book.findRow(BMI, "B", "SUB-01");
-    w.book.set(BMI, `Y${r}`, isoToSerial("2026-11-23"));
+    w.book.set(BMI, `AB${r}`, isoToSerial("2026-11-23"));
     const { plan } = w.sync();
     expect(tp(plan, "bmi_checks").db.inserts).toEqual([]);
     expect(tp(plan, "bmi_checks").issues[0]).toMatchObject({ kind: "incomplete_row", rowKey: "SUB-01|4" });
-    expect(w.book.note(BMI, `Z${r}`)).toContain("Baris belum lengkap");
+    expect(w.book.note(BMI, `AC${r}`)).toContain("Baris belum lengkap");
     expectSteady(w);
   });
 
@@ -331,6 +331,34 @@ describe("Cek BMI 2 Mingguan (wide in the sheet, long in the DB, 6 slots)", () =
     expect(tp(plan, "bmi_checks").db.deletes).toEqual([{ staff_code: "SUB-01", period: 1 }]);
     expect(w.book.get(BMI, `J${r}`)).toBe("");
     expect(w.book.formula(BMI, `M${r}`)).toBeDefined();
+    expectSteady(w);
+  });
+
+  test("Komitmen/Target is the sixth column of the group and syncs both ways", () => {
+    const w = world();
+    const check = (code: string, period: number) => w.db.rows("bmi_checks").find((x) => x.staff_code === code && x.period === period);
+    w.db.rows("bmi_checks").push(bmiRow(7, "DPS-01", 6, { check_date: "2026-12-21", height_cm: 158.5, weight_kg: 52, commitment: "Turun 3 kg" }));
+    w.sync();
+    const dps = w.book.findRow(BMI, "B", "DPS-01");
+    expect(w.book.get(BMI, `AS${dps}`)).toBe("Turun 3 kg");
+    // Typed in the sheet (group 1: J..O), it reaches the database.
+    const sub = w.book.findRow(BMI, "B", "SUB-01");
+    w.book.set(BMI, `O${sub}`, "Turun 2 kg");
+    const { plan } = w.sync();
+    expect(tp(plan, "bmi_checks").issues).toEqual([]);
+    expect(check("SUB-01", 1)?.commitment).toBe("Turun 2 kg");
+    expectSteady(w);
+  });
+
+  test("a tab without the Komitmen/Target column still syncs the other columns and leaves the note out", () => {
+    const w = world({ commitmentColumn: false });
+    w.db.rows("bmi_checks").push(bmiRow(7, "DPS-01", 6, { check_date: "2026-12-21", height_cm: 158.5, weight_kg: 52, commitment: "Turun 3 kg" }));
+    const { plan, ops } = w.sync();
+    expect(tp(plan, "bmi_checks").issues).toEqual([]);
+    const dps = w.book.findRow(BMI, "B", "DPS-01");
+    // Five-column groups: group 6 starts at AI (34).
+    expect(cells(w, BMI, dps, ["AI", "AJ", "AK"])).toEqual([isoToSerial("2026-12-21"), 158.5, 52]);
+    expect(ops.writes.filter((x) => x.tab === BMI && x.value === "Turun 3 kg")).toEqual([]);
     expectSteady(w);
   });
 

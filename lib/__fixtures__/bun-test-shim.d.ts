@@ -33,4 +33,5 @@ declare module 'bun:test' {
   export const afterAll: (fn: Fn) => void;
   export const beforeEach: (fn: Fn) => void;
   export const afterEach: (fn: Fn) => void;
+  export const mock: { module(path: string, factory: () => unknown): void };
 }

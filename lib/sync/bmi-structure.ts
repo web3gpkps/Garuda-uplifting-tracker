@@ -1,8 +1,8 @@
 /**
  * The structure of the Google Sheet tab "Cek BMI 2 Mingguan" follows Parameter (public.settings):
  *
- *   - Jumlah cek (bmi_periods): the tab has one group of five columns per check (Tgl Cek, Tinggi,
- *     Berat, BMI, Kategori). More checks insert columns after the last group, copying its formats,
+ *   - Jumlah cek (bmi_periods): the tab has one group of six columns per check (Tgl Cek, Tinggi,
+ *     Berat, BMI, Kategori, Komitmen/Target). More checks insert columns after the last group, copying its formats,
  *     formulas and validation; fewer checks delete the trailing groups (refused while one of them
  *     still holds data).
  *   - Interval (bmi_interval_days) and first check date: every group's header reads
@@ -11,6 +11,9 @@
  *     columns the Laporan reads) are rewritten for the new number of groups. They use a fixed-size
  *     formula over the whole block of groups (a MOD mask picks the column kind), so a tab with
  *     52 checks needs no deeper formula than one with 6.
+ *   - A tab whose groups still have five columns gets the sixth, Komitmen/Target, after every Kategori
+ *     (a column is inserted there, so every formula that points past it follows by itself). That is the
+ *     only thing a run does to such a tab; the rest follows on the next run.
  *   - Column E reads Touch Point (mirrors Master SDM column I) instead of Program.
  *   - Texts that described the old rhythm (per two weeks with a note, monthly without) are updated.
  *
@@ -24,9 +27,14 @@ import type { IsoDate } from "../dates";
 import { blockEnd, type RealTab } from "./layouts";
 
 export const BMI_SHEET = "Cek BMI 2 Mingguan";
-export const SLOT_WIDTH = 5;
-/** Offsets inside a group: Tgl Cek, Tinggi, Berat, BMI, Kategori. */
-const OFF = { date: 0, height: 1, weight: 2, bmi: 3, category: 4 } as const;
+export const SLOT_WIDTH = 6;
+/** The group before Komitmen/Target was added. */
+const LEGACY_SLOT_WIDTH = 5;
+/** Offsets inside a group: Tgl Cek, Tinggi, Berat, BMI, Kategori, Komitmen/Target. */
+const OFF = { date: 0, height: 1, weight: 2, bmi: 3, category: 4, commitment: 5 } as const;
+const COMMITMENT_HEADER = "Komitmen/Target";
+/** Pixel width of the Komitmen/Target column. */
+const COMMITMENT_PX = 220;
 
 const FIRST_DATA_ROW = 6;
 const TOUCH_POINT_COL = 4; // E
@@ -59,7 +67,7 @@ export interface BmiStructureInput {
   /** Petunjuk: one sentence about the old rhythm. */
   petunjuk?: RealTab;
   settings: BmiStructureSettings;
-  /** Pixel widths of the five columns of the last existing group, applied to inserted groups. */
+  /** Pixel widths of the six columns of the last existing group, applied to inserted groups. */
   lastGroupWidths?: number[];
 }
 
@@ -76,6 +84,8 @@ interface Geometry {
   keyCol: number;
   /** Start column of every existing group. */
   slots: number[];
+  /** Columns per group: 6, or 5 for a tab that has not got Komitmen/Target yet. */
+  width: number;
   summary: Record<SummaryKey, number>;
 }
 
@@ -114,8 +124,13 @@ function detect(bmi: RealTab): Geometry | { error: string } {
     if (h === "tgl cek" && sub[c + 1] === "tinggi (cm)" && sub[c + 2] === "berat (kg)") slots.push(c);
   });
   if (slots.length === 0) return { error: 'kolom "Tgl Cek / Tinggi (cm) / Berat (kg)" tidak ditemukan di baris 5.' };
+  const width = slots.length > 1 ? slots[1] - slots[0] : sub[slots[0] + OFF.commitment] === norm(COMMITMENT_HEADER) ? SLOT_WIDTH : LEGACY_SLOT_WIDTH;
+  if (width !== SLOT_WIDTH && width !== LEGACY_SLOT_WIDTH) return { error: "kelompok kolom cek tidak berurutan, tiap kelompok harus enam kolom." };
   for (let i = 1; i < slots.length; i++) {
-    if (slots[i] !== slots[0] + SLOT_WIDTH * i) return { error: "kelompok kolom cek tidak berurutan, tiap kelompok harus lima kolom." };
+    if (slots[i] !== slots[0] + width * i) return { error: "kelompok kolom cek tidak berurutan, tiap kelompok harus enam kolom." };
+  }
+  if (width === SLOT_WIDTH && slots.some((c) => sub[c + OFF.commitment] !== norm(COMMITMENT_HEADER))) {
+    return { error: `kolom "${COMMITMENT_HEADER}" tidak ada di setiap kelompok cek (baris 5).` };
   }
 
   const keyCols = find("ID SDM");
@@ -127,9 +142,59 @@ function detect(bmi: RealTab): Geometry | { error: string } {
     if (cols.length !== 1) return { error: `kolom "${header}" tidak ditemukan atau ganda di baris 4.` };
     summary[key] = cols[0];
   }
-  if (summary.count < slots[0] + SLOT_WIDTH * slots.length) return { error: "kolom ringkasan harus berada di kanan kelompok cek terakhir." };
+  if (summary.count < slots[0] + width * slots.length) return { error: "kolom ringkasan harus berada di kanan kelompok cek terakhir." };
 
-  return { lastRow: Math.max(FIRST_DATA_ROW, blockEnd(bmi, FIRST_DATA_ROW)), keyCol: keyCols[0], slots, summary };
+  return { lastRow: Math.max(FIRST_DATA_ROW, blockEnd(bmi, FIRST_DATA_ROW)), keyCol: keyCols[0], slots, width, summary };
+}
+
+/**
+ * Adds the Komitmen/Target column after every Kategori of a tab whose groups have five columns. Done
+ * from the last group to the first, so the positions of the groups still to do do not move. The new
+ * column takes the look of the Berat column (a yellow input) and the header look of Kategori; the
+ * group's merged title is widened to cover it. Formulas need no rewrite: Sheets moves every
+ * reference that points right of an inserted column.
+ */
+export function planCommitmentColumns(bmi: RealTab, g?: Geometry | { error: string }): BmiStructurePlan {
+  const plan: BmiStructurePlan = { requests: [], actions: [], blockers: [] };
+  const found = g ?? detect(bmi);
+  if ("error" in found) {
+    plan.blockers.push(`Tab "${BMI_SHEET}": ${found.error} Kolom ${COMMITMENT_HEADER} tidak ditambahkan.`);
+    return plan;
+  }
+  if (found.width !== LEGACY_SLOT_WIDTH) return plan;
+  const sheetId = bmi.sheetId;
+  const rows = (from: number, to: number, col: number) => ({ sheetId, startRowIndex: from, endRowIndex: to, startColumnIndex: col, endColumnIndex: col + 1 });
+  plan.actions.push(`Tambah kolom ${COMMITMENT_HEADER} di setiap kelompok cek (${found.slots.length} kelompok).`);
+  for (let i = found.slots.length - 1; i >= 0; i--) {
+    const slot = found.slots[i];
+    const at = slot + LEGACY_SLOT_WIDTH;
+    plan.requests.push({ insertDimension: { range: { sheetId, dimension: "COLUMNS", startIndex: at, endIndex: at + 1 }, inheritFromBefore: true } });
+    plan.requests.push({ unmergeCells: { range: { sheetId, startRowIndex: 3, endRowIndex: 4, startColumnIndex: slot, endColumnIndex: at } } });
+    // Header rows look like the Kategori header; the data rows like the Berat input. The title is merged
+    // again last: a paste may not partly cover a merge.
+    plan.requests.push({ copyPaste: { source: rows(3, 5, slot + OFF.category), destination: rows(3, 5, at), pasteType: "PASTE_FORMAT", pasteOrientation: "NORMAL" } });
+    plan.requests.push({
+      copyPaste: {
+        source: rows(FIRST_DATA_ROW - 1, found.lastRow, slot + OFF.weight),
+        destination: rows(FIRST_DATA_ROW - 1, found.lastRow, at),
+        pasteType: "PASTE_FORMAT",
+        pasteOrientation: "NORMAL",
+      },
+    });
+    plan.requests.push({
+      repeatCell: {
+        range: rows(FIRST_DATA_ROW - 1, found.lastRow, at),
+        cell: { userEnteredFormat: { horizontalAlignment: "LEFT", numberFormat: { type: "TEXT" }, wrapStrategy: "CLIP" } },
+        fields: "userEnteredFormat(horizontalAlignment,numberFormat,wrapStrategy)",
+      },
+    });
+    plan.requests.push(setText(sheetId, 4, at, COMMITMENT_HEADER));
+    plan.requests.push({
+      updateDimensionProperties: { range: { sheetId, dimension: "COLUMNS", startIndex: at, endIndex: at + 1 }, properties: { pixelSize: COMMITMENT_PX }, fields: "pixelSize" },
+    });
+    plan.requests.push({ mergeCells: { range: { sheetId, startRowIndex: 3, endRowIndex: 4, startColumnIndex: slot, endColumnIndex: at + 1 }, mergeType: "MERGE_ALL" } });
+  }
+  return plan;
 }
 
 /** Month names in English: the owner writes periods as "15-20 Oct 2026". */
@@ -217,6 +282,7 @@ export function planBmiStructure(input: BmiStructureInput): BmiStructurePlan {
     plan.blockers.push(`Tab "${BMI_SHEET}": ${g.error} Struktur tidak disesuaikan.`);
     return plan;
   }
+  if (g.width === LEGACY_SLOT_WIDTH) return planCommitmentColumns(bmi, g);
   const sheetId = bmi.sheetId;
   const have = g.slots.length;
   const want = settings.bmiPeriods;
@@ -237,14 +303,19 @@ export function planBmiStructure(input: BmiStructureInput): BmiStructurePlan {
       plan.requests.push({
         copyPaste: { source, destination: { ...source, startColumnIndex: start, endColumnIndex: start + SLOT_WIDTH }, pasteType: "PASTE_NORMAL", pasteOrientation: "NORMAL" },
       });
-      // The copy carried the last group's data: clear the three input columns of the new group.
-      plan.requests.push({
-        repeatCell: {
-          range: { sheetId, startRowIndex: FIRST_DATA_ROW - 1, endRowIndex: lastRowIdx, startColumnIndex: start, endColumnIndex: start + OFF.weight + 1 },
-          cell: {},
-          fields: "userEnteredValue",
-        },
-      });
+      // The copy carried the last group's data: clear the three input columns and the note of the new group.
+      for (const [from, to] of [
+        [OFF.date, OFF.weight],
+        [OFF.commitment, OFF.commitment],
+      ]) {
+        plan.requests.push({
+          repeatCell: {
+            range: { sheetId, startRowIndex: FIRST_DATA_ROW - 1, endRowIndex: lastRowIdx, startColumnIndex: start + from, endColumnIndex: start + to + 1 },
+            cell: {},
+            fields: "userEnteredValue",
+          },
+        });
+      }
       (input.lastGroupWidths ?? []).forEach((px, off) => {
         plan.requests.push({
           updateDimensionProperties: {

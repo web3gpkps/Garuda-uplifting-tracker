@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS, TOUCH_POINTS, type Settings } from "@/lib/rules";
 import {
   applyEdit,
   filterViews,
+  idOf,
   isCheckedIn,
   summarizeRow,
   summaryOf,
@@ -40,7 +41,7 @@ function row(code: string, name: string, patch: Partial<BmiTrackerRow> = {}): Bm
 
 const withCheck = (period: number, heightCm: number, weightKg: number, date: string, periods = settings.bmiPeriods) => {
   const checks = emptyChecks(periods);
-  checks[period - 1] = { date, heightCm, weightKg };
+  checks[period - 1] = { date, heightCm, weightKg, commitment: null };
   return checks;
 };
 
@@ -80,7 +81,7 @@ describe("summaryOf", () => {
   test("is the same summary object for the same row, a new one for an edited row", () => {
     const first = summaryOf(rows[0], settings, today);
     expect(summaryOf(rows[0], settings, today)).toBe(first);
-    const [edited] = applyEdit(rows, { type: "check", code: "T-01", period: 2, check: { date: "2026-10-26", heightCm: 170, weightKg: 62 } });
+    const [edited] = applyEdit(rows, { type: "check", code: "T-01", period: 2, check: { date: "2026-10-26", heightCm: 170, weightKg: 62, commitment: null } });
     expect(summaryOf(edited, settings, today)).not.toBe(first);
     expect(summaryOf(edited, settings, today).checks).toBe(2);
     expect(summaryOf(rows[0], settings, "2026-10-21")).not.toBe(first);
@@ -92,6 +93,16 @@ describe("filterViews", () => {
     expect(codes(filterViews(views, { ...base, query: "  dua " }))).toEqual(["T-02"]);
     expect(codes(filterViews(views, { ...base, query: "t-03" }))).toEqual(["T-03"]);
     expect(filterViews(views, { ...base, query: "tidak ada" })).toEqual([]);
+  });
+
+  test("a branch account's view searches the employee number, not the staff code", () => {
+    const branch: BmiRowView[] = views.map((v, i) => ({ ...v, row: { ...v.row, displayId: ["198001", "198002", ""][i] } }));
+    expect(codes(filterViews(branch, { ...base, query: "198002" }))).toEqual(["T-02"]);
+    expect(codes(filterViews(branch, { ...base, query: "t-02" }))).toEqual([]);
+    expect(codes(filterViews(branch, { ...base, query: "tiga" }))).toEqual(["T-03"]);
+    expect(idOf(branch[0].row)).toBe("198001");
+    expect(idOf(branch[2].row)).toBe("");
+    expect(idOf(views[0].row)).toBe("T-01");
   });
 
   test("status filters follow the schedule and the chosen period", () => {
@@ -153,9 +164,9 @@ describe("applyEdit", () => {
       type: "check",
       code: "T-03",
       period: 2,
-      check: { date: "2026-10-26", heightCm: 165, weightKg: 70 },
+      check: { date: "2026-10-26", heightCm: 165, weightKg: 70, commitment: null },
     });
-    expect(next[2].checks[1]).toEqual({ date: "2026-10-26", heightCm: 165, weightKg: 70 });
+    expect(next[2].checks[1]).toEqual({ date: "2026-10-26", heightCm: 165, weightKg: 70, commitment: null });
     expect(next[0]).toBe(rows[0]);
     expect(rows[2].checks[1]).toBeNull();
     expect(summarizeRow(next[2], settings, today).latestBmi).toBe(25.7);
@@ -172,6 +183,18 @@ describe("applyEdit", () => {
     expect(next[1].hasNote).toBe(true);
     expect(next[1].fitnessNote).toBeNull();
     expect(next[1].name).toBe("Petugas Dua");
+  });
+
+  test("a profile correction changes the name, employee number, touch point, L/P and the id shown", () => {
+    const branch = [{ ...rows[0], displayId: "180501" }];
+    const [next] = applyEdit(branch, {
+      type: "profile",
+      code: "T-01",
+      patch: { name: "Nama Benar", employeeNo: "190001", touchPoint: "Lounge Utama", gender: "P", displayId: "190001" },
+    });
+    expect(next).toMatchObject({ name: "Nama Benar", employeeNo: "190001", touchPoint: "Lounge Utama", gender: "P", displayId: "190001" });
+    expect(idOf(next)).toBe("190001");
+    expect(next.checks).toBe(branch[0].checks);
   });
 });
 
@@ -193,9 +216,9 @@ describe("another number of periods", () => {
       expect(codes(filterViews(list, { ...base, status: "checked", period: last }))).toEqual(["L-01"]);
       expect(codes(filterViews(list, { ...base, status: "pending", period: last }))).toEqual(["L-02"]);
 
-      const next = applyEdit([person, never], { type: "check", code: "L-02", period: last, check: { date: "2027-03-02", heightCm: 160, weightKg: 50 } });
+      const next = applyEdit([person, never], { type: "check", code: "L-02", period: last, check: { date: "2027-03-02", heightCm: 160, weightKg: 50, commitment: null } });
       expect(next[1].checks).toHaveLength(periods);
-      expect(next[1].checks[last - 1]).toEqual({ date: "2027-03-02", heightCm: 160, weightKg: 50 });
+      expect(next[1].checks[last - 1]).toEqual({ date: "2027-03-02", heightCm: 160, weightKg: 50, commitment: null });
       expect(summarizeRow(next[1], s, "2027-03-02").checks).toBe(1);
     });
   }

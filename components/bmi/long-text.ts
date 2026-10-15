@@ -35,5 +35,5 @@ export function isClipped(box: { scrollWidth: number; clientWidth: number }): bo
 
 /** Accessible name of the toggle: "Lihat selengkapnya, Coaching Evaluation Feedback, <nama>". */
 export function expandLabel(expanded: boolean, column: string, name: string): string {
-  return `${expanded ? "Ciutkan" : "Lihat selengkapnya"}, ${column}, ${name}`;
+  return `${expanded ? "Hide" : "Lihat selengkapnya"}, ${column}, ${name}`;
 }

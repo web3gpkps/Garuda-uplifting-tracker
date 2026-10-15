@@ -11,11 +11,21 @@ export type BmiStoredCheck = {
   date: string | null;
   heightCm: number;
   weightKg: number;
+  /** Komitmen/Target: what was typed for a check that is not Normal, or "Sudah Ideal" for a Normal one. */
+  commitment: string | null;
 };
 
 /** One staff member as the tracker needs them (plain data, sent from the server screen). */
 export type BmiTrackerRow = {
+  /** The staff code (ID SDM): the key of every save, never shown in a branch account's view. */
   code: string;
+  /**
+   * What the first identity column shows and the search matches: the staff code, or the employee
+   * number (No Pegawai) in a branch account's view. Empty means the staff member has none.
+   */
+  displayId?: string;
+  /** No Pegawai as stored, for the profile form. Not shown in the table of a link or the owner. */
+  employeeNo?: string | null;
   name: string;
   /** Station code, shown in the Unit column. */
   station: string | null;
@@ -85,8 +95,13 @@ export function isStatusFilter(value: string): value is StatusFilter {
   return STATUS_FILTERS.some((f) => f.value === value);
 }
 
+/** The id a row shows: its displayId when the screen sets one, otherwise the staff code. */
+export function idOf(row: Pick<BmiTrackerRow, "code" | "displayId">): string {
+  return row.displayId ?? row.code;
+}
+
 export type RowFilters = {
-  /** Name or ID, any case. */
+  /** Name or ID (No Pegawai in a branch account's view), any case. */
   query: string;
   status: StatusFilter;
   /** "" is every touch point. */
@@ -99,7 +114,7 @@ export type RowFilters = {
 export function filterViews(views: readonly BmiRowView[], f: RowFilters): BmiRowView[] {
   const query = f.query.trim().toLowerCase();
   return views.filter(({ row, summary }) => {
-    if (query && !`${row.code} ${row.name}`.toLowerCase().includes(query)) return false;
+    if (query && !`${idOf(row)} ${row.name}`.toLowerCase().includes(query)) return false;
     if (f.touchPoint && row.touchPoint?.trim() !== f.touchPoint) return false;
     if (f.status === "late" && summary.scheduleStatus !== "Terlambat cek") return false;
     if (f.status === "due" && summary.scheduleStatus !== "Cek ≤ 7 hari") return false;
@@ -155,11 +170,16 @@ export function trackerMetrics(views: readonly BmiRowView[], period: number): Tr
 export type EditTarget =
   | { kind: "hasNote"; code: string }
   | { kind: "fitnessNote"; code: string }
-  | { kind: "check"; code: string; period: number; field: CheckField };
+  | { kind: "check"; code: string; period: number; field: CheckField }
+  | { kind: "commitment"; code: string; period: number };
 
 export type RowEdit =
   | { type: "check"; code: string; period: number; check: BmiStoredCheck | null }
-  | { type: "profile"; code: string; patch: Partial<Pick<BmiTrackerRow, "hasNote" | "fitnessNote">> };
+  | {
+      type: "profile";
+      code: string;
+      patch: Partial<Pick<BmiTrackerRow, "hasNote" | "fitnessNote" | "name" | "touchPoint" | "gender" | "employeeNo" | "displayId">>;
+    };
 
 /** The rows with one edit applied (a new array; only the edited row is a new object). */
 export function applyEdit(rows: readonly BmiTrackerRow[], edit: RowEdit): BmiTrackerRow[] {

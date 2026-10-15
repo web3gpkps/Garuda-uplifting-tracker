@@ -178,6 +178,8 @@ const bmiChecks: TableSpec = {
     d("check_date", "Tgl Cek", date),
     d("height_cm", "Tinggi (cm)", num(1, 120, 210), { required: true }),
     d("weight_kg", "Berat (kg)", num(1, 30, 200), { required: true }),
+    // Sixth column of each group in the tab. The database sets "Sudah Ideal" on a Normal check (trigger).
+    d("commitment", "Komitmen/Target", text()),
   ],
 };
 

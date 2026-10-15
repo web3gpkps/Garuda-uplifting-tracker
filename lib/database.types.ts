@@ -146,6 +146,7 @@ export type Database = {
       bmi_checks: {
         Row: {
           check_date: string | null
+          commitment: string | null
           height_cm: number
           id: number
           period: number
@@ -157,6 +158,7 @@ export type Database = {
         }
         Insert: {
           check_date?: string | null
+          commitment?: string | null
           height_cm: number
           id?: number
           period: number
@@ -168,6 +170,7 @@ export type Database = {
         }
         Update: {
           check_date?: string | null
+          commitment?: string | null
           height_cm?: number
           id?: number
           period?: number
@@ -849,6 +852,7 @@ export type Database = {
       share_save_check: {
         Args: {
           p_check_date: string
+          p_commitment?: string
           p_height_cm: number
           p_period: number
           p_staff_code: string

@@ -102,7 +102,11 @@ select ok((select decided_at is not null from public.profiles where email = 'tst
 set local request.jwt.claims = '{"sub":"a0000000-0000-4000-8000-0000000000a1","role":"authenticated"}';
 set local role authenticated;
 insert into _r select 'sub_open', public.share_open(null);
-insert into _r select 'sub_chk', public.share_save_check('', 'TST-SUB', 1, date '2026-10-12', 170, 70);
+insert into _r select 'sub_chk', public.share_save_check('', 'TST-SUB', 2, date '2026-10-26', 170, 70);
+select is(pg_temp.err($q$select public.share_save_check('', 'TST-SUB', 1, date '2026-10-12', 170, 70)$q$), '22023 invalid_input period',
+  'SUB account cannot change the first (Coaching Assessment) check');
+select is(pg_temp.err($q$select public.share_save_check('', 'TST-SUB', 1, null, null, null)$q$), '22023 invalid_input period',
+  'SUB account cannot delete the first check either');
 select is(pg_temp.err($q$select public.share_save_check(null, 'TST-DPS', 1, null, 170, 70)$q$), 'P0001 out_of_scope',
   'SUB account cannot write another station');
 select is(pg_temp.err($q$select public.share_kps_save_staff_baseline(null, 'TST-SUB', 1, null, null, null)$q$),
@@ -113,7 +117,7 @@ select is((select v ->> 'label' from _r where pk = 'sub_open'), 'Akun SUB', 'SUB
 select is((select v -> 'link_id' from _r where pk = 'sub_open'), 'null'::jsonb, 'SUB account: no link id');
 select is((select jsonb_array_length(v -> 'staff') from _r where pk = 'sub_open'), 1, 'SUB account sees only its station staff');
 select is((select jsonb_array_length(v -> 'stations') from _r where pk = 'sub_open'), 1, 'SUB account sees only its station');
-select is((select row(updated_by_link, updated_by_user)::text from public.bmi_checks where staff_code = 'TST-SUB' and period = 1),
+select is((select row(updated_by_link, updated_by_user)::text from public.bmi_checks where staff_code = 'TST-SUB' and period = 2),
           row(null::uuid, 'a0000000-0000-4000-8000-0000000000a1'::uuid)::text,
           'an account write is attributed to the account, not to a link');
 
@@ -155,7 +159,7 @@ select lives_ok($$select public.admin_delete_account('a0000000-0000-4000-8000-00
 reset role;
 select is((select count(*)::int from public.profiles where email = 'tst-sub@example.invalid'), 0, 'removing the auth user removes the profile');
 select ok((select updated_by_user is distinct from 'a0000000-0000-4000-8000-0000000000a1'::uuid
-             from public.bmi_checks where staff_code = 'TST-SUB' and period = 1),
+             from public.bmi_checks where staff_code = 'TST-SUB' and period = 2),
   'data the removed account wrote is kept, and no longer points at the removed account');
 
 -- A station that disappears from public.stations cannot be reached by an old profile.

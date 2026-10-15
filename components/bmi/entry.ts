@@ -11,7 +11,7 @@ export const HEIGHT_RANGE = "Tinggi 120 sampai 210 cm.";
 export const WEIGHT_RANGE = "Berat 30 sampai 200 kg.";
 
 export type CheckField = "date" | "height" | "weight";
-export type CheckErrors = Partial<Record<CheckField, string>>;
+export type CheckErrors = Partial<Record<CheckField | "commitment", string>>;
 export type CheckInputs = Record<CheckField, string>;
 
 /** undefined when the text is empty (the caller decides if empty is allowed) or in range. */
@@ -61,5 +61,6 @@ export function serverCheckErrors(error: LinkError): CheckErrors {
   if (error.field === "height_cm") return { height: HEIGHT_RANGE };
   if (error.field === "weight_kg") return { weight: WEIGHT_RANGE };
   if (error.field === "check_date") return { date: "Tanggal cek tidak valid." };
+  if (error.field === "commitment") return { commitment: error.message };
   return {};
 }

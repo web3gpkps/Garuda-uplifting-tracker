@@ -22,8 +22,9 @@ import { bmiCheckName } from "@/lib/bmi-periods";
 import { slotStatusLine, dueFirst } from "./summary";
 import type { Settings } from "@/lib/rules";
 import { saveBmiCheck, saveBmiProfile, type BmiActionResult } from "./actions";
-import { addStaffFromBmi } from "./add-staff-action";
-import type { AddBmiStaffInput, AddBmiStaffResult } from "./add-staff";
+import { addStaffFromBmi, editStaffFromBmi } from "./add-staff-action";
+import { resolveTouchPoint, type AddBmiStaffInput, type AddBmiStaffResult } from "./add-staff";
+import type { EditBmiStaffInput } from "./edit-staff";
 import { AddBmiStaffDialog } from "./AddBmiStaffDialog";
 import type { BmiCardProps } from "./BmiCard";
 import { BmiDetailPanel } from "./BmiDetailPanel";
@@ -36,12 +37,14 @@ import { GEOMETRY } from "./table-columns";
 import { useToast } from "./BmiToast";
 import { bmiCsv, csvFilename } from "./csv";
 import { EditCellDialog, type EditRequest, type SaveOutcome } from "./EditCellDialog";
+import { EditStaffDialog, type StaffEditRequest } from "./EditStaffDialog";
 import { serverCheckErrors } from "./entry";
 import { BMI_SHEET_TAB, sheetColumnCount, sheetColumnRange } from "./labels";
 import {
   STATUS_FILTERS,
   applyEdit,
   filterViews,
+  idOf,
   isCheckedIn,
   isStatusFilter,
   summaryOf,
@@ -64,9 +67,15 @@ export type BmiTrackerActions = {
   saveCheck: typeof saveBmiCheck;
   saveProfile: typeof saveBmiProfile;
   addStaff: typeof addStaffFromBmi;
+  editStaff: typeof editStaffFromBmi;
 };
 
-const REAL_ACTIONS: BmiTrackerActions = { saveCheck: saveBmiCheck, saveProfile: saveBmiProfile, addStaff: addStaffFromBmi };
+const REAL_ACTIONS: BmiTrackerActions = {
+  saveCheck: saveBmiCheck,
+  saveProfile: saveBmiProfile,
+  addStaff: addStaffFromBmi,
+  editStaff: editStaffFromBmi,
+};
 
 export type BmiTrackerProps = {
   /** access.key: a link token, "owner" or "account". Never shown. */
@@ -99,6 +108,12 @@ export type BmiTrackerProps = {
   ownStation: string;
   /** The station filter's value as a station code, "" for all stations. */
   stationFilter: string;
+  /** Header of the first identity column and of the CSV: "ID SDM", or "No Pegawai" in a branch account's view. */
+  idLabel: string;
+  /** Placeholder of the search box. */
+  searchHint: string;
+  /** Label of the button that scrolls the table to the chosen check. */
+  jumpLabel: string;
   actions?: BmiTrackerActions;
 };
 
@@ -155,6 +170,9 @@ export function BmiTracker({
   addStations,
   ownStation,
   stationFilter,
+  idLabel,
+  searchHint,
+  jumpLabel,
   actions = REAL_ACTIONS,
 }: BmiTrackerProps) {
   const ids = useId();
@@ -166,6 +184,7 @@ export function BmiTracker({
   const [paging, setPaging] = useState({ key: "", extra: 0 });
   const [profileCode, setProfileCode] = useState<string | null>(null);
   const [edit, setEdit] = useState<EditRequest | null>(null);
+  const [staffEdit, setStaffEdit] = useState<StaffEditRequest | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const phone = usePhone();
@@ -251,10 +270,15 @@ export function BmiTracker({
   const saveCheck = async (
     code: string,
     p: number,
-    check: { checkDate: string; heightCm: number; weightKg: number },
+    check: { checkDate: string | null; heightCm: number; weightKg: number; commitment: string | null },
   ): Promise<SaveOutcome> => {
     const outcome = await run(
-      { type: "check", code, period: p, check: { date: check.checkDate, heightCm: check.heightCm, weightKg: check.weightKg } },
+      {
+        type: "check",
+        code,
+        period: p,
+        check: { date: check.checkDate, heightCm: check.heightCm, weightKg: check.weightKg, commitment: check.commitment },
+      },
       () => actions.saveCheck(accessKey, { staffCode: code, period: p, ...check }),
     );
     if (outcome.ok) toast("Perubahan tersimpan");
@@ -263,7 +287,7 @@ export function BmiTracker({
 
   const deleteCheck = async (code: string, p: number): Promise<SaveOutcome> => {
     const outcome = await run({ type: "check", code, period: p, check: null }, () =>
-      actions.saveCheck(accessKey, { staffCode: code, period: p, checkDate: null, heightCm: null, weightKg: null }),
+      actions.saveCheck(accessKey, { staffCode: code, period: p, checkDate: null, heightCm: null, weightKg: null, commitment: null }),
     );
     if (outcome.ok) toast(`${bmiCheckName(p)} dihapus`);
     return outcome;
@@ -289,13 +313,47 @@ export function BmiTracker({
     return outcome;
   };
 
+  /** "Ubah profil": the new name, employee number, touch point and L/P show at once, the server confirms them. */
+  const saveStaffProfile = async (input: EditBmiStaffInput): Promise<SaveOutcome> => {
+    const row = rowOf(input.code);
+    if (!row) return { ok: false, message: "SDM ini tidak ada lagi. Muat ulang halaman." };
+    const touch = resolveTouchPoint(input.touchPoint);
+    if (!touch.ok) return { ok: false, message: touch.error.message };
+    const employeeNo = input.employeeNo.trim() === "" ? null : input.employeeNo.trim();
+    const outcome = await run(
+      {
+        type: "profile",
+        code: input.code,
+        patch: {
+          name: input.name.trim(),
+          employeeNo,
+          touchPoint: touch.value,
+          gender: input.gender,
+          // A branch account's first column shows the employee number.
+          ...(row.displayId !== undefined ? { displayId: employeeNo ?? "" } : {}),
+        },
+      },
+      async (): Promise<BmiActionResult> => {
+        const result = await actions.editStaff(accessKey, input);
+        return result.ok ? { ok: true, deleted: false, savedAt: new Date().toISOString() } : result;
+      },
+    );
+    if (outcome.ok) toast("Profil tersimpan");
+    return outcome;
+  };
+
   const addStaff = (input: AddBmiStaffInput): Promise<AddBmiStaffResult> => actions.addStaff(accessKey, input);
 
   const openEdit = useCallback((target: EditTarget) => setEdit((prev) => ({ n: (prev?.n ?? 0) + 1, target })), []);
   const openProfile = useCallback((code: string) => setProfileCode(code), []);
+  // "Edit Profil" in the profile panel: the panel closes and the form opens in its place.
+  const openStaffEdit = useCallback((code: string) => {
+    setProfileCode(null);
+    setStaffEdit((prev) => ({ n: (prev?.n ?? 0) + 1, code }));
+  }, []);
 
   function exportCsv() {
-    const text = bmiCsv(filtered, settings);
+    const text = bmiCsv(filtered, settings, idLabel);
     const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8;" }));
     const link = document.createElement("a");
     link.href = url;
@@ -326,6 +384,7 @@ export function BmiTracker({
         settings,
         person: {
           code: row.code,
+          displayId: idOf(row),
           name: row.name,
           station: row.station,
           touchPoint: row.touchPoint,
@@ -339,13 +398,14 @@ export function BmiTracker({
         status: slotStatusLine(slot, summary, today),
         saved:
           slot && isCheckedIn(summary, period) && slot.heightCm !== null && slot.weightKg !== null
-            ? { checkDate: slot.checkDate, heightCm: slot.heightCm, weightKg: slot.weightKg }
+            ? { checkDate: slot.checkDate, heightCm: slot.heightCm, weightKg: slot.weightKg, commitment: row.checks[period - 1]?.commitment ?? null }
             : null,
       };
     });
   }, [phone, shown, period, plannedDates, labels, settings, today, stationSelect]);
 
   const editRow = edit ? rowOf(edit.target.code) : undefined;
+  const staffEditRow = staffEdit ? rowOf(staffEdit.code) : undefined;
   const profileView = profileCode ? (views.find((v) => v.row.code === profileCode) ?? null) : null;
   const subtitle = `Struktur tabel mengikuti tab ${BMI_SHEET_TAB} · ${columnCount} kolom (${sheetColumnRange(settings.bmiPeriods)})`;
 
@@ -400,7 +460,7 @@ export function BmiTracker({
                   type="search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Nama atau ID SDM"
+                  placeholder={searchHint}
                   autoComplete="off"
                 />
               </Control>
@@ -444,7 +504,7 @@ export function BmiTracker({
                     onClick={() => scrollToPeriod(true)}
                     title="Geser tabel ke kolom cek yang dipilih"
                   >
-                    Lihat Cek
+                    {jumpLabel}
                   </Button>
                   <div className="bmi-switch" role="group" aria-label="Tampilan kolom">
                     <button type="button" aria-pressed={viewAll} onClick={() => chooseView(true)}>
@@ -516,6 +576,7 @@ export function BmiTracker({
                   labels={labels}
                   period={period}
                   viewAll={viewAll}
+                  idLabel={idLabel}
                   onEdit={openEdit}
                   onProfile={openProfile}
                   scrollRef={scrollRef}
@@ -559,6 +620,7 @@ export function BmiTracker({
         deleteCheck={deleteCheck}
         saveProfile={saveProfile}
       />
+      <EditStaffDialog request={staffEdit} row={staffEditRow ?? null} onClose={() => setStaffEdit(null)} onSave={saveStaffProfile} />
       <BmiDetailPanel
         open={profileView !== null}
         onClose={() => setProfileCode(null)}
@@ -567,6 +629,7 @@ export function BmiTracker({
         plannedDates={plannedDates}
         labels={labels}
         period={period}
+        onEditProfile={openStaffEdit}
       />
       <AddBmiStaffDialog
         open={addOpen}

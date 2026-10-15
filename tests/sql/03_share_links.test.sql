@@ -194,6 +194,8 @@ select throws_ok(format('select public.share_save_check(%L, %L, 1, null, 170, 70
   'P0001', 'out_of_scope', 'unknown staff code raises out_of_scope');
 select throws_ok(format('select public.share_save_check(%L, %L, 1, null, 170, 70)', repeat('b2', 24), 'TST-SUB'),
   'P0001', 'invalid_link', 'revoked link cannot save a check');
+select throws_ok(format('select public.share_save_check(%L, %L, 1, %L, 170, 70)', repeat('a1', 24), 'TST-SUB', '2026-10-12'),
+  '22023', 'invalid_input', 'a link cannot change the first (Coaching Assessment) check');
 select throws_ok(format('select public.share_save_check(%L, %L, 3, null, 300, 60)', repeat('a1', 24), 'TST-SUB'),
   '22023', 'invalid_input', 'height 300 is rejected');
 select throws_ok(format('select public.share_save_check(%L, %L, 3, null, 170, 10)', repeat('a1', 24), 'TST-SUB'),
@@ -202,6 +204,13 @@ select throws_ok(format('select public.share_save_check(%L, %L, 3, null, null, 6
   '22023', 'invalid_input', 'height missing while weight given is rejected');
 select throws_ok(format('select public.share_save_check(%L, %L, 7, null, 170, 60)', repeat('a1', 24), 'TST-SUB'),
   '22023', 'invalid_input', 'slot beyond settings.bmi_periods (6) is rejected');
+select is(public.share_save_check(repeat('a1', 24), 'TST-SUB', 4, date '2026-11-23', 170, 85, ' Turun 5 kg dalam 2 bulan ') -> 'row' ->> 'commitment', 'Turun 5 kg dalam 2 bulan',
+  'share_save_check stores the commitment of a check above Normal (trimmed)');
+select is(public.share_save_check(repeat('a1', 24), 'TST-SUB', 4, date '2026-11-23', 170, 60, 'Turun 5 kg dalam 2 bulan') -> 'row' ->> 'commitment', 'Sudah Ideal',
+  'a Normal check is saved as Sudah Ideal whatever was sent');
+select throws_ok(format('select public.share_save_check(%L, %L, 4, null, 170, 85, repeat(%L, 501))', repeat('a1', 24), 'TST-SUB', 'x'),
+  '22023', 'invalid_input', 'a commitment over 500 characters is rejected');
+select is(public.share_save_check(repeat('a1', 24), 'TST-SUB', 4, null, null, null) ->> 'deleted', 'true', 'the scratch check is removed again');
 insert into _p select 'chk6', public.share_save_check(repeat('a1', 24), 'TST-SUB', 6, date '2026-12-21', 170, 64);
 insert into _p select 'chk_kps', public.share_save_check(repeat('c3', 24), 'TST-KNO', 3, date '2026-11-09', 168, 64);
 insert into _p select 'prof', public.share_save_profile(repeat('a1', 24), 'TST-SUB', ' p ', true, '  Perlu cek ulang  ');

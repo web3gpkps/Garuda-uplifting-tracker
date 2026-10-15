@@ -5,21 +5,25 @@ import { saveBmiCheck } from "@/components/bmi/actions";
 import { Button } from "@/components/ui/Button";
 import { cx } from "@/components/ui/cx";
 import { Dialog } from "@/components/ui/Dialog";
-import { Field, Input, NumberInput, parseDecimal } from "@/components/ui/Field";
+import { Field, Input, NumberInput, Textarea, parseDecimal } from "@/components/ui/Field";
 import { SaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { StatusChip, type StatusTone } from "@/components/ui/StatusChip";
-import { bmiCheckName } from "@/lib/bmi-periods";
+import { COMMITMENT_IDEAL, COMMITMENT_LABEL, COMMITMENT_MAX, commitmentCell, commitmentToSave, needsCommitment } from "@/lib/bmi-commitment";
+import { bmiCheckName, isCoachingCheck } from "@/lib/bmi-periods";
+import { formatTanggal } from "@/lib/dates";
 import { bmi, bmiCategory, type Settings } from "@/lib/rules";
 import { formatDecimal, toInputText } from "@/lib/format";
 import { CategoryBadge } from "./badges";
 import { BmiPersonSheet, CLOSED_SHEET, closeSheet, openSheet, profileIncomplete, type BmiPerson } from "./BmiPersonSheet";
 import { heightError, serverCheckErrors, weightError, type CheckErrors } from "./entry";
 import { isPlausibleDate } from "./format";
+import { COACHING_CHECK_NOTE, COACHING_LOCKED_HINT } from "./labels";
 
 export type BmiCardSaved = {
   checkDate: string | null;
   heightCm: number;
   weightKg: number;
+  commitment: string | null;
 };
 
 export type BmiCardProps = {
@@ -68,6 +72,9 @@ export function BmiCard({
   const [checkDate, setCheckDate] = useState(savedDate);
   const [height, setHeight] = useState(toInputText(saved?.heightCm));
   const [weight, setWeight] = useState(toInputText(saved?.weightKg));
+  const [commitment, setCommitment] = useState(
+    saved ? commitmentCell(bmiCategory(bmi(saved.heightCm, saved.weightKg), settings), saved.commitment).text : "",
+  );
   const [errors, setErrors] = useState<CheckErrors>({});
   const [save, setSave] = useState<SaveState>({ status: "idle" });
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -97,7 +104,10 @@ export function BmiCard({
     next.querySelector<HTMLInputElement>('input[name="height_cm"]')?.focus({ preventScroll: true });
   }
 
-  function run(values: { checkDate: string | null; heightCm: number | null; weightKg: number | null }, goNext = false) {
+  function run(
+    values: { checkDate: string | null; heightCm: number | null; weightKg: number | null; commitment: string | null },
+    goNext = false,
+  ) {
     setSave({ status: "saving" });
     setEndNote("");
     startTransition(async () => {
@@ -154,7 +164,7 @@ export function BmiCard({
       setConfirmOpen(true);
       return;
     }
-    run({ checkDate, heightCm: heightValue, weightKg: weightValue }, goNext);
+    run({ checkDate, heightCm: heightValue, weightKg: weightValue, commitment: commitmentToSave(liveCategory, commitment) }, goNext);
   }
 
   function edit(field: keyof CheckErrors, apply: () => void) {
@@ -171,6 +181,77 @@ export function BmiCard({
   }
 
   const incomplete = profileIncomplete(person);
+  // The Coaching Assessment check is entered in the Google Sheet: shown here, never edited.
+  const locked = isCoachingCheck(period);
+
+  const nameBlock = (
+    <div className="col-span-2 flex min-w-0 flex-col gap-0.5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <button
+          type="button"
+          onClick={() => setSheet(openSheet)}
+          className="min-h-11 min-w-0 text-left text-base font-semibold text-ink underline decoration-line-strong underline-offset-4 [overflow-wrap:anywhere] hover:decoration-brand"
+        >
+          {person.name}
+          <span className="sr-only">, buka profil dan riwayat</span>
+        </button>
+        {showStation && person.station ? <span className="station-code text-xs text-ink-muted">{person.station}</span> : null}
+        {incomplete ? <StatusChip label="Isi profil" tone="warning" /> : null}
+      </div>
+      <p className={cx("text-sm tabular-nums", STATUS_TEXT[status.tone])}>{status.text}</p>
+    </div>
+  );
+
+  const personSheet = (
+    <BmiPersonSheet
+      key={sheet.n}
+      open={sheet.open}
+      onClose={() => setSheet(closeSheet)}
+      accessKey={accessKey}
+      person={person}
+      plannedDates={plannedDates}
+      labels={labels}
+      period={period}
+      settings={settings}
+    />
+  );
+
+  if (locked) {
+    const reading = (label: string, value: string) => (
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="text-sm font-semibold text-ink">{label}</span>
+        <span className="flex min-h-11 items-center text-base tabular-nums text-ink">{value}</span>
+      </div>
+    );
+    return (
+      <li className="flex scroll-mt-4 flex-col" data-bmi-row="" data-checked={saved ? "true" : "false"}>
+        <div role="group" aria-label={`${bmiCheckName(period)}, ${person.name}`} className="grid grid-cols-2 gap-3 px-4 py-4">
+          {nameBlock}
+          {reading("TB", saved ? `${formatDecimal(saved.heightCm, 0, 1)} cm` : "–")}
+          {reading("BB", saved ? `${formatDecimal(saved.weightKg, 0, 1)} kg` : "–")}
+          {reading("Tgl cek", saved?.checkDate ? formatTanggal(saved.checkDate) : "–")}
+          {reading(COMMITMENT_LABEL, commitmentCell(liveCategory, saved?.commitment).text || "–")}
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="text-sm font-semibold text-ink">BMI</span>
+            <div className="flex min-h-11 flex-wrap items-center gap-2">
+              {liveBmi !== null ? (
+                <>
+                  <span className="text-base font-semibold text-ink tabular-nums">{formatDecimal(liveBmi, 1)}</span>
+                  <CategoryBadge category={liveCategory} />
+                </>
+              ) : (
+                <span className="text-sm text-ink-muted">–</span>
+              )}
+            </div>
+          </div>
+          <p className="col-span-2 text-sm text-ink-muted">
+            {COACHING_CHECK_NOTE}. {COACHING_LOCKED_HINT}
+          </p>
+        </div>
+        {personSheet}
+      </li>
+    );
+  }
 
   return (
     <li className="flex scroll-mt-4 flex-col" data-bmi-row="" data-checked={saved ? "true" : "false"}>
@@ -181,21 +262,7 @@ export function BmiCard({
         aria-label={`${bmiCheckName(period)}, ${person.name}`}
         className="grid grid-cols-2 gap-3 px-4 py-4"
       >
-        <div className="col-span-2 flex min-w-0 flex-col gap-0.5">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <button
-              type="button"
-              onClick={() => setSheet(openSheet)}
-              className="min-h-11 min-w-0 text-left text-base font-semibold text-ink underline decoration-line-strong underline-offset-4 [overflow-wrap:anywhere] hover:decoration-brand"
-            >
-              {person.name}
-              <span className="sr-only">, buka profil dan riwayat</span>
-            </button>
-            {showStation && person.station ? <span className="station-code text-xs text-ink-muted">{person.station}</span> : null}
-            {incomplete ? <StatusChip label="Isi profil" tone="warning" /> : null}
-          </div>
-          <p className={cx("text-sm tabular-nums", STATUS_TEXT[status.tone])}>{status.text}</p>
-        </div>
+        {nameBlock}
 
         <Field label="TB" error={errors.height}>
           <NumberInput
@@ -241,6 +308,24 @@ export function BmiCard({
           </div>
         </div>
 
+        {needsCommitment(liveCategory) ? (
+          <div className="col-span-2">
+            <Field label={COMMITMENT_LABEL} error={errors.commitment} help="Target atau komitmen, misalnya penurunan berat badan.">
+              <Textarea
+                rows={3}
+                name="commitment"
+                maxLength={COMMITMENT_MAX}
+                value={commitment}
+                onChange={(e) => edit("commitment", () => setCommitment(e.target.value))}
+              />
+            </Field>
+          </div>
+        ) : liveCategory === "Normal" ? (
+          <p className="col-span-2 text-sm text-ink-muted">
+            {COMMITMENT_LABEL}: {COMMITMENT_IDEAL}. Hasil BMI Normal, tidak perlu diisi.
+          </p>
+        ) : null}
+
         <div className="col-span-2 flex flex-col gap-1.5">
           <div className="flex gap-2">
             <Button type="submit" data-next="true" loading={pending && !confirmOpen} loadingText="Menyimpan…" className="flex-1">
@@ -255,17 +340,7 @@ export function BmiCard({
         </div>
       </form>
 
-      <BmiPersonSheet
-        key={sheet.n}
-        open={sheet.open}
-        onClose={() => setSheet(closeSheet)}
-        accessKey={accessKey}
-        person={person}
-        plannedDates={plannedDates}
-        labels={labels}
-        period={period}
-        settings={settings}
-      />
+      {personSheet}
 
       <Dialog
         open={confirmOpen}
@@ -282,7 +357,7 @@ export function BmiCard({
               variant="danger"
               loading={pending}
               loadingText="Menghapus…"
-              onClick={() => run({ checkDate: null, heightCm: null, weightKg: null })}
+              onClick={() => run({ checkDate: null, heightCm: null, weightKg: null, commitment: null })}
             >
               Hapus {bmiCheckName(period)}
             </Button>

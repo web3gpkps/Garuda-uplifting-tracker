@@ -137,7 +137,7 @@ export function BmiTextCell({ className, text, textWidth, column, person, expand
         {expanded ? (
           <div className="cell-actions">
             <button ref={toggleRef} type="button" className="cell-chip" aria-expanded="true" aria-label={label} onClick={toggle}>
-              Ciutkan
+              Hide
             </button>
             {edit ? (
               <button type="button" className="cell-chip" aria-label={editHint} onClick={edit.onEdit}>

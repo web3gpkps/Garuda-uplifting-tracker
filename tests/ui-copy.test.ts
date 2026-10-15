@@ -43,7 +43,9 @@ function allowsGoogleSheet(rel: string): boolean {
     rel === "components/admin/sync-labels.ts" ||
     // Owner-only Parameter form: changing the number of checks restructures the replica, and says so.
     rel === "components/admin/SettingsForm.tsx" ||
-    rel === "components/admin/settings-schema.ts"
+    rel === "components/admin/settings-schema.ts" ||
+    // The first check (Coaching Assessment) is entered in the Google Sheet only, and the table says so.
+    rel === "components/bmi/labels.ts"
   );
 }
 

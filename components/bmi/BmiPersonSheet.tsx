@@ -15,6 +15,8 @@ import { checkRhythm, hasNoteLabel, parseHasNote } from "./summary";
 
 export type BmiPerson = {
   code: string;
+  /** What the sheet shows as the id: the staff code, or the employee number in a branch account's view. */
+  displayId?: string;
   name: string;
   station: string | null;
   /** Touch Point as stored: a standard value or the text the owner entered. */
@@ -115,7 +117,7 @@ export function BmiPersonSheet({
 
   const { summary } = person;
   const weighings = summary.periods.filter((p) => p?.weightKg !== null && p?.weightKg !== undefined).length;
-  const meta = [person.code, person.station].filter(Boolean).join(" · ");
+  const meta = [person.displayId ?? person.code, person.station].filter(Boolean).join(" · ");
 
   return (
     <Dialog

@@ -9,7 +9,7 @@
  */
 import { isValidIsoDate } from "../dates";
 import { MAX_BMI_PERIODS } from "../bmi-periods";
-import { BMI_SHEET, planBmiStructure, type BmiStructureSettings } from "./bmi-structure";
+import { BMI_SHEET, SLOT_WIDTH, planBmiStructure, type BmiStructureSettings } from "./bmi-structure";
 import type { SheetsPort } from "./sheets";
 import type { Baseline } from "./types";
 
@@ -55,7 +55,7 @@ export async function reconcileBmiStructure(
   const sub = ((bmi.values[4] ?? []) as unknown[]).map((h) => String(h).replace(/\s+/g, " ").trim().toLowerCase());
   const starts = sub.flatMap((h, c) => (h === "tgl cek" ? [c] : []));
   const lastStart = starts[starts.length - 1];
-  const lastGroupWidths = lastStart !== undefined && sheets.columnWidths ? await sheets.columnWidths(BMI_SHEET, lastStart, 5) : undefined;
+  const lastGroupWidths = lastStart !== undefined && sheets.columnWidths ? await sheets.columnWidths(BMI_SHEET, lastStart, SLOT_WIDTH) : undefined;
 
   const plan = planBmiStructure({
     bmi,

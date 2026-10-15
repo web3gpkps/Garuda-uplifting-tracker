@@ -2,7 +2,10 @@
 
 import { refresh } from "next/cache";
 import { resolveAccess, toLinkError, type LinkError } from "@/lib/workspace";
+import { COMMITMENT_MAX } from "@/lib/bmi-commitment";
+import { isCoachingCheck } from "@/lib/bmi-periods";
 import { isPlausibleDate } from "@/components/bmi/format";
+import { COACHING_LOCKED_HINT } from "@/components/bmi/labels";
 
 export type BmiActionResult =
   | { ok: true; deleted: boolean; savedAt: string }
@@ -16,6 +19,8 @@ export type BmiCheckInput = {
   /** Both null deletes the period's check. */
   heightCm: number | null;
   weightKg: number | null;
+  /** Komitmen/Target; a Normal check is always "Sudah Ideal" (the database decides), a delete ignores it. */
+  commitment?: string | null;
 };
 
 export type BmiProfileInput = {
@@ -46,11 +51,17 @@ export async function saveBmiCheck(accessKey: string, input: BmiCheckInput): Pro
   if (!input || typeof input.staffCode !== "string" || !Number.isInteger(input.period)) {
     return invalid("staff_code", "Data cek tidak lengkap. Muat ulang halaman lalu coba lagi.");
   }
+  // The Coaching Assessment check is entered in the Google Sheet and only read here.
+  if (isCoachingCheck(input.period)) return invalid("period", COACHING_LOCKED_HINT);
   if (input.checkDate !== null && (typeof input.checkDate !== "string" || !isPlausibleDate(input.checkDate))) {
     return invalid("check_date", "Tanggal cek tidak valid.");
   }
   if (!isNumberOrNull(input.heightCm)) return invalid("height_cm", "Tinggi harus berupa angka.");
   if (!isNumberOrNull(input.weightKg)) return invalid("weight_kg", "Berat harus berupa angka.");
+  const commitment = input.commitment ?? null;
+  if (commitment !== null && (typeof commitment !== "string" || commitment.trim().length > COMMITMENT_MAX)) {
+    return invalid("commitment", `Komitmen/Target paling panjang ${COMMITMENT_MAX} karakter.`);
+  }
 
   const { error } = await resolved.rpc("share_save_check", {
     p_staff_code: input.staffCode,
@@ -58,6 +69,7 @@ export async function saveBmiCheck(accessKey: string, input: BmiCheckInput): Pro
     p_check_date: input.checkDate as string,
     p_height_cm: input.heightCm as number,
     p_weight_kg: input.weightKg as number,
+    p_commitment: commitment as string,
   });
   if (error) return { ok: false, error: toLinkError(error) };
 

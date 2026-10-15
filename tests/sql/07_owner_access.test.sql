@@ -71,7 +71,7 @@ insert into _r select 'open_empty', public.share_open('');
 insert into _r select 'open_blank', public.share_open('   ');
 
 insert into _r select 'ws',   public.share_save_weekly_score(null, 'TST-DPS', 1, null, 90, 90, 90, 90, null, 'Pemilik', null);
-insert into _r select 'chk',  public.share_save_check(null, 'TST-DPS', 1, date '2026-10-12', 170, 70);
+insert into _r select 'chk',  public.share_save_check(null, 'TST-DPS', 2, date '2026-10-26', 170, 70);
 insert into _r select 'prof', public.share_save_profile('', 'TST-DPS', 'L', true, 'catatan');
 insert into _r select 'ai',   public.share_update_action_item(null, 'TST-TL01', 'Selesai', 100, date '2026-10-08', null);
 insert into _r select 'kai',  public.share_kps_update_action_item(null, 'TST-TL02', 'Timeline Training', 'Coaching Coverage', null, 'Aksi', null, 'Rutin', 'mingguan', null, 'PIC', 'catatan pemilik', null);
@@ -132,7 +132,7 @@ select is(
 select is((select row(updated_by_link, updated_by, observer)::text from public.weekly_scores where staff_code = 'TST-DPS' and week = 1),
           row(null::uuid, '11111111-1111-4111-8111-111111111111'::uuid, 'Pemilik')::text,
           'owner weekly score: updated_by_link NULL, updated_by = owner');
-select is((select row(updated_by_link, updated_by_user)::text from public.bmi_checks where staff_code = 'TST-DPS' and period = 1),
+select is((select row(updated_by_link, updated_by_user)::text from public.bmi_checks where staff_code = 'TST-DPS' and period = 2),
           row(null::uuid, '11111111-1111-4111-8111-111111111111'::uuid)::text,
           'owner BMI check: updated_by_link NULL, updated_by_user = owner');
 select ok((select updated_by_link is null and gender = 'L' and bmi_has_note and role_play = 50 and report_remark = 'Failed'

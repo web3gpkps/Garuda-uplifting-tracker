@@ -26,7 +26,7 @@ import { ALL_STATIONS } from "@/components/ui/url-options";
 import { RememberView } from "@/components/ui/RememberView";
 import { rememberScope } from "@/components/ui/remember";
 import { todayInJakarta } from "@/components/shell/programme-calendar";
-import { bmiPeriodView } from "@/components/shell/cgk-bmi";
+import { bmiPeriodView, isBranchBmiView } from "@/components/shell/cgk-bmi";
 import { BmiHero } from "./BmiHero";
 import { BmiMetricsSkeleton } from "./BmiMetrics";
 import { BmiTracker } from "./BmiTracker";
@@ -57,6 +57,8 @@ export function BmiLoading() {
  */
 export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
   const today = todayInJakarta();
+  // A branch account (not KPS, not the owner) sees the employee number instead of the ID SDM.
+  const branchView = isBranchBmiView(access, ws);
   // Without the schedule the BMI periods cannot be placed on dates.
   const settings = ws.schedule ? ruleSettings(ws.settings) : null;
 
@@ -105,11 +107,19 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
       for (const c of checksByStaff.get(st.code) ?? []) {
         if (!latest || (c.updatedAt ?? "") > (latest.updatedAt ?? "")) latest = c;
         if (c.period >= 1 && c.period <= settings.bmiPeriods && c.heightCm !== null && c.weightKg !== null) {
-          checks[c.period - 1] = { date: c.checkDate ?? null, heightCm: Number(c.heightCm), weightKg: Number(c.weightKg) };
+          checks[c.period - 1] = {
+            date: c.checkDate ?? null,
+            heightCm: Number(c.heightCm),
+            weightKg: Number(c.weightKg),
+            commitment: c.commitment ?? null,
+          };
         }
       }
       return {
         code: st.code,
+        // A branch account sees the employee number (No Pegawai) where the ID SDM would be.
+        ...(branchView ? { displayId: st.employeeNo ?? "" } : {}),
+        employeeNo: st.employeeNo ?? null,
         name: st.name ?? st.code,
         station: st.station,
         touchPoint: st.touchPoint ?? null,
@@ -159,6 +169,9 @@ export function BmiScreen({ access, ws, searchParams: query }: ScreenProps) {
         addStations={ws.isKps ? stations : null}
         ownStation={ws.isKps ? "" : ws.scope}
         stationFilter={stationFilter ?? ""}
+        idLabel={branchView ? "No Pegawai" : "ID SDM"}
+        searchHint={branchView ? "Nama atau No Pegawai" : "Nama atau ID SDM"}
+        jumpLabel={branchView ? "Lihat Cek BMI" : "Lihat Cek"}
       />
     </>
   );

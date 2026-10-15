@@ -236,6 +236,8 @@ export interface WorkbookOptions {
   replacementSlots?: number;
   /** Penggantian SDM already has the engine's ID Sistem / ID SDM columns (P, Q), filled. */
   withIdColumns?: boolean;
+  /** Cek BMI groups have the sixth column Komitmen/Target (default); false is the tab as it was before it. */
+  commitmentColumn?: boolean;
   /** Action items whose Batas Waktu (J) is a formula (EDATE on Parameter), as GA-TL01 in the workbook. */
   dueFormula?: string[];
 }
@@ -253,6 +255,9 @@ const mirror = (tab: string, a1: string) => `=IF('${tab}'!${a1}="","",'${tab}'!$
  */
 export function buildWorkbook(db: DbSnapshot, opts: WorkbookOptions = {}): FakeWorkbook {
   const { masterFree = 3, weeks = 2, logSpare = 4, tlFree = 3, remedialFree = 3, replacementSlots = 6, dueFormula = [] } = opts;
+  const group = opts.commitmentColumn === false ? 5 : 6;
+  /** First summary column (Jumlah Cek): after the nine identity columns and six groups. */
+  const sumStart = 9 + 6 * group;
   const b = new FakeWorkbook();
   const staff = bySort(db.staff as Row[]);
   const settings = ((db.settings ?? [])[0] ?? {}) as Row;
@@ -323,12 +328,12 @@ export function buildWorkbook(db: DbSnapshot, opts: WorkbookOptions = {}): FakeW
   b.set(BMI, "A1", "CEK BMI, TINGGI BADAN & BERAT BADAN");
   headers(BMI, 4, ["No", "ID SDM", "Nama Petugas", "Unit", "Program", "L/P", "Coaching Evaluation Feedback", "Result/Remarks", "Ada Catatan BMI"]);
   for (let k = 0; k < 6; k++) {
-    const start = 9 + k * 5;
+    const start = 9 + k * group;
     b.setAt(BMI, 4, start, `Cek ke-${k + 1}`, `="Cek ke-${k + 1} (rencana "&TEXT(Parameter!$C$7+14*${k},"dd/mm/yyyy")&")"`);
-    headers(BMI, 5, ["Tgl Cek", "Tinggi (cm)", "Berat (kg)", "BMI", "Kategori"], start);
+    headers(BMI, 5, group === 6 ? ["Tgl Cek", "Tinggi (cm)", "Berat (kg)", "BMI", "Kategori", "Komitmen/Target"] : ["Tgl Cek", "Tinggi (cm)", "Berat (kg)", "BMI", "Kategori"], start);
   }
   headers(BMI, 4, ["Jumlah Cek", "Tgl Cek Terakhir", "BMI Terakhir", "Kategori Terakhir", "Δ Berat (kg)", "Cek Berikutnya", "Status Jadwal",
-    "Catatan Program Kebugaran", "BMI (slot Laporan Mingguan)", "Kategori (slot Laporan Mingguan)"], 39);
+    "Catatan Program Kebugaran", "BMI (slot Laporan Mingguan)", "Kategori (slot Laporan Mingguan)"], sumStart);
   const checks = (db.bmi_checks ?? []) as Row[];
   for (let i = 0; i < masterRows; i++) {
     const mr = 5 + i;
@@ -345,19 +350,20 @@ export function buildWorkbook(db: DbSnapshot, opts: WorkbookOptions = {}): FakeW
     if (s?.bmi_has_note === true) b.set(BMI, `I${r}`, "Ya");
     if (s?.bmi_has_note === false) b.set(BMI, `I${r}`, "Tidak");
     for (let k = 0; k < 6; k++) {
-      const start = 9 + k * 5;
+      const start = 9 + k * group;
       const c = s && checks.find((x) => x.staff_code === s.code && x.period === k + 1);
       if (c) {
         if (c.check_date) b.setAt(BMI, r, start, serial(c.check_date));
         b.setAt(BMI, r, start + 1, c.height_cm);
         b.setAt(BMI, r, start + 2, c.weight_kg);
+        if (group === 6 && c.commitment) b.setAt(BMI, r, start + 5, c.commitment);
       }
       const [h, w] = [`${a1Column(start + 1)}${r}`, `${a1Column(start + 2)}${r}`];
       b.setAt(BMI, r, start + 3, "", `=IF(OR(${h}="",${w}=""),"",ROUND(${w}/(${h}/100)^2,1))`);
       b.setAt(BMI, r, start + 4, "", `=IF(${a1Column(start + 3)}${r}="","",IF(${a1Column(start + 3)}${r}<Parameter!$C$12,"Kurus","Normal"))`);
     }
-    for (const col of ["AN", "AO", "AP", "AQ", "AR", "AS", "AT", "AV", "AW"]) b.set(BMI, `${col}${r}`, "", `=IF(B${r}="","",0)`);
-    put(BMI, `AU${r}`, s?.bmi_note);
+    for (const offset of [0, 1, 2, 3, 4, 5, 6, 8, 9]) b.set(BMI, `${a1Column(sumStart + offset)}${r}`, "", `=IF(B${r}="","",0)`);
+    put(BMI, `${a1Column(sumStart + 7)}${r}`, s?.bmi_note);
   }
 
   // ---- Log Performa Mingguan (header row 4, pre-made rows per week and staff, spare formula rows)

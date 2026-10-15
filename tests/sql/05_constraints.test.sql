@@ -36,6 +36,15 @@ select lives_ok($$insert into public.bmi_checks (staff_code, period, height_cm, 
 select lives_ok($$delete from public.bmi_checks where staff_code = 'TST-SUB' and period = 52$$, 'slot 52 removed again');
 select throws_ok($$insert into public.bmi_checks (staff_code, period, height_cm, weight_kg) values ('TST-SUB', 1, null, 60)$$, '23502', null, 'height is required on a stored check');
 select lives_ok($$insert into public.bmi_checks (staff_code, period, height_cm, weight_kg) values ('TST-SUB', 6, 170, 60)$$, 'slot 6 is accepted');
+select is((select commitment from public.bmi_checks where staff_code = 'TST-SUB' and period = 6), 'Sudah Ideal', 'a Normal check gets Sudah Ideal from the database');
+select lives_ok($$update public.bmi_checks set weight_kg = 80, commitment = 'Turun 5 kg dalam 2 bulan' where staff_code = 'TST-SUB' and period = 6$$, 'a check above Normal takes a commitment');
+select is((select commitment from public.bmi_checks where staff_code = 'TST-SUB' and period = 6), 'Turun 5 kg dalam 2 bulan', 'the commitment is kept while the check is not Normal');
+select lives_ok($$update public.bmi_checks set weight_kg = 60 where staff_code = 'TST-SUB' and period = 6$$, 'the check goes back to Normal');
+select is((select commitment from public.bmi_checks where staff_code = 'TST-SUB' and period = 6), 'Sudah Ideal', 'Normal again: Sudah Ideal replaces the typed commitment');
+select lives_ok($$update public.bmi_checks set weight_kg = 85 where staff_code = 'TST-SUB' and period = 6$$, 'the check leaves Normal');
+select is((select commitment from public.bmi_checks where staff_code = 'TST-SUB' and period = 6), null, 'Sudah Ideal is cleared when the check is no longer Normal');
+select throws_ok($$update public.bmi_checks set commitment = '  ' where staff_code = 'TST-SUB' and period = 6$$, '23514', null, 'a commitment is not blank');
+select throws_ok($$update public.bmi_checks set commitment = repeat('x', 501) where staff_code = 'TST-SUB' and period = 6$$, '23514', null, 'a commitment is at most 500 characters');
 
 -- action_items
 select throws_ok($$insert into public.action_items (code, group_name, status) values ('TST-TL01', 'Coaching Frontliner', 'Batal')$$, '23514', null, 'action status is enumerated');

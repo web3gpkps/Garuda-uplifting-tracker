@@ -271,7 +271,9 @@ function rowLayout(spec: TableSpec, real: RealSnapshot, cfg: RowLayoutConfig): P
 
 /**
  * Cek BMI 2 Mingguan: one row per staff (data from row 6, row = Master SDM row + 1, B computed from
- * Master SDM), slots side by side (Tgl Cek, Tinggi, Berat, then the BMI/Kategori formulas).
+ * Master SDM), slots side by side (Tgl Cek, Tinggi, Berat, then the BMI/Kategori formulas and the
+ * Komitmen/Target note). A slot without the Komitmen/Target column (the tab as it was before it)
+ * syncs the other three and leaves the note out.
  */
 function cekBmiLayout(spec: TableSpec, real: RealSnapshot): Projection {
   const title = spec.tab;
@@ -285,7 +287,7 @@ function cekBmiLayout(spec: TableSpec, real: RealSnapshot): Projection {
   const values: unknown[][] = [header];
   const locked = new Set<string>();
   const where = new Map<number, { row: number; slot: number }>();
-  const offsets: Record<string, number> = { check_date: 0, height_cm: 1, weight_kg: 2 };
+  const offsets: Record<string, number> = { check_date: 0, height_cm: 1, weight_kg: 2, commitment: BMI_COMMITMENT_OFFSET };
   for (let r = g.firstDataRow; r <= lastRowOf(tab); r++) {
     const code = tab.values[r - 1]?.[g.keyCol];
     if (isBlank(code)) continue;
@@ -297,6 +299,10 @@ function cekBmiLayout(spec: TableSpec, real: RealSnapshot): Projection {
       locked.add(`${v}:${idx.staff_code}`);
       locked.add(`${v}:${idx.period}`);
       for (const [colId, off] of Object.entries(offsets)) {
+        if (colId === "commitment" && !g.commitment[i]) {
+          locked.add(`${v}:${idx[colId]}`);
+          continue;
+        }
         out[idx[colId]] = tab.values[r - 1]?.[start + off];
         if (isFormulaCell(tab, r, start + off)) locked.add(`${v}:${idx[colId]}`);
       }
@@ -313,6 +319,7 @@ function cekBmiLayout(spec: TableSpec, real: RealSnapshot): Projection {
     cell(vrow, colId) {
       const w = where.get(vrow);
       if (!w || offsets[colId] === undefined) return undefined;
+      if (colId === "commitment" && !g.commitment[w.slot]) return undefined;
       return { tab: title, row: w.row, col: g.slots[w.slot] + offsets[colId] };
     },
     encode: (_c, v, f) => encodeRaw(v, f),
@@ -320,6 +327,9 @@ function cekBmiLayout(spec: TableSpec, real: RealSnapshot): Projection {
 }
 
 export const BMI_TAB = "Cek BMI 2 Mingguan";
+/** Komitmen/Target is the sixth column of a group: Tgl Cek, Tinggi, Berat, BMI, Kategori, then the note. */
+export const BMI_COMMITMENT_OFFSET = 5;
+export const BMI_COMMITMENT_HEADER = "komitmen/target";
 
 interface BmiGeometry {
   firstDataRow: number;
@@ -330,6 +340,8 @@ interface BmiGeometry {
   noteCol: number;
   /** Start column (Tgl Cek) of each slot. */
   slots: number[];
+  /** Per slot: does it have the Komitmen/Target column (sixth of the group)? */
+  commitment: boolean[];
 }
 
 function bmiGeometry(tab: RealTab): BmiGeometry | { error: string } {
@@ -348,7 +360,8 @@ function bmiGeometry(tab: RealTab): BmiGeometry | { error: string } {
   ].filter(Boolean);
   if (missing.length) return { error: `kolom ${missing.join(", ")} tidak ditemukan (atau ganda) di baris 4.` };
   if (slots.length === 0) return { error: 'kolom "Tgl Cek / Tinggi (cm) / Berat (kg)" tidak ditemukan di baris 5.' };
-  return { firstDataRow: 6, keyCol: keyCols[0], hasNoteCol: hasNoteCols[0], noteCol: noteCols[0], slots };
+  const commitment = slots.map((c) => sub[c + BMI_COMMITMENT_OFFSET] === BMI_COMMITMENT_HEADER);
+  return { firstDataRow: 6, keyCol: keyCols[0], hasNoteCol: hasNoteCols[0], noteCol: noteCols[0], slots, commitment };
 }
 
 /**

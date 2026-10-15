@@ -64,5 +64,19 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     return redirectWithCookies(url);
   }
 
+  // A signed-in account that is not the owner has no business in /admin. Its pages would throw (the owner
+  // check) while the layout shows a notice, which leaves the page stuck loading; send it to /login, which
+  // forwards an approved branch account to /cabang. Only when the database answers: if it does not, the
+  // page's own gate explains.
+  if (signedIn && (pathname === "/admin" || pathname.startsWith("/admin/"))) {
+    const { data: admin, error: adminError } = await supabase.from("admins").select("user_id").eq("user_id", data!.claims!.sub).maybeSingle();
+    if (!adminError && !admin) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.search = "";
+      return redirectWithCookies(url);
+    }
+  }
+
   return response;
 }

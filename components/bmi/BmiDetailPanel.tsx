@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
+import { COMMITMENT_LABEL, commitmentCell } from "@/lib/bmi-commitment";
 import { formatTanggal } from "@/lib/dates";
 import { formatDecimal, formatSignedKg } from "@/lib/format";
 import type { Settings } from "@/lib/rules";
 import { CategoryBadge, Dash, PendingBadge, ScheduleBadge } from "./badges";
 import { hasNoteLabel } from "./summary";
-import type { BmiRowView } from "./tracker-model";
+import { idOf, type BmiRowView } from "./tracker-model";
 
 const FOCUSABLE = 'a[href], button, input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -20,6 +21,8 @@ type BmiDetailPanelProps = {
   labels: string[];
   /** The period chosen on the page, marked in the history. */
   period: number;
+  /** "Edit Profil": opens the form for this person's name, employee number, touch point and L/P. */
+  onEditProfile: (code: string) => void;
 };
 
 function Stat({ label, children }: { label: string; children: ReactNode }) {
@@ -45,7 +48,7 @@ function NoteBox({ label, text, empty }: { label: string; text: string | null; e
  * A native modal dialog docked to the right, so the page behind is inert, Escape and a click
  * on the scrim close it, focus starts on the close button and returns to the name that opened it.
  */
-export function BmiDetailPanel({ open, onClose, view, settings, plannedDates, labels, period }: BmiDetailPanelProps) {
+export function BmiDetailPanel({ open, onClose, view, settings, plannedDates, labels, period, onEditProfile }: BmiDetailPanelProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const returnFocusTo = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -112,7 +115,7 @@ export function BmiDetailPanel({ open, onClose, view, settings, plannedDates, la
   const summary = view?.summary;
   const gender = row?.gender === "L" ? "Laki-laki" : row?.gender === "P" ? "Perempuan" : null;
   const hasNote = hasNoteLabel(row?.hasNote);
-  const meta = row ? [row.code, row.station, row.touchPoint].filter(Boolean).join(" · ") : "";
+  const meta = row ? [idOf(row), row.station, row.touchPoint].filter(Boolean).join(" · ") : "";
 
   return (
     <dialog
@@ -138,7 +141,22 @@ export function BmiDetailPanel({ open, onClose, view, settings, plannedDates, la
           </div>
 
           <div className="bmi-panel-body">
-            <h3 className="detail-section">Informasi petugas</h3>
+            <div className="detail-section-row">
+              <h3 className="detail-section">Informasi petugas</h3>
+              <button type="button" className="detail-edit" onClick={() => onEditProfile(row.code)}>
+                <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                  <path
+                    d="M11.2 2.3a1.6 1.6 0 0 1 2.3 2.3l-7.6 7.6-3 .7.7-3 7.6-7.6Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Edit Profil
+                <span className="sr-only">, {row.name}</span>
+              </button>
+            </div>
             <dl className="detail-grid">
               <Stat label="Jenis kelamin">{gender ?? <Dash reason="belum diisi" />}</Stat>
               <Stat label="Ada Catatan BMI">{hasNote ?? <Dash reason="belum diisi" />}</Stat>
@@ -180,6 +198,11 @@ export function BmiDetailPanel({ open, onClose, view, settings, plannedDates, la
                       <small>
                         {check?.date ? formatTanggal(check.date) : `${formatTanggal(planned)} · belum diisi`}
                       </small>
+                      {check && commitmentCell(value?.category ?? null, check.commitment).text ? (
+                        <small>
+                          {COMMITMENT_LABEL}: {commitmentCell(value?.category ?? null, check.commitment).text}
+                        </small>
+                      ) : null}
                     </div>
                     <div className="right">
                       {check && value?.bmi != null ? (

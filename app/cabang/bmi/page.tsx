@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Cek BMI" };
 export default function Page({ searchParams }: PageProps<"/cabang/bmi">) {
   return (
     <Suspense fallback={<BmiLoading />}>
-      <AccountScreenRoute searchParams={searchParams} screen={BmiScreen} />
+      <AccountScreenRoute searchParams={searchParams} screen={BmiScreen} bmiOnlyOk />
     </Suspense>
   );
 }
