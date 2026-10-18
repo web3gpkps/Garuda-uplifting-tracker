@@ -1,9 +1,8 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Workspace } from "@/lib/workspace";
 import { ACCOUNT_ACCESS, navSections } from "@/lib/workspace/access";
-import { ShellFrame, ShellLoading } from "./ShellFrame";
-import { SignOutButton } from "./SignOutButton";
+import { ShellFooterLink, ShellFrame, ShellIdentity, ShellLoading, WeekLine } from "./ShellFrame";
+import { ShellSignOut } from "./SignOutButton";
 import { branchBmiNavigation, isBranchBmiView } from "./cgk-bmi";
 import { programmeWeekLine } from "./programme-calendar";
 
@@ -31,19 +30,20 @@ export function AccountShell({ workspace, accountName, today, children }: Accoun
       homeHref={bmiOnly ? `${ACCOUNT_ACCESS.basePath}/bmi` : ACCOUNT_ACCESS.basePath}
       scopeLabel={workspace.scopeLabel}
       scopeShort={workspace.scope}
-      weekLine={workspace.schedule ? programmeWeekLine(workspace.schedule, today) : undefined}
+      weekLine={workspace.schedule ? <WeekLine>{programmeWeekLine(workspace.schedule, today)}</WeekLine> : undefined}
       footer={
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between gap-2">
-            <span className="min-w-0 truncate text-xs text-[#b6ced4]" title={accountName}>
-              {accountName}
-            </span>
-            <SignOutButton variant="ghost" size="sm" />
-          </div>
-          <Link href="/reset-password" className="flex min-h-11 items-center text-xs text-[#b6ced4] underline underline-offset-2 hover:text-white lg:min-h-0">
-            Ganti kata sandi
-          </Link>
-        </div>
+        <ShellIdentity
+          icon="user"
+          text={accountName}
+          action={
+            <>
+              <ShellFooterLink href="/reset-password" icon="key">
+                Ganti kata sandi
+              </ShellFooterLink>
+              <ShellSignOut />
+            </>
+          }
+        />
       }
     >
       {children}

@@ -1,8 +1,8 @@
 import { Suspense, cache, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { OWNER_ACCESS, navSections } from "@/lib/workspace/access";
-import { ShellFrame, ShellLoading } from "./ShellFrame";
-import { SignOutButton } from "./SignOutButton";
+import { ShellFrame, ShellIdentity, ShellLoading, WeekLine } from "./ShellFrame";
+import { ShellSignOut } from "./SignOutButton";
 import { programmeWeekLine, todayInJakarta } from "./programme-calendar";
 
 const OWNER_SCOPE = "Pemilik · semua stasiun";
@@ -28,7 +28,7 @@ async function OwnerWeekLine() {
   if (!data?.week1_start || !data.weeks || !data.bmi_first_check || !data.bmi_interval_days || !data.bmi_periods) {
     return null;
   }
-  return <>{programmeWeekLine(data, todayInJakarta())}</>;
+  return <WeekLine>{programmeWeekLine(data, todayInJakarta())}</WeekLine>;
 }
 
 /**
@@ -47,14 +47,7 @@ export function OwnerShell({ email, children }: { email: string; children: React
           <OwnerWeekLine />
         </Suspense>
       }
-      footer={
-        <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-xs text-[#b6ced4]" title={email}>
-            {email}
-          </span>
-          <SignOutButton variant="ghost" size="sm" />
-        </div>
-      }
+      footer={<ShellIdentity icon="user" text={email} action={<ShellSignOut />} />}
     >
       {children}
     </ShellFrame>

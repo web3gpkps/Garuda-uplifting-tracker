@@ -163,7 +163,7 @@ Sentence case everywhere. No uppercase tracking. No em dash. No exclamation mark
 
 Applied across every screen from the tokens in `app/globals.css`; logos and CRUD behaviour unchanged.
 - Sidebar and phone menu sheet are Garuda navy (`--navy` #123346) with the co-brand logos on a white chip
-  (logos are never recoloured). Active item: white/10 fill, white 600 text, 3px mint stripe.
+  (logos are never recoloured). Nav rows: see "Sidebar revision (18 Okt 2026)".
 - Primary colour is Garuda green (`--brand` #0a7a63, white on it 5.3:1); page `--bg` #f5f8fa.
 - Every page opens with the `.hero` banner (PageHeader): navy-to-green gradient, optional eyebrow,
   title, one meta line, actions (buttons restyled for dark via `.hero-actions`). Plain in print.
@@ -216,3 +216,23 @@ one workspace).
 - **Touch Point replaces Program on this screen** (column after Unit, filter, profile, cards, CSV, Tambah SDM). The filter lists the
   five standard values plus any other value in the data and appears once someone has one. Tambah SDM offers the five and "Other";
   "Other" reveals a required text field (60 characters) and that text is saved, never the word "Other". Program is unchanged elsewhere.
+
+## Sidebar revision (18 Okt 2026)
+
+Same layout as the JOUMPA tracker, in Garuda navy. Sidebar (≥1024px) and the phone menu sheet share three
+bands split by 1px white/15 hairlines:
+- **Identity:** logos on a white chip, then the scope card (white/6 fill, white/12 inset ring): pin icon +
+  scope line, calendar icon + programme week.
+- **Nav:** each group (menu) is an uppercase 13/600 caption (#9bb7c2, 6.3:1) over its items; groups are separated
+  by a hairline. Every item is icon + label: 20px icons from `components/shell/NavIcon.tsx` (one family,
+  24 grid, 1.75 stroke, Lucide-style; Remedial is a graduation cap), inactive text #d3e3e8 (10:1) with icons
+  #8fb0bd (5.7:1), hover white/8 and white. Rows 36px from 1024px, 44px below.
+- **Sub-items:** indented 12px under their group caption on a 1px white/20 vertical guide line that runs
+  from the caption to the last item. Long labels wrap to a second line instead of being cut off.
+- **Current page:** a light pill, `--brand-tint` fill with navy 600 text (11.6:1) and a `--brand` icon
+  (4.6:1). The pill is 11.6:1 against the sidebar. No side stripe.
+- **Footer:** the account (user icon) or link label (link icon), then "Ganti kata sandi" (branch accounts)
+  and "Keluar" as rows on the same icon column.
+- Every icon, logo and label in the sidebar sits on one 24px column. Focus ring #a9e9b9 (9.5:1).
+- Phone bottom bar: icon over label; the current page gets a `--brand-tint` pill behind its icon and brand
+  600 text. The cells share the width, so a BMI-only view gets two wide cells.

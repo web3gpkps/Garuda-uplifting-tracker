@@ -3,48 +3,77 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useFormStatus } from "react-dom";
 import { cx } from "@/components/ui/cx";
 import { isNavActive, type NavLink, type NavSection } from "@/lib/workspace/access";
+import { Icon, navIconName } from "./NavIcon";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])';
 
 function navLinkClasses(active: boolean): string {
   return cx(
-    "flex min-h-11 items-center rounded-control px-3 text-sm transition-colors duration-120 lg:min-h-9",
-    active
-      ? "bg-white/10 font-semibold text-white shadow-[inset_3px_0_0_#9be3a7]"
-      : "text-[#d3e3e8] hover:bg-white/10 hover:text-white",
+    "group flex min-h-11 items-center gap-3 rounded-control px-3 text-sm transition-colors duration-120 lg:min-h-9",
+    active ? "bg-brand-tint font-semibold text-navy" : "text-[#d3e3e8] hover:bg-white/8 hover:text-white",
   );
 }
 
-/** The grouped nav list, shared by the sidebar (≥1024px) and the phone menu sheet. */
+/**
+ * The grouped nav list, shared by the sidebar (≥1024px) and the phone menu sheet. A group is an
+ * uppercase caption over its items; the items are indented under it on a vertical guide line
+ * that runs from the caption to the last item, and groups are split by a hairline. Every item carries its icon,
+ * and the current page is a light pill (navy on brand-tint, 11.6:1; the pill on the sidebar navy 11.6:1).
+ */
 function NavList({ sections, onNavigate }: { sections: NavSection[]; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const idPrefix = useId();
   return (
-    <div className="flex flex-col gap-5">
-      {sections.map((section) => (
-        <div key={section.key}>
-          <p className="nav-label mb-1 px-3">{section.label}</p>
-          <ul className="flex flex-col gap-0.5">
-            {section.items.map((item) => {
-              const active = isNavActive(pathname, item);
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    onClick={onNavigate}
-                    className={navLinkClasses(active)}
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+    <div className="flex flex-col">
+      {sections.map((section, index) => {
+        const headingId = `${idPrefix}-${section.key}`;
+        return (
+          <div key={section.key} className={cx(index > 0 && "mt-3 border-t border-white/15 pt-3")}>
+            <p id={headingId} className="nav-label mb-1 px-3 py-1">
+              {section.label}
+            </p>
+            <ul aria-labelledby={headingId} className="ml-3 flex flex-col gap-0.5 border-l border-white/20 pl-2">
+              {section.items.map((item) => {
+                const active = isNavActive(pathname, item);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      aria-current={active ? "page" : undefined}
+                      onClick={onNavigate}
+                      className={navLinkClasses(active)}
+                    >
+                      <Icon
+                        name={navIconName(item.key)}
+                        className={cx(
+                          "shrink-0 transition-colors duration-120",
+                          active ? "text-brand" : "text-[#8fb0bd] group-hover:text-white",
+                        )}
+                      />
+                      <span className="min-w-0 py-2">{item.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
     </div>
+  );
+}
+
+/** "Keluar" as a row of the sidebar or sheet footer. Render inside the sign-out <form>. */
+export function SignOutRowButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} aria-busy={pending || undefined} className={cx(navLinkClasses(false), "w-full disabled:cursor-not-allowed")}>
+      <Icon name="signOut" className="shrink-0 text-[#8fb0bd] transition-colors duration-120 group-hover:text-white" />
+      {pending ? "Keluar…" : "Keluar"}
+    </button>
   );
 }
 
@@ -60,7 +89,7 @@ export function SidebarNav({ sections, label }: { sections: NavSection[]; label:
 type MobileChromeProps = {
   /** Same groups as the sidebar. */
   sections: NavSection[];
-  /** Phone bottom bar links (<640px), three at most; "Menu" is added after them. */
+  /** Phone bottom bar links (<640px), three at most; "Menu" is added after them and the cells share the width. */
   bottomItems: NavLink[];
   /** Accessible name of the nav landmarks, e.g. "Menu Stasiun CGK". */
   label: string;
@@ -68,9 +97,9 @@ type MobileChromeProps = {
   brand: ReactNode;
   /** Where the logos lead (Beranda). */
   homeHref: string;
-  /** Short scope next to the logos: a station code ("CGK", "KPS") or "Pemilik". */
+  /** Short scope next to the logo: a station code ("CGK", "KPS") or "Pemilik". */
   scopeShort: string;
-  /** Top of the sheet: scope line and programme week. */
+  /** Scope card under the logo row of the sheet: scope line and programme week. Names the dialog. */
   sheetHeader: ReactNode;
   /** Bottom of the sheet: link label, or the owner's email and "Keluar". */
   sheetFooter?: ReactNode;
@@ -78,9 +107,9 @@ type MobileChromeProps = {
 
 /**
  * Chrome under 1024px: a 56px top bar (logos, scope code, "Menu") and, under 640px, a bottom
- * bar (Beranda, Penilaian, Cek BMI, Menu). Both "Menu" buttons open the same left sheet on a
- * native modal <dialog>: the page behind is inert, Tab cycles inside, Escape and the backdrop
- * close it, and focus returns to the button that opened it.
+ * bar of icons over labels (Beranda, Penilaian, Cek BMI, Menu). Both "Menu" buttons open the
+ * same left sheet on a native modal <dialog>: the page behind is inert, Tab cycles inside,
+ * Escape and the backdrop close it, and focus returns to the button that opened it.
  */
 export function MobileChrome({
   sections,
@@ -147,7 +176,7 @@ export function MobileChrome({
   }, []);
 
   const close = () => setOpen(false);
-  const menuButton = (extra: string) => (
+  const menuButton = (extra: string, icon: ReactNode) => (
     <button
       type="button"
       aria-haspopup="dialog"
@@ -156,12 +185,8 @@ export function MobileChrome({
       onClick={() => setOpen(true)}
       className={extra}
     >
-      <span aria-hidden="true" className="flex w-4 flex-col gap-[3px]">
-        <span className="h-0.5 bg-current" />
-        <span className="h-0.5 bg-current" />
-        <span className="h-0.5 bg-current" />
-      </span>
-      Menu
+      {icon}
+      <span>Menu</span>
     </button>
   );
 
@@ -177,6 +202,7 @@ export function MobileChrome({
         <span className="station-code min-w-0 truncate border-l border-line pl-3 text-sm text-ink">{scopeShort}</span>
         {menuButton(
           "ml-auto inline-flex min-h-11 shrink-0 items-center gap-2 rounded-control border border-line-strong bg-surface px-3 text-sm font-semibold text-ink transition-colors duration-120 hover:bg-bg",
+          <Icon name="menu" />,
         )}
       </header>
 
@@ -185,27 +211,34 @@ export function MobileChrome({
         data-print="hide"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] sm:hidden"
       >
-        <ul className="grid h-(--bottombar-height) grid-cols-4">
+        <ul
+          className="grid h-(--bottombar-height)"
+          style={{ gridTemplateColumns: `repeat(${bottomItems.length + 1}, minmax(0, 1fr))` }}
+        >
           {bottomItems.map((item) => {
             const active = isNavActive(pathname, item);
             return (
-              <li key={item.href} className="flex">
+              <li key={item.href} className="flex min-w-0">
                 <Link
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className={cx(
-                    "flex flex-1 flex-col items-center justify-center text-xs",
-                    active ? "font-semibold text-brand" : "text-ink-muted",
-                  )}
+                  className={cx(bottomItemClasses, active ? "font-semibold text-brand" : "text-ink-muted hover:text-ink")}
                 >
-                  <span aria-hidden="true" className={cx("mb-1 h-0.5 w-6 rounded-status", active ? "bg-brand" : "bg-transparent")} />
-                  {item.shortLabel}
+                  <span className={cx(bottomIconClasses, active && "bg-brand-tint")}>
+                    <Icon name={navIconName(item.key)} />
+                  </span>
+                  <span className="max-w-full truncate px-1">{item.shortLabel}</span>
                 </Link>
               </li>
             );
           })}
-          <li className="flex">
-            {menuButton("flex flex-1 flex-col items-center justify-center gap-1 text-xs text-ink-muted")}
+          <li className="flex min-w-0">
+            {menuButton(
+              cx(bottomItemClasses, "text-ink-muted hover:text-ink"),
+              <span className={bottomIconClasses}>
+                <Icon name="menu" />
+              </span>,
+            )}
           </li>
         </ul>
       </nav>
@@ -222,23 +255,37 @@ export function MobileChrome({
           "open:flex open:flex-col backdrop:bg-ink/40",
         )}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-white/15 px-4 py-3">
-          <div id={titleId} className="min-w-0">
-            {sheetHeader}
+        <div className="flex flex-col gap-3 border-b border-white/15 px-3 pt-3 pb-4">
+          <div className="flex items-center justify-between gap-2">
+            <Link
+              href={homeHref}
+              aria-label="Beranda"
+              onClick={close}
+              className="flex min-w-0 items-center rounded-control bg-white px-3 py-2"
+            >
+              {brand}
+            </Link>
+            <button
+              type="button"
+              onClick={close}
+              className="-mr-1 inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control px-3 text-sm font-semibold text-[#d3e3e8] transition-colors duration-120 hover:bg-white/8 hover:text-white"
+            >
+              <Icon name="close" />
+              Tutup
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={close}
-            className="-mr-2 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control text-sm font-semibold text-[#d3e3e8] hover:bg-white/10 hover:text-white"
-          >
-            Tutup
-          </button>
+          <div id={titleId}>{sheetHeader}</div>
         </div>
-        <nav aria-label={label} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-4">
+        <nav aria-label={label} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
           <NavList sections={sections} onNavigate={close} />
         </nav>
-        {sheetFooter ? <div className="border-t border-white/15 px-4 py-3">{sheetFooter}</div> : null}
+        {sheetFooter ? <div className="border-t border-white/15 p-3">{sheetFooter}</div> : null}
       </dialog>
     </>
   );
 }
+
+/** Bottom bar cell: icon over a 13px label; the current page gets a tinted pill behind its icon. */
+const bottomItemClasses =
+  "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-xs transition-colors duration-120";
+const bottomIconClasses = "flex h-7 w-12 items-center justify-center rounded-control transition-colors duration-120";

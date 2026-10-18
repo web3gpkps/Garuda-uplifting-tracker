@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { Workspace } from "@/lib/workspace";
 import { navSections, type WorkspaceAccess } from "@/lib/workspace/access";
-import { ShellFrame, ShellLoading } from "./ShellFrame";
+import { ShellFrame, ShellIdentity, ShellLoading, WeekLine } from "./ShellFrame";
 import { programmeWeekLine } from "./programme-calendar";
 import { cgkBmiNavigation, isCgkBmiShare } from "./cgk-bmi";
 
@@ -27,14 +27,8 @@ export function WorkspaceShell({ access, workspace, today, children }: Workspace
       homeHref={bmiOnly ? `${access.basePath}/bmi` : access.basePath}
       scopeLabel={workspace.scopeLabel}
       scopeShort={workspace.scope}
-      weekLine={workspace.schedule ? programmeWeekLine(workspace.schedule, today) : undefined}
-      footer={
-        workspace.label ? (
-          <p className="truncate text-xs text-[#b6ced4]" title={workspace.label}>
-            Tautan: {workspace.label}
-          </p>
-        ) : undefined
-      }
+      weekLine={workspace.schedule ? <WeekLine>{programmeWeekLine(workspace.schedule, today)}</WeekLine> : undefined}
+      footer={workspace.label ? <ShellIdentity icon="link" text={`Tautan: ${workspace.label}`} /> : undefined}
     >
       {children}
     </ShellFrame>

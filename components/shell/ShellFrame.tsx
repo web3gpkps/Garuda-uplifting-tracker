@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { TableSkeleton } from "@/components/ui/States";
 import { BOTTOM_BAR_KEYS, type NavSection } from "@/lib/workspace/access";
 import { Logo } from "./Logo";
+import { Icon, type IconName } from "./NavIcon";
 import { MobileChrome, SidebarNav } from "./ShellNav";
 
 /** Page gutter (16 phone, 24 from 640, 32 from 1280) and section rhythm, for content outside the shell. */
@@ -13,7 +14,7 @@ type ShellFrameProps = {
   sections: NavSection[];
   /** Where the logos lead (Beranda). */
   homeHref: string;
-  /** Scope line under the logos: "Stasiun CGK", "KPS · semua stasiun", "Pemilik · semua stasiun". */
+  /** Scope line under the logo: "Stasiun CGK", "KPS · semua stasiun", "Pemilik · semua stasiun". */
   scopeLabel: string;
   /** Short scope for the phone top bar: a station code ("CGK", "KPS") or "Pemilik". */
   scopeShort: string;
@@ -26,7 +27,8 @@ type ShellFrameProps = {
 
 /**
  * The app shell (DESIGN.md Shell and navigation), shared by station links and the owner.
- * ≥1024px: fixed 232px white sidebar (logos, scope line, programme week, grouped nav, footer).
+ * ≥1024px: fixed 232px navy sidebar in three bands split by hairlines: identity (logos on a
+ * white chip, scope card with the programme week), grouped nav with an icon per item, footer.
  * <1024px: 56px top bar with a "Menu" sheet; <640px also a bottom bar. Chrome is hidden in print.
  * Server component; only the nav (active state, sheet) runs on the client.
  */
@@ -34,12 +36,7 @@ export function ShellFrame({ sections, homeHref, scopeLabel, scopeShort, weekLin
   const allLinks = sections.flatMap((s) => s.items);
   const bottomItems = BOTTOM_BAR_KEYS.map((key) => allLinks.find((l) => l.key === key)).filter((l) => l !== undefined);
   const navLabel = `Menu ${scopeLabel}`;
-  const scopeBlock = (
-    <>
-      <p className="text-sm font-semibold text-white">{scopeLabel}</p>
-      {weekLine ? <p className="text-xs text-[#b6ced4]">{weekLine}</p> : null}
-    </>
-  );
+  const scopeBlock = <ScopeCard scopeLabel={scopeLabel} weekLine={weekLine} />;
 
   return (
     <div className="min-h-dvh">
@@ -54,16 +51,16 @@ export function ShellFrame({ sections, homeHref, scopeLabel, scopeShort, weekLin
         data-print="hide"
         className="on-navy fixed inset-y-0 left-0 z-20 hidden w-(--sidebar-width) flex-col bg-navy text-white lg:flex"
       >
-        <div className="flex flex-col gap-3 px-5 pt-5 pb-4">
-          <Link href={homeHref} aria-label="Beranda" className="self-start rounded-control bg-white px-3 py-2">
+        <div className="flex flex-col gap-3 border-b border-white/15 px-3 py-4">
+          <Link href={homeHref} aria-label="Beranda" className={logoChipClasses}>
             <Logo height={24} />
           </Link>
-          <div className="min-w-0">{scopeBlock}</div>
+          {scopeBlock}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
           <SidebarNav sections={sections} label={navLabel} />
         </div>
-        {footer ? <div className="border-t border-white/15 px-5 py-3">{footer}</div> : null}
+        {footer ? <div className="border-t border-white/15 p-3">{footer}</div> : null}
       </aside>
 
       <MobileChrome
@@ -90,6 +87,64 @@ export function ShellFrame({ sections, homeHref, scopeLabel, scopeShort, weekLin
   );
 }
 
+const logoChipClasses = "flex items-center rounded-control bg-white px-3 py-2.5";
+
+/** Where this view looks: the scope line and, when known, the programme week, on a raised card. */
+function ScopeCard({ scopeLabel, weekLine }: { scopeLabel: string; weekLine?: ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-control bg-white/6 px-3 py-2.5 ring-1 ring-white/12 ring-inset">
+      <p className="flex items-center gap-2 text-sm font-semibold text-white">
+        <Icon name="station" size={16} className="mx-0.5 shrink-0 text-[#8fb0bd]" />
+        <span className="min-w-0 truncate" title={scopeLabel}>
+          {scopeLabel}
+        </span>
+      </p>
+      {weekLine ? <div className="mt-1 text-xs text-[#b6ced4] empty:hidden">{weekLine}</div> : null}
+    </div>
+  );
+}
+
+/** "Minggu ke-2 dari 10" with its calendar icon, for the scope card. */
+export function WeekLine({ children }: { children: ReactNode }) {
+  return (
+    <span className="flex items-center gap-2">
+      <Icon name="calendar" size={16} className="mx-0.5 shrink-0 text-[#8fb0bd]" />
+      <span className="min-w-0">{children}</span>
+    </span>
+  );
+}
+
+/**
+ * Sidebar and sheet footer: who is using this view (an account, or the link label), on the same
+ * icon column as the nav rows, with an optional row under it such as "Keluar".
+ */
+export function ShellIdentity({ icon, text, action }: { icon: "user" | "link"; text: string; action?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className="flex min-h-9 items-center gap-3 px-3 text-xs text-[#d3e3e8]">
+        <Icon name={icon} className="shrink-0 text-[#8fb0bd]" />
+        <span className="min-w-0 truncate" title={text}>
+          {text}
+        </span>
+      </p>
+      {action}
+    </div>
+  );
+}
+
+/** A link row of the sidebar footer (e.g. "Ganti kata sandi"), shaped like the nav rows. */
+export function ShellFooterLink({ href, icon, children }: { href: string; icon: IconName; children: ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="group flex min-h-11 items-center gap-3 rounded-control px-3 text-sm text-[#d3e3e8] transition-colors duration-120 hover:bg-white/8 hover:text-white lg:min-h-9"
+    >
+      <Icon name={icon} className="shrink-0 text-[#8fb0bd] transition-colors duration-120 group-hover:text-white" />
+      {children}
+    </Link>
+  );
+}
+
 /**
  * Static shell shown while a gate runs. Prerendered, so it reads no request data and
  * renders no client nav (usePathname would block prerendering): logos, scope, skeleton.
@@ -99,12 +154,14 @@ export function ShellLoading({ scopeLabel }: { scopeLabel: string }) {
     <div className="min-h-dvh">
       <aside
         data-print="hide"
-        className="fixed inset-y-0 left-0 z-20 hidden w-(--sidebar-width) flex-col gap-3 bg-navy px-5 pt-5 lg:flex"
+        className="fixed inset-y-0 left-0 z-20 hidden w-(--sidebar-width) flex-col bg-navy text-white lg:flex"
       >
-        <span className="self-start rounded-control bg-white px-3 py-2">
-          <Logo height={24} />
-        </span>
-        <p className="text-sm font-semibold text-white">{scopeLabel}</p>
+        <div className="flex flex-col gap-3 border-b border-white/15 px-3 py-4">
+          <span className={logoChipClasses}>
+            <Logo height={24} />
+          </span>
+          <ScopeCard scopeLabel={scopeLabel} />
+        </div>
       </aside>
       <header
         data-print="hide"

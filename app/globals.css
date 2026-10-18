@@ -381,8 +381,12 @@
 .on-navy [data-variant="ghost"]:hover {
   background-color: rgb(255 255 255 / 0.12);
 }
+/* Sidebar and phone menu sheet: the navy surface. Scrollbars follow it (inherited). */
+.on-navy {
+  scrollbar-color: rgb(255 255 255 / 0.28) transparent;
+}
 .on-navy :focus-visible {
-  outline-color: #a9e9b9;
+  outline-color: #a9e9b9; /* 9.5:1 on the sidebar navy */
 }
 .hero :focus-visible {
   outline-color: #ffffff;
