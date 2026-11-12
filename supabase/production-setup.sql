@@ -9,7 +9,7 @@
 --   <SYNC_SECRET>  the same value as the SYNC_SECRET env var on Vercel
 --
 -- What this wires up (docs/SYNC.md, "Environment"):
---   * pg_cron every minute -> pg_net POST <APP_URL>/api/sync/run   (the backstop)
+--   * pg_cron every 10 minutes -> pg_net POST <APP_URL>/api/sync/run   (the backstop)
 --   * the debounced AFTER STATEMENT change-ping (migration 20261012100600_sync_lease_and_ping) starts
 --     working as soon as pg_net and both Vault secrets exist; until then it is a silent no-op.
 
@@ -21,10 +21,10 @@ create extension if not exists pg_cron;
 select vault.create_secret('<APP_URL>/api/sync/run', 'sync_run_url', 'Garuda: Sheets sync endpoint');
 select vault.create_secret('<SYNC_SECRET>', 'sync_secret', 'Garuda: bearer for /api/sync/run');
 
--- 3. Every-minute sync run. The lease in sync_state makes overlapping runs harmless.
+-- 3. Backstop sync run every 10 min (DB change-ping + Apps Script ping handle real-time; a 1-min cron burned the free Fluid Active CPU quota). The lease in sync_state makes overlapping runs harmless.
 select cron.schedule(
   'garuda-sync-every-minute',
-  '* * * * *',
+  '*/10 * * * *',
   $job$
     select net.http_post(
       url                  := (select decrypted_secret from vault.decrypted_secrets where name = 'sync_run_url'),
@@ -39,7 +39,7 @@ select cron.schedule(
   $job$
 );
 
--- 4. Housekeeping: pg_cron logs every run (1,440 rows/day). Keep 7 days.
+-- 4. Housekeeping: pg_cron logs every run (144 rows/day). Keep 7 days.
 select cron.schedule(
   'garuda-cron-log-cleanup',
   '17 3 * * *',
